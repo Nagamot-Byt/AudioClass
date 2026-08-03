@@ -138,6 +138,7 @@ DEFAULT_CONFIG = {
     "auto_adaptar": False,
     "adaptacion_default": "Análisis Académico Profundo",
     "theme": "dark",
+    "vu_sensitivity": 0.25,
     "first_run": True
 }
 
@@ -1261,6 +1262,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self._audio_overflows = 0
             self.vu_clips = 0
             self.vu_low = 0
+            self.vu_rms_hist = []       # historial RMS para detectar estatica (audio sin voz)
+            self.vu_static = False      # flag: se detecto nivel constante (estatica)
+            self.vu_rms_hist_full = []  # historial RMS ultimos 10 s (125 lecturas) para mini-grafico
+            self.vu_sens = float(self.config.get("vu_sensitivity", 0.25))  # umbral CV de sensibilidad
 
             self.local_engine = LocalWhisperEngine(self.config.get("local_model", "tiny"))
             self.cloud_engine = CloudColabEngine(
@@ -1712,22 +1717,50 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.bcancel.pack(side="left", padx=(0, 18), pady=16)
 
         # Medidor de nivel de entrada (VU meter) visible durante la grabacion:
-        # barra + dB en vivo para detectar micro demasiado bajo o recortes
-        # antes de terminar. Se actualiza desde el hilo principal (_updvu).
+        # barra + dB en vivo + historico de los ultimos 10 s (mini-grafico) +
+        # deslizador de sensibilidad para la deteccion de "audio sin voz".
+        # Se actualiza desde el hilo principal (_updvu).
         vu = self._frame(ct, fg_color="transparent")
-        vu.pack(side="left", padx=(0, 14), pady=16)
-        self._lbl(vu, "🎚", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6))
+        vu.pack(side="left", padx=(0, 14), pady=12)
+        vu_row1 = self._frame(vu, fg_color="transparent")
+        vu_row1.pack(side="top", fill="x")
+        self._lbl(vu_row1, "🎚", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6))
         if CTK:
-            self.vu_bar = ctk.CTkProgressBar(vu, width=170, height=10, corner_radius=5,
+            self.vu_bar = ctk.CTkProgressBar(vu_row1, width=170, height=10, corner_radius=5,
                                              fg_color=C["button"], progress_color=C["accent"])
             self.vu_bar.set(0)
             self._gold_bars.append(self.vu_bar)
         else:
-            self.vu_bar = ttk.Progressbar(vu, mode="determinate", length=150, maximum=100)
+            self.vu_bar = ttk.Progressbar(vu_row1, mode="determinate", length=150, maximum=100)
             self.vu_bar['value'] = 0
         self.vu_bar.pack(side="left", padx=(0, 8))
-        self.vu_lbl = self._lbl(vu, "-∞ dB", font=("Segoe UI", 10), text_color=C["muted"])
+        self.vu_lbl = self._lbl(vu_row1, "-∞ dB", font=("Segoe UI", 10), text_color=C["muted"])
         self.vu_lbl.pack(side="left")
+        # Aviso de "audio sin voz" (estatica) mientras se graba: aparece cuando
+        # el nivel es constante sin variacion (ruido de fondo / micro danado)
+        self.vu_warn = self._lbl(vu_row1, "", font=("Segoe UI", 10), text_color=C["warn"])
+        self.vu_warn.pack(side="left", padx=(8, 0))
+
+        # Fila 2: historico visual de los ultimos 10 s (125 lecturas de 80 ms)
+        # + deslizador de sensibilidad (umbral de coeficiente de variacion).
+        vu_row2 = self._frame(vu, fg_color="transparent")
+        vu_row2.pack(side="top", fill="x", pady=(4, 0))
+        self.vu_hist = tk.Canvas(vu_row2, width=160, height=24, bg=C["card"],
+                                 highlightthickness=1, highlightbackground=C["border"])
+        self.vu_hist.pack(side="left", padx=(0, 6))
+        self._lbl(vu_row2, "Sens:", font=("Segoe UI", 9), text_color=C["muted"]).pack(side="left", padx=(0, 4))
+        if CTK:
+            self.vu_sens_slider = ctk.CTkSlider(vu_row2, from_=0.05, to=0.60,
+                                                number_of_steps=11, command=self._vu_sens_changed,
+                                                width=110, height=16,
+                                                progress_color=C["accent"], button_color=C["accent"])
+        else:
+            self.vu_sens_slider = ttk.Scale(vu_row2, from_=0.05, to=0.60, orient="horizontal",
+                                            command=self._vu_sens_changed, length=110)
+        self.vu_sens_slider.set(self.vu_sens)
+        self.vu_sens_slider.pack(side="left", padx=(0, 6))
+        self.vu_sens_val = self._lbl(vu_row2, f"{self.vu_sens:.2f}", font=("Segoe UI", 9), text_color=C["muted"])
+        self.vu_sens_val.pack(side="left")
 
         # El estado se muestra fuera del frame de configuracion para que siga
         # visible en Modo Guiado (que oculta Perfil/Motor/Modelo)
@@ -2540,6 +2573,18 @@ CONSEJOS:
                     pbar.configure(progress_color=C["accent"], fg_color=C["button"])
                 except Exception:
                     pass
+            # Historico del VU meter: re-pintar con la paleta activa
+            if hasattr(self, "vu_hist"):
+                try:
+                    self.vu_hist.configure(bg=C["card"], highlightbackground=C["border"])
+                    self._draw_vu_hist()
+                except Exception:
+                    pass
+            if hasattr(self, "vu_sens_slider") and CTK:
+                try:
+                    self.vu_sens_slider.configure(progress_color=C["accent"], button_color=C["accent"])
+                except Exception:
+                    pass
             if hasattr(self, "fig"):
                 self.fig.set_facecolor(C["card"])
                 self.ax.set_facecolor(C["card"])
@@ -3076,12 +3121,21 @@ CONSEJOS:
         self._audio_overflows = 0
         self.vu_clips = 0
         self.vu_low = 0
+        self.vu_rms_hist = []
+        self.vu_static = False
+        self.vu_rms_hist_full = []
         if CTK:
             self.vu_bar.set(0)
             self.vu_lbl.configure(text="-∞ dB", text_color=C["muted"])
         else:
             self.vu_bar['value'] = 0
             self.vu_lbl.configure(text="-∞ dB", fg=C["muted"])
+        try:
+            self.vu_warn.configure(text="")
+            if hasattr(self, "vu_hist"):
+                self.vu_hist.delete("all")
+        except Exception:
+            pass
         self.vizbuf = np.zeros(VISUAL_SAMPLES, dtype=np.float32)
         self.cancel = False
         self._set_step(1)
@@ -3119,6 +3173,9 @@ CONSEJOS:
             else:
                 self.vu_bar['value'] = 0
                 self.vu_lbl.configure(text="-∞ dB", fg=C["muted"])
+            self.vu_warn.configure(text="")
+            if hasattr(self, "vu_hist"):
+                self.vu_hist.delete("all")
         except Exception:
             pass
 
@@ -3189,6 +3246,32 @@ CONSEJOS:
                 rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
                 peak = float(np.max(np.abs(x))) if len(x) else 0.0
             db = 20 * np.log10(max(rms, 1e-6))
+
+            # Deteccion de "audio sin voz" (estatica): la voz real oscila entre
+            # palabras y pausas (el RMS varia mucho), mientras que la estatica o
+            # el ruido de fondo tiene un RMS CASI constante. Con una ventana de
+            # ~3.2s (40 lecturas de 80ms), si el coeficiente de variacion
+            # (std/mean) es muy bajo y el nivel no es silencio, es estatica.
+            self.vu_rms_hist.append(rms)
+            if len(self.vu_rms_hist) > 40:
+                self.vu_rms_hist.pop(0)
+            # Historico de los ultimos 10 s (125 lecturas de 80 ms) para el
+            # mini-grafico debajo del medidor.
+            self.vu_rms_hist_full.append(rms)
+            if len(self.vu_rms_hist_full) > 125:
+                self.vu_rms_hist_full.pop(0)
+            if len(self.vu_rms_hist) >= 25 and time.time() - self.t0rec > 3.0:
+                h = np.array(self.vu_rms_hist)
+                hm = float(np.mean(h))
+                hs = float(np.std(h))
+                # Umbral de sensibilidad configurable (deslizador): mas alto =
+                # detecta estatica mas facil (senal mas constante -> menor CV).
+                sens = max(0.05, min(0.60, getattr(self, "vu_sens", 0.25)))
+                # Des-latch: refleja la ventana ACTUAL (si luego hablas, el
+                # aviso desaparece y el log final no es engañoso)
+                self.vu_static = (hm > 0.02 and hs / hm < sens)
+            self._draw_vu_hist()
+
             # Escala: -60 dB = 0% ... 0 dBFS = 100%
             frac = min(1.0, max(0.0, (db + 60) / 60))
             if CTK:
@@ -3218,9 +3301,75 @@ CONSEJOS:
                 self.vu_lbl.configure(text=txt, text_color=col)
             else:
                 self.vu_lbl.configure(text=txt, fg=col)
+            # Aviso en vivo de audio sin voz (estatica) mientras se graba
+            if self.vu_static:
+                wl = "⚠ Audio sin voz detectada"
+                if CTK:
+                    self.vu_warn.configure(text=wl, text_color=C["warn"])
+                else:
+                    self.vu_warn.configure(text=wl, fg=C["warn"])
         except Exception:
             pass
         self.after(80, self._updvu)
+
+    def _draw_vu_hist(self):
+        """Mini-grafico de los ultimos 10 s de nivel: barras proporcionales al
+        RMS (escala -60..0 dBFS), doradas con la paleta activa y con franja
+        ambar inferior mientras se detecte estatica (audio sin voz)."""
+        cv = getattr(self, "vu_hist", None)
+        if cv is None:
+            return
+        try:
+            cv.delete("all")
+            w = int(cv.winfo_width())
+            h = int(cv.winfo_height())
+            if w < 10 or h < 10:
+                return
+            hist = getattr(self, "vu_rms_hist_full", [])
+            n = len(hist)
+            if not n:
+                return
+            bw = w / 125.0
+            base = h - 2
+            for i, r in enumerate(hist):
+                db = 20 * np.log10(max(r, 1e-6))
+                frac = min(1.0, max(0.0, (db + 60) / 60))
+                bh = max(1.0, frac * (h - 5))
+                x0 = i * bw
+                col = C["accent"]
+                if db > -12:
+                    col = C["warn"]
+                if db > -3:
+                    col = C["err"]
+                cv.create_rectangle(x0, base - bh, x0 + max(bw - 0.4, 0.6), base,
+                                    fill=col, outline="")
+            if getattr(self, "vu_static", False):
+                cv.create_rectangle(0, h - 3, w, h, fill=C["warn"], outline="")
+        except Exception:
+            pass
+
+    def _vu_sens_changed(self, val):
+        """Callback del deslizador de sensibilidad: guarda el umbral en config
+        (persistente) y actualiza la etiqueta de valor. El guard de comparacion
+        evita escribir config a cada tick del arrastre (ttk.Scale dispara el
+        comando continuamente en modo fallback)."""
+        try:
+            v = max(0.05, min(0.60, round(float(val), 2)))
+        except Exception:
+            return
+        self.vu_sens = v
+        lbl = getattr(self, "vu_sens_val", None)
+        if lbl is not None:
+            try:
+                if CTK:
+                    lbl.configure(text=f"{v:.2f}", text_color=C["muted"])
+                else:
+                    lbl.configure(text=f"{v:.2f}", fg=C["muted"])
+            except Exception:
+                pass
+        if abs(self.config.get("vu_sensitivity", 0.25) - v) > 1e-6:
+            self.config["vu_sensitivity"] = v
+            save_config(self.config)
 
     def _procsave(self):
         try:
@@ -3254,6 +3403,10 @@ CONSEJOS:
             if getattr(self, "vu_low", 0) > 5:
                 self.q.put(("log", f"⚠ Nivel de micro muy bajo detectado ({self.vu_low} lecturas).\n"
                                    "Acerca el micrófono o sube el volumen de entrada para mejor transcripción.\n"))
+            # Audio sin voz (estatica): nivel casi constante -> no hay voz real
+            if getattr(self, "vu_static", False):
+                self.q.put(("log", "⚠ Audio sin voz detectada (nivel constante / estática).\n"
+                                   "La transcripción saldrá vacía. Revisa el micrófono, el cable o el nivel de entrada, y vuelve a grabar.\n"))
             self.q.put(("status", "Listo para transcribir"))
             self.q.put(("enable_rec", None))
             self.q.put(("addhist", pp))
