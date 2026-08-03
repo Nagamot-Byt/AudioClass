@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AudioClass — Sistema de Diseño Académico-Profesional</title>
+<style>
+  :root{
+    --navy:#0A1F44; --navy2:#12264E; --slate:#4A5568; --offwhite:#F5F7FA;
+    --gold:#D4AF37; --gold-dark:#B8860B; --green:#10B981; --amber:#D97706;
+    --red:#EF4444; --border:#E5E7EB; --text:#1A202C; --muted:#4A5568;
+    --card:#FFFFFF; --bg:#F5F7FA; --btn:#E2E8F0; --serif:Georgia,'Times New Roman',serif;
+    --body:'Segoe UI',Tahoma,sans-serif; --mono:Consolas,'Courier New',monospace;
+  }
+  [data-theme="dark"]{
+    --bg:#0A1F44; --card:#12264E; --text:#E8EDF7; --muted:#8FA3C7; --border:#1E3A6E;
+    --btn:#1E293B; --slate:#94A3B8; --offwhite:#F5F7FA;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{font-family:var(--body); background:var(--bg); color:var(--text); line-height:1.5;
+       padding:32px 24px 80px; transition:background .2s ease-out,color .2s ease-out}
+  .wrap{max-width:1080px; margin:0 auto}
+  header.top{display:flex; align-items:center; gap:14px; background:var(--navy); color:#fff;
+       border-radius:14px; padding:14px 22px; margin-bottom:28px; border-bottom:3px solid var(--gold)}
+  header.top .logo{font-family:var(--serif); font-size:22px; font-weight:700}
+  header.top .sub{font-size:12px; color:#8FA3C7}
+  header.top .sp{flex:1}
+  .pill{background:var(--btn); border:1px solid var(--border); color:var(--text);
+       padding:8px 16px; border-radius:20px; font-size:13px; cursor:pointer}
+  h2{font-family:var(--serif); font-weight:700; font-size:22px; margin:36px 0 12px;
+     border-bottom:2px solid var(--gold); padding-bottom:6px; display:inline-block}
+  h3{font-family:var(--serif); font-weight:600; font-size:18px; margin:20px 0 8px}
+  .grid{display:grid; gap:16px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px}
+  .sw{display:flex; gap:10px; flex-wrap:wrap}
+  .swatch{width:118px; border:1px solid var(--border); border-radius:10px; overflow:hidden;
+       text-align:center; font-size:11px}
+  .swatch .c{height:56px}
+  .swatch .t{padding:6px; color:var(--muted)}
+  .swatch .h{font-weight:700; color:var(--text)}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th,td{border:1px solid var(--border); padding:8px 10px; text-align:left}
+  th{background:var(--btn); color:var(--muted)}
+  .btn{display:inline-block; border:none; border-radius:10px; padding:10px 20px; margin:4px;
+       font-family:var(--body); font-size:14px; cursor:pointer; transition:all .2s ease-out;
+       min-height:44px; min-width:44px; vertical-align:middle}
+  .btn.primary{background:var(--gold); color:#fff}
+  .btn.primary:hover{background:var(--gold-dark); transform:scale(1.03)}
+  .btn.primary:active{transform:scale(.95)}
+  .btn.secondary{background:var(--btn); color:var(--text); border:1px solid var(--border)}
+  .btn.danger{background:var(--red); color:#fff}
+  .btn:disabled{background:#9CA3AF; opacity:.5; cursor:not-allowed}
+  .rec{width:64px; height:64px; border-radius:50%; border:none; background:var(--gold);
+       color:#fff; font-size:24px; cursor:pointer; transition:all .2s ease-out;
+       box-shadow:0 0 0 6px color-mix(in srgb, var(--gold) 25%, transparent)}
+  .rec.recording{background:var(--red); animation:pulse 1.2s infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 6px rgba(239,68,68,.25)}50%{box-shadow:0 0 0 12px rgba(239,68,68,.12)}}
+  .vu{width:200px; height:10px; background:var(--btn); border-radius:5px; overflow:hidden; display:inline-block; vertical-align:middle}
+  .vu .f{height:100%; width:35%; background:var(--gold); border-radius:5px; transition:width .2s ease-out}
+  .mono{font-family:var(--mono); font-size:13px; background:var(--btn); border:1px solid var(--border);
+       border-radius:8px; padding:12px; white-space:pre; overflow:auto}
+  .mono .live{color:var(--gold); font-weight:700}
+  .toast{display:inline-flex; align-items:center; gap:8px; border-radius:10px; padding:8px 14px;
+       font-size:13px; font-weight:600; margin:4px}
+  .toast.ok{background:#065f46; color:#a7f3d0}
+  .toast.err{background:#7f1d1d; color:#fecaca}
+  .badge{display:inline-block; background:var(--green); color:#fff; font-size:11px; font-weight:700;
+       border-radius:20px; padding:3px 10px}
+  .wf{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:10px;
+       margin-bottom:14px}
+  .wf svg{width:100%; height:auto; display:block}
+  .wf figcaption{font-size:12px; color:var(--muted); margin-top:6px; text-align:center}
+  .kbd{display:inline-block; background:var(--btn); border:1px solid var(--border);
+       border-bottom-width:3px; border-radius:6px; padding:2px 8px; font-size:12px; font-family:var(--mono)}
+  .note{font-size:13px; color:var(--muted)}
+  .st{font-family:var(--serif); font-weight:700}
+  .st.h1{font-size:28px} .st.h2{font-size:22px} .st.h3{font-size:18px}
+  .st.body{font-family:var(--body); font-size:16px; line-height:1.5}
+  .st.code{font-family:var(--mono); font-size:14px}
+  .tbar{width:100%; height:6px; background:var(--btn); border-radius:3px; overflow:hidden; margin:8px 0}
+  .tbar .f{height:100%; width:62%; background:var(--gold); border-radius:3px}
+</style>
+</head>
+<body data-theme="dark">
+<div class="wrap">
+
+  <header class="top">
+    <div class="logo">🎓 AudioClass</div>
+    <div class="sub">Grabación y transcripción académica con IA — Sistema de Diseño v9.2</div>
+    <div class="sp"></div>
+    <button class="pill" id="themeBtn" onclick="toggleTheme()">☀️ Modo claro</button>
+  </header>
+
+  <h2>1 · Paleta</h2>
+  <div class="sw">
+    <div class="swatch"><div class="c" style="background:#0A1F44"></div><div class="t"><div class="h">#0A1F44</div>Azul marino · header/bg</div></div>
+    <div class="swatch"><div class="c" style="background:#12264E"></div><div class="t"><div class="h">#12264E</div>Tarjetas (dark)</div></div>
+    <div class="swatch"><div class="c" style="background:#4A5568"></div><div class="t"><div class="h">#4A5568</div>Gris pizarra · texto 2º</div></div>
+    <div class="swatch"><div class="c" style="background:#F5F7FA"></div><div class="t"><div class="h">#F5F7FA</div>Blanco roto · bg claro</div></div>
+    <div class="swatch"><div class="c" style="background:#D4AF37"></div><div class="t"><div class="h">#D4AF37</div>Dorado académico · primario</div></div>
+    <div class="swatch"><div class="c" style="background:#B8860B"></div><div class="t"><div class="h">#B8860B</div>Dorado hover</div></div>
+    <div class="swatch"><div class="c" style="background:#10B981"></div><div class="t"><div class="h">#10B981</div>Verde éxito</div></div>
+    <div class="swatch"><div class="c" style="background:#E5E7EB"></div><div class="t"><div class="h">#E5E7EB</div>Bordes (claro)</div></div>
+    <div class="swatch"><div class="c" style="background:#EF4444"></div><div class="t"><div class="h">#EF4444</div>Rojo · solo crítico</div></div>
+  </div>
+
+  <h2>2 · Tipografía</h2>
+  <div class="grid g2">
+    <div class="card">
+      <div class="st h1">H1 · Encabezado 28 px</div>
+      <div class="st h2">H2 · Sección 22 px</div>
+      <div class="st h3">H3 · Subsección 18 px</div>
+      <div class="st body">Cuerpo Inter/Segoe UI 16 px · interlineado 1.5 — Para estudiantes, investigadores y profesionales que requieren precisión y claridad académica.</div>
+      <div class="st code">Código / transcripción — Source Code Pro / Consolas 14 px</div>
+    </div>
+    <div class="card">
+      <p class="note">Encabezados: Merriweather → Georgia (serif, 600/700).<br>
+      Cuerpo: Inter → Segoe UI (sans, 400/500).<br>
+      Código: Source Code Pro → Consolas (mono).<br>
+      Fuentes DejaVu empaquetadas para acentos unicode en el .exe.</p>
+    </div>
+  </div>
+
+  <h2>3 · Botones y estados</h2>
+  <div class="card">
+    <button class="btn primary">Grabar clase</button>
+    <button class="btn primary" style="background:var(--gold-dark)">Hover</button>
+    <button class="btn secondary">Transcribir</button>
+    <button class="btn danger">Cancelar</button>
+    <button class="btn primary" disabled>Deshabilitado</button>
+    <button class="rec" title="Grabar (dorado)">🎙</button>
+    <button class="rec recording" title="Grabando (rojo + pulso)">⏹</button>
+  </div>
+  <p class="note">Estados: default dorado → hover <code>#B8860B</code> → active escala 0.95 → disabled <code>#9CA3AF</code> opacidad 0.5. Transición 200 ms ease-out. Área táctil ≥ 44×44.</p>
+
+  <h2>4 · Feedback de transcripción</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Progreso + resaltado en vivo</h3>
+      <div class="tbar"><div class="f"></div></div>
+      <p class="note">⚡ 4 núcleos · 12/30 chunks · 40% · ~95s rest</p>
+      <div class="mono"> 1  =======================================================
+ 2    TRANSCRIPCION:
+ 3  =======================================================
+ 4
+ 5  Buenos días. <span class="live">Hoy veremos la fotosíntesis en
+ 6  las plantas y el papel de los cloroplastos…</span></div>
+      <p><span class="badge">✓ Revisado por IA</span></p>
+    </div>
+    <div class="card">
+      <h3>Toasts</h3>
+      <div class="toast ok">✓ Transcripción completada</div><br>
+      <div class="toast err">✗ Error de transcripción · <b>Reintentar</b></div><br>
+      <div class="toast" style="background:#78350f;color:#fde68a">⚠ Micro muy bajo</div>
+    </div>
+  </div>
+
+  <h2>5 · Wireframes (5 pantallas)</h2>
+
+  <figure class="wf">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+      <rect width="760" height="300" fill="#F5F7FA"/>
+      <rect width="760" height="34" fill="#0A1F44"/>
+      <text x="14" y="22" fill="#D4AF37" font-size="13" font-weight="700">🎓 AudioClass</text>
+      <text x="700" y="22" fill="#8FA3C7" font-size="10">usuario@academia</text>
+      <rect y="34" width="180" height="266" fill="#12264E"/>
+      <text x="16" y="58" fill="#E8EDF7" font-size="11" font-weight="700">PROYECTOS</text>
+      <rect x="12" y="66" width="156" height="20" rx="6" fill="#1E293B"/><text x="20" y="80" fill="#D4AF37" font-size="10">▸ Clase Bioquímica</text>
+      <rect x="12" y="92" width="156" height="20" rx="6" fill="#1E293B"/><text x="20" y="106" fill="#8FA3C7" font-size="10">▸ Física Cuántica</text>
+      <rect x="12" y="118" width="156" height="20" rx="6" fill="#1E293B"/><text x="20" y="132" fill="#8FA3C7" font-size="10">▸ Seminario IA</text>
+      <text x="16" y="172" fill="#E8EDF7" font-size="11" font-weight="700">HISTORIAL</text>
+      <rect x="12" y="180" width="156" height="34" rx="8" fill="#1E293B"/>
+      <rect x="12" y="220" width="156" height="34" rx="8" fill="#1E293B"/>
+      <rect x="12" y="260" width="156" height="24" rx="8" fill="#8B5CF6"/>
+      <text x="196" y="62" fill="#1A202C" font-size="13" font-weight="700">Dashboard · Lista de proyectos</text>
+      <rect x="196" y="72" width="540" height="46" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="210" y="92" fill="#1A202C" font-size="11" font-weight="700">Clase Bioquímica — 12 ago 2026 · 1h 24m</text>
+      <text x="210" y="108" fill="#4A5568" font-size="9">▶ Reproducir · Ver detalle · ✓ Revisado por IA</text>
+      <rect x="196" y="124" width="540" height="46" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <rect x="196" y="176" width="540" height="46" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <rect x="196" y="228" width="540" height="46" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <rect x="196" y="150" width="120" height="24" rx="12" fill="#0A1F44"/>
+      <text x="210" y="166" fill="#D4AF37" font-size="9" font-weight="700">+ NUEVO PROYECTO</text>
+    </svg>
+    <figcaption>1 · Dashboard / Lista de proyectos</figcaption>
+  </figure>
+
+  <figure class="wf">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+      <rect width="760" height="300" fill="#F5F7FA"/>
+      <rect width="760" height="34" fill="#0A1F44"/>
+      <text x="14" y="22" fill="#D4AF37" font-size="13" font-weight="700">🎓 AudioClass</text>
+      <text x="14" y="60" fill="#1A202C" font-size="13" font-weight="700">Grabación + Waveform</text>
+      <circle cx="70" cy="120" r="32" fill="#D4AF37"/>
+      <text x="52" y="128" fill="#fff" font-size="20">🎙</text>
+      <text x="120" y="112" fill="#1A202C" font-size="12" font-weight="700">00:07:24</text>
+      <text x="120" y="128" fill="#4A5568" font-size="10">Grabando…</text>
+      <rect x="120" y="138" width="200" height="8" rx="4" fill="#1E293B"/>
+      <rect x="120" y="138" width="70" height="8" rx="4" fill="#D4AF37"/>
+      <rect x="46" y="170" width="660" height="60" rx="8" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <polyline points="46,200 66,186 86,214 106,178 126,202 146,184 166,216 186,190 206,204 226,178 246,200 266,186 286,212 306,180 326,200 346,184 366,210 386,188 406,204 426,180 446,200 466,186 486,214 506,178 526,200 546,184 566,212 586,190 606,204 626,180 646,200 666,186 686,210 706,190" stroke="#9CA3AF" stroke-width="1.6" fill="none"/>
+      <line x1="360" y1="170" x2="360" y2="230" stroke="#D4AF37" stroke-width="1.5"/>
+      <rect x="46" y="246" width="70" height="28" rx="8" fill="#D4AF37"/>
+      <text x="60" y="264" fill="#fff" font-size="11">▶</text>
+      <rect x="126" y="246" width="70" height="28" rx="8" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="138" y="264" fill="#1A202C" font-size="10">⏮ 5s</text>
+      <rect x="206" y="246" width="70" height="28" rx="8" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="218" y="264" fill="#1A202C" font-size="10">5s ⏭</text>
+      <text x="300" y="264" fill="#4A5568" font-size="10">1.0×</text>
+    </svg>
+    <figcaption>2 · Vista de grabación + waveform (cursor dorado, zona de selección)</figcaption>
+  </figure>
+
+  <figure class="wf">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+      <rect width="760" height="300" fill="#F5F7FA"/>
+      <rect width="760" height="34" fill="#0A1F44"/>
+      <text x="14" y="22" fill="#D4AF37" font-size="13" font-weight="700">🎓 AudioClass</text>
+      <text x="14" y="62" fill="#1A202C" font-size="13" font-weight="700">Editor de transcripción</text>
+      <rect x="14" y="72" width="500" height="180" rx="8" fill="#0A1F44" stroke="#1E3A6E"/>
+      <text x="30" y="92" fill="#8FA3C7" font-size="9">1</text>
+      <text x="30" y="106" fill="#8FA3C7" font-size="9">2</text>
+      <text x="30" y="120" fill="#8FA3C7" font-size="9">3</text>
+      <text x="44" y="92" fill="#E8EDF7" font-size="10">Transcripción de la clase sobre fotosíntesis…</text>
+      <text x="44" y="106" fill="#D4AF37" font-size="10" font-weight="700">Los cloroplastos capturan la energía lumínica…</text>
+      <text x="44" y="120" fill="#E8EDF7" font-size="10">La glucosa se sintetiza en el estroma…</text>
+      <rect x="524" y="72" width="222" height="180" rx="8" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="536" y="92" fill="#1A202C" font-size="11" font-weight="700">Notas</text>
+      <text x="536" y="112" fill="#4A5568" font-size="9">• Definir cloroplasto</text>
+      <text x="536" y="126" fill="#4A5568" font-size="9">• Preguntar por ciclo de Calvin</text>
+      <rect x="14" y="262" width="120" height="26" rx="8" fill="#D4AF37"/>
+      <text x="30" y="279" fill="#fff" font-size="10" font-weight="700">📋 Copiar</text>
+      <rect x="144" y="262" width="150" height="26" rx="8" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="160" y="279" fill="#1A202C" font-size="10">📄 Exportar PDF/DOCX</text>
+      <rect x="304" y="262" width="140" height="26" rx="8" fill="#8B5CF6"/>
+      <text x="320" y="279" fill="#fff" font-size="10">✨ Corregir con IA</text>
+    </svg>
+    <figcaption>3 · Editor de transcripción con panel de notas y acciones flotantes</figcaption>
+  </figure>
+
+  <figure class="wf">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+      <rect width="760" height="300" fill="#F5F7FA"/>
+      <rect width="760" height="34" fill="#0A1F44"/>
+      <text x="14" y="22" fill="#D4AF37" font-size="13" font-weight="700">🎓 AudioClass</text>
+      <text x="14" y="60" fill="#1A202C" font-size="13" font-weight="700">Configuración de proyecto / modelo IA</text>
+      <rect x="14" y="70" width="726" height="200" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="30" y="96" fill="#1A202C" font-size="11" font-weight="700">Perfil de audio</text>
+      <rect x="30" y="104" width="200" height="24" rx="6" fill="#E2E8F0"/><text x="40" y="120" fill="#1A202C" font-size="10">Clase Universitaria ▾</text>
+      <text x="30" y="146" fill="#1A202C" font-size="11" font-weight="700">Motor de transcripción</text>
+      <rect x="30" y="154" width="120" height="24" rx="12" fill="#0A1F44"/><text x="44" y="170" fill="#D4AF37" font-size="9" font-weight="700">🖥️ Local</text>
+      <rect x="158" y="154" width="120" height="24" rx="12" fill="#E2E8F0"/><text x="172" y="170" fill="#4A5568" font-size="9">☁️ Cloud</text>
+      <text x="30" y="196" fill="#1A202C" font-size="11" font-weight="700">Modelo local</text>
+      <rect x="30" y="204" width="160" height="24" rx="6" fill="#E2E8F0"/><text x="40" y="220" fill="#1A202C" font-size="10">tiny (rápido) ▾</text>
+      <rect x="560" y="230" width="160" height="30" rx="8" fill="#D4AF37"/>
+      <text x="590" y="250" fill="#fff" font-size="11" font-weight="700">Guardar cambios</text>
+    </svg>
+    <figcaption>4 · Configuración de proyecto / modelo IA</figcaption>
+  </figure>
+
+  <figure class="wf">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+      <rect width="760" height="300" fill="#0A1F44" opacity="0.35"/>
+      <rect width="760" height="34" fill="#0A1F44"/>
+      <text x="14" y="22" fill="#D4AF37" font-size="13" font-weight="700">🎓 AudioClass</text>
+      <rect x="230" y="50" width="300" height="210" rx="12" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="250" y="82" fill="#1A202C" font-size="14" font-weight="700">Exportar / Compartir</text>
+      <rect x="250" y="98" width="260" height="30" rx="8" fill="#E2E8F0"/>
+      <text x="262" y="118" fill="#4A5568" font-size="10">PDF (académico)</text>
+      <rect x="250" y="134" width="260" height="30" rx="8" fill="#E2E8F0"/>
+      <text x="262" y="154" fill="#4A5568" font-size="10">DOCX</text>
+      <rect x="250" y="170" width="260" height="30" rx="8" fill="#E2E8F0"/>
+      <text x="262" y="190" fill="#4A5568" font-size="10">Google Docs</text>
+      <rect x="250" y="214" width="120" height="28" rx="8" fill="#D4AF37"/>
+      <text x="272" y="233" fill="#fff" font-size="10" font-weight="700">Exportar</text>
+      <rect x="380" y="214" width="130" height="28" rx="8" fill="#E2E8F0"/>
+      <text x="406" y="233" fill="#4A5568" font-size="10">Cancelar</text>
+    </svg>
+    <figcaption>5 · Modal de exportación / compartir</figcaption>
+  </figure>
+
+  <h2>6 · Atajos y accesibilidad</h2>
+  <div class="card">
+    <p><span class="kbd">Espacio</span> play/pausa · <span class="kbd">Ctrl+R</span> nueva grabación ·
+    <span class="kbd">Ctrl+S</span> guardar · <span class="kbd">Ctrl+E</span> exportar · <span class="kbd">F1</span> ayuda</p>
+    <p class="note" style="margin-top:8px">Contraste ≥ 4.5:1 · área táctil ≥ 44×44 · foco dorado visible ·
+    modo oscuro persistente · etiquetas de iconos.</p>
+  </div>
+
+</div>
+<script>
+  function toggleTheme(){
+    const b=document.body, btn=document.getElementById('themeBtn');
+    const dark=b.dataset.theme!=='dark';
+    b.dataset.theme=dark?'dark':'light';
+    btn.textContent=dark?'☀️ Modo claro':'🌙 Modo oscuro';
+  }
+</script>
+</body>
+</html>

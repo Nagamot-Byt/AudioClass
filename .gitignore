@@ -1,0 +1,34 @@
+# ── Binarios y builds (pesados, no versionar) ──
+*.exe
+*.zip
+*.pt
+dist/
+build/
+build_onefile/
+dist_onefile/
+
+# ── Audios y bases de datos locales ──
+demo_audio/
+*.wav
+.freebuff/
+*.db
+*.db-shm
+*.db-wal
+
+# ── Versiones antiguas del proyecto (solo la v9.1 vigente) ──
+3 Versión/
+First Version/
+Second Version/
+"AudioClass (1).spec"
+"AudioClass (2).spec"
+
+# ── Artefactos y temporales ──
+*.log
+*_smoke_out.txt
+selftest_*.txt
+*.bak
+__pycache__/
+*.pyc
+.venv/
+venv/
+_smoke_config.json

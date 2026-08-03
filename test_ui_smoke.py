@@ -1,0 +1,78 @@
+# -*- coding: utf-8 -*-
+"""Smoke test de la GUI rediseñada de AudioClass.
+Instancia la app sin wizard, ejercita el nuevo sistema de diseño
+(tema claro/oscuro, gutter, tags en vivo, toasts con Reintentar, atajos,
+estado de conexion) y cierra. Requiere pantalla (se abre una ventana ~1s)."""
+import os, sys, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+import audioclass_v91 as ac
+
+# Config aislada: no tocar la config real del usuario
+SMOKE_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_smoke_config.json")
+ac.CONFIG_PATH = SMOKE_CFG
+cfg = ac.DEFAULT_CONFIG.copy()
+cfg["first_run"] = False
+cfg["theme"] = "dark"
+with open(SMOKE_CFG, "w", encoding="utf-8") as f:
+    json.dump(cfg, f)
+
+def _fatal_nb(self, e):
+    """Sustituye _fatal: imprime el error real en vez de abrir un dialogo modal
+    que bloquearia el test."""
+    import traceback
+    traceback.print_exc()
+    print("FATAL:", e)
+    sys.exit(1)
+
+ac.App._fatal = _fatal_nb
+
+import tkinter as tk
+_orig_msg = ac.App._msg
+ac.App._msg = lambda self, kind, title, msg: print("MSG:", kind, title, msg)
+
+app = ac.App()
+for _ in range(6):
+    app.update()
+
+# Helpers de transcripcion (gutter + tags + copiar)
+app._apptxt("Linea de prueba con acentos aeiou n\n")
+app._settxt("Transcripcion de ejemplo: los cloroplastos y la fotosintesis.")
+app._clear_live()
+app._fill_gutter()
+app._txt_yscroll(0.0)
+app._copy_trans()
+
+# Toasts con tipo y Reintentar
+app._show_toast("Grabacion lista", kind="ok")
+app._show_toast("Error simulado", kind="err", retry=lambda: None)
+app._show_toast("Aviso", kind="warn")
+
+# Atajos seguros (sin tocar microfono)
+app._kb_save(None)
+app._kb_export(None)
+app._kb_play(None)
+
+# Cambio de tema (ejercita _apply_palette + remapeo de superficies)
+app._theme()
+for _ in range(4):
+    app.update()
+app._theme()
+for _ in range(4):
+    app.update()
+
+# Estado de conexion en el header
+app._chmode("local")
+app._chmode("cloud")
+
+# Insignia Revisado por IA (mostrar/ocultar)
+if hasattr(app, "lbadge"):
+    app.lbadge.pack(side="right", padx=(0, 14))
+    app.update()
+    app.lbadge.pack_forget()
+
+app.update()
+app.destroy()
+print("SMOKE_OK")
