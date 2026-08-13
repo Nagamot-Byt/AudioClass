@@ -20,9 +20,39 @@ Para compilar:
     pyinstaller AudioClass.spec --clean --noconfirm
 """
 
-import os, sys, threading, queue, time, warnings, shutil, subprocess, traceback, json, re, textwrap, tempfile, hashlib
+import os, sys, threading, queue, time, warnings, shutil, subprocess, traceback, json, re, textwrap, tempfile, hashlib, base64
+import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# ─── EXE SIN CONSOLA: red de seguridad para stdout/stderr ──────────────────
+# PyInstaller con console=False (y pythonw) dejan sys.stdout/sys.stderr en
+# None: cualquier libreria que escriba a stdout (p. ej. tqdm dentro de whisper)
+# reventaria con AttributeError ('NoneType' object has no attribute 'write').
+# El motor ya llama a whisper con verbose=None para no escribir nada, pero este
+# sumidero nulo protege de cualquier otra escritura accidental.
+class _NullWriter:
+    def write(self, *a, **k):
+        return 0
+    def flush(self, *a, **k):
+        pass
+    def writelines(self, *a, **k):
+        pass
+    def isatty(self):
+        return False
+if sys.stdout is None:
+    sys.stdout = _NullWriter()
+if sys.stderr is None:
+    sys.stderr = _NullWriter()
+
+# ─── LOGGING ROTATIVO ────────────────────────────────────────────────────────
+# Todo error no critico se registra en ~/AudioClass_Recordings/logs/audioclass.log
+# (con rotacion a 2 MB x 3 copias) para poder diagnosticar fallos del usuario
+# sin depender de que vea la pantalla. Las excepciones se registran con su
+# traceback completo; la UI muestra solo un mensaje breve.
+# Logging rotativo centralizado en audioclass_core.py (mejora #9)
+from audioclass_core import LOG_DIR, _setup_logger, log_exc, log_info
 
 import numpy as np
 import sounddevice as sd
@@ -35,7 +65,11 @@ try:
     import customtkinter as ctk
     CTK = True
     ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("blue")
+    _CTK_THEME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "audioclass_theme.json")
+    try:
+        ctk.set_default_color_theme(_CTK_THEME if os.path.exists(_CTK_THEME) else "gold")
+    except Exception:
+        ctk.set_default_color_theme("gold")
     from tkinter import filedialog
 except ImportError:
     import tkinter as ctk
@@ -64,33 +98,87 @@ DTYPE = np.float32
 CHUNK_DUR = 0.1   # 100 ms por bloque: reduce desbordamientos (estatica/cortes)
 CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DUR)
 VISUAL_SAMPLES = int(SAMPLE_RATE * 2.0)
+# Pre-check de microfono antes de grabar: mide ~1.5 s de entrada y, si el p90
+# del RMS queda bajo el umbral (calibrado con optimizar_mic.py: SILENCIO < 0.005,
+# DEBIL < 0.03, voz real >= 0.03), muestra una advertencia visible pidiendo
+# confirmacion antes de empezar (evita clases grabadas casi en silencio).
+MIC_PROBE_SECONDS = 1.5
+MIC_PROBE_P90_MIN = 0.01
 
 OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+
+def _sweep_stale_temps(max_age=3600):
+    """Borra temporales de grabacion (ac_rec_*.raw) abandonados por cierres
+    abruptos, apagados o bloqueos. Solo los mas viejos que max_age segundos:
+    uno reciente puede pertenecer a una grabacion en curso."""
+    try:
+        now = time.time()
+        tdir = tempfile.gettempdir()
+        for fn in os.listdir(tdir):
+            if fn.startswith("ac_rec_") and fn.endswith(".raw"):
+                p = os.path.join(tdir, fn)
+                try:
+                    if now - os.path.getmtime(p) > max_age:
+                        os.remove(p)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+
+
 CONFIG_PATH = os.path.join(OUTPUT_DIR, "audioclass_config.json")
 
-# ── Sistema de diseño académico-profesional ──────────────────────────────────
-# Azul marino #0A1F44 · gris pizarra #4A5568 · blanco roto #F5F7FA ·
-# dorado académico #D4AF37 · verde éxito #10B981 · bordes #E5E7EB · rojo #EF4444.
+# ── Sistema de diseño (escala azul-gris-blanco-negro, WCAG AA) ─────────────
+# El acento es AZUL; fondos y superficies en escala de grises/azules pizarra;
+# el ROJO queda reservado para GRABACIÓN y acciones de peligro. Cada color se
+# eligió para cumplir WCAG AA: texto normal >= 4.5:1 sobre bg/card, y el texto
+# de los botones se calcula dinámicamente (_btn_text_color) según la
+# luminancia del fondo (oscuro sobre fondos claros, blanco sobre oscuros).
 PALETTES = {
     "dark": {
-        "bg": "#0A1F44", "card": "#12264E", "accent": "#D4AF37",
-        "text": "#E8EDF7", "muted": "#8FA3C7", "ok": "#10B981",
-        "warn": "#D97706", "err": "#EF4444", "border": "#1E3A6E",
-        "cloud": "#8B5CF6", "gemini": "#D4AF37", "mic": "#EF4444",
-        "easy": "#10B981", "button": "#1E293B", "academic": "#D4AF37",
-        "header": "#0A1F44", "accent_hover": "#B8860B"
+        "bg": "#0F172A", "card": "#1E293B", "accent": "#60A5FA",
+        "text": "#E2E8F0", "muted": "#94A3B8", "ok": "#22D3EE",
+        "warn": "#F59E0B", "err": "#F07171", "border": "#64748B",
+        "cloud": "#60A5FA", "gemini": "#60A5FA", "mic": "#F07171",
+        "easy": "#22D3EE", "button": "#334155", "academic": "#60A5FA",
+        "header": "#0F172A", "head_text": "#E2E8F0", "accent_hover": "#3B82F6"
     },
     "light": {
-        "bg": "#F5F7FA", "card": "#FFFFFF", "accent": "#B8860B",
-        "text": "#1A202C", "muted": "#4A5568", "ok": "#0E9F6E",
-        "warn": "#B45309", "err": "#DC2626", "border": "#E5E7EB",
-        "cloud": "#7C3AED", "gemini": "#B8860B", "mic": "#DC2626",
-        "easy": "#0E9F6E", "button": "#E2E8F0", "academic": "#B8860B",
-        "header": "#0A1F44", "accent_hover": "#A16207"
+        "bg": "#F1F5F9", "card": "#FFFFFF", "accent": "#2563EB",
+        "text": "#000000", "muted": "#475569", "ok": "#0F766E",
+        "warn": "#92400E", "err": "#B91C1C", "border": "#7C8CA0",
+        "cloud": "#1D4ED8", "gemini": "#2563EB", "mic": "#B91C1C",
+        "easy": "#0F766E", "button": "#E2E8F0", "academic": "#2563EB",
+        "header": "#1E293B", "head_text": "#F1F5F9", "accent_hover": "#1D4ED8"
     },
 }
+
+
+def _relative_luminance(hexc):
+    """Luminancia relativa WCAG de un color hex."""
+    hexc = str(hexc).lstrip("#")
+    vals = [int(hexc[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+
+    def lin(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * lin(vals[0]) + 0.7152 * lin(vals[1]) + 0.0722 * lin(vals[2])
+
+
+def _btn_text_color(bg):
+    """Texto de boton con el MAYOR contraste WCAG posible sobre el fondo dado:
+    negro o blanco, el que gane. Asi ningun boton queda con texto ilegible
+    (p. ej. azules medios donde el umbral fijo elegia el color equivocado)."""
+    try:
+        l = _relative_luminance(bg)
+        # Contraste relativo de negro y de blanco contra el fondo
+        c_black = (l + 0.05) / 0.05
+        c_white = 1.05 / (l + 0.05)
+        return "#000000" if c_black >= c_white else "#FFFFFF"
+    except Exception:
+        return "#FFFFFF"
 C = PALETTES["dark"].copy()
 
 # ── Tipografía ────────────────────────────────────────────────────────────────
@@ -130,9 +218,15 @@ DEFAULT_CONFIG = {
     "google_creds_path": "",
     "audio_profile": "Clase Universitaria",
     "transcription_mode": "local",
-    "local_model": "tiny",
+    "local_model": "base",
+    # Idioma de whisper: "auto" = detecta el idioma del audio; si no, un
+    # codigo ISO (es, en, pt, fr, ...) que se fuerza.
+    "whisper_language": "auto",
     "cloud_model": "large-v3",
     "gemini_model": "flash",
+    "adapt_provider": "gemini",
+    "openai_api_key": "",
+    "openai_model": "mini",
     "modo_facil": False,
     "modo_guiado": True,
     "auto_adaptar": False,
@@ -142,6 +236,96 @@ DEFAULT_CONFIG = {
     "first_run": True
 }
 
+# ─── CIFRADO DE SECRETOS (DPAPI en Windows) ──────────────────────────────────
+# La API key de Gemini y la clave de Colab se guardan cifradas con DPAPI
+# (CryptProtectData, nativo de Windows, sin dependencias). El blob queda ligado
+# al usuario de Windows: solo la misma sesion puede descifrarlo. En sistemas no
+# Windows (o si DPAPI falla) se usa base64 como ofuscacion minimo; los valores
+# legados en texto plano se siguen leyendo y se re-guardan cifrados.
+
+def _encrypt_secret(secret):
+    """Cifra un secreto. Devuelve string con prefijo 'dpapi:' o 'b64:'."""
+    if not secret:
+        return ""
+    s = str(secret)
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class DATA_BLOB(ctypes.Structure):
+                _fields_ = [("cbData", wintypes.DWORD),
+                            ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+            def _blob(data):
+                buf = ctypes.create_string_buffer(data)
+                return DATA_BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+
+            crypt32 = ctypes.windll.crypt32
+            crypt32.CryptProtectData.argtypes = [ctypes.POINTER(DATA_BLOB), wintypes.LPCWSTR,
+                                                 ctypes.POINTER(DATA_BLOB), ctypes.c_void_p,
+                                                 ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(DATA_BLOB)]
+            crypt32.CryptProtectData.restype = wintypes.BOOL
+            try:
+                from ctypes import byref
+                inb = _blob(s.encode("utf-8"))
+                outb = DATA_BLOB()
+                if crypt32.CryptProtectData(byref(inb), u"audioclass", None, None, None, 0, byref(outb)):
+                    raw = ctypes.string_at(outb.pbData, outb.cbData)
+                    # LocalFree es de kernel32, no de crypt32
+                    ctypes.windll.kernel32.LocalFree(outb.pbData)
+                    return "dpapi:" + base64.b64encode(raw).decode("ascii")
+            except Exception:
+                pass
+        except Exception:
+            pass
+    return "b64:" + base64.b64encode(s.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_secret(value):
+    """Descifra un secreto cifrado con _encrypt_secret. Valores legados en
+    texto plano se devuelven tal cual (y luego se re-guardan cifrados)."""
+    if not value:
+        return ""
+    v = str(value)
+    if v.startswith("b64:"):
+        try:
+            return base64.b64decode(v[4:]).decode("utf-8")
+        except Exception:
+            return ""
+    if v.startswith("dpapi:") and os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class DATA_BLOB(ctypes.Structure):
+                _fields_ = [("cbData", wintypes.DWORD),
+                            ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+            crypt32 = ctypes.windll.crypt32
+            crypt32.CryptUnprotectData.argtypes = [ctypes.POINTER(DATA_BLOB), ctypes.POINTER(wintypes.LPCWSTR),
+                                                   ctypes.POINTER(DATA_BLOB), ctypes.c_void_p,
+                                                   ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(DATA_BLOB)]
+            crypt32.CryptUnprotectData.restype = wintypes.BOOL
+            try:
+                from ctypes import byref
+                raw = base64.b64decode(v[6:])
+                buf = ctypes.create_string_buffer(raw)
+                inb = DATA_BLOB(len(raw), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+                outb = DATA_BLOB()
+                if crypt32.CryptUnprotectData(byref(inb), None, None, None, None, 0, byref(outb)):
+                    out = ctypes.string_at(outb.pbData, outb.cbData).decode("utf-8")
+                    ctypes.windll.kernel32.LocalFree(outb.pbData)
+                    return out
+            except Exception:
+                return ""
+        except Exception:
+            return ""
+    return v
+
+
+_SECRET_FIELDS = ("gemini_api_key", "openai_api_key", "colab_key")
+
 def load_config():
     if os.path.exists(CONFIG_PATH):
         try:
@@ -150,1052 +334,31 @@ def load_config():
             for k, v in DEFAULT_CONFIG.items():
                 if k not in cfg:
                     cfg[k] = v
+            for k in _SECRET_FIELDS:
+                if k in cfg and cfg[k]:
+                    cfg[k] = _decrypt_secret(cfg[k])
             return cfg
         except:
             return DEFAULT_CONFIG.copy()
     return DEFAULT_CONFIG.copy()
 
 def save_config(cfg):
+    to_save = dict(cfg)
+    for k in _SECRET_FIELDS:
+        if k in to_save and to_save[k]:
+            to_save[k] = _encrypt_secret(to_save[k])
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+        json.dump(to_save, f, indent=2, ensure_ascii=False)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PIPELINE DE AUDIO PROFESIONAL (9 ETAPAS)
+# NUCLEO DE PROCESAMIENTO — extraido a audioclass_core.py (mejora #9)
+# Se importa aqui para que toda la UI y los tests sigan usando los mismos
+# nombres (AudioPipeline, LocalWhisperEngine, ...) sin cambios.
 # ═══════════════════════════════════════════════════════════════════════════════
-
-class AudioPipeline:
-    """Pipeline profesional de 9 etapas para clases y conferencias."""
-
-    PROFILES = {
-        "Clase Universitaria": {
-            "desc": "Auditorios grandes con eco y ruido de fondo",
-            "hp_freq": 150, "lp_freq": 7000,
-            "noise_prof_sec": 1.0, "noise_decrease": 0.8,
-            "comp_th": 0.12, "comp_ratio": 5.0,
-            "eq_low": (250, 3.0), "eq_mid": (2500, 5.0), "eq_high": (5000, 2.5),
-            "agc_target": 0.20, "vad_threshold": 0.01,
-            "min_silence_sec": 0.4, "deesser_freq": 6500, "deesser_db": -4.0,
-            "noise_gate": 0.005, "limiter": 0.92
-        },
-        "Conferencia / Webinar": {
-            "desc": "Balanceado para presentaciones online o presenciales",
-            "hp_freq": 120, "lp_freq": 8000,
-            "noise_prof_sec": 0.8, "noise_decrease": 0.7,
-            "comp_th": 0.15, "comp_ratio": 4.0,
-            "eq_low": (300, 2.5), "eq_mid": (2800, 4.0), "eq_high": (5500, 2.0),
-            "agc_target": 0.22, "vad_threshold": 0.008,
-            "min_silence_sec": 0.3, "deesser_freq": 7000, "deesser_db": -3.0,
-            "noise_gate": 0.004, "limiter": 0.94
-        },
-        "Podcast / Entrevista": {
-            "desc": "Voz cálida y profesional, mínimo procesamiento",
-            "hp_freq": 80, "lp_freq": 8500,
-            "noise_prof_sec": 0.6, "noise_decrease": 0.6,
-            "comp_th": 0.18, "comp_ratio": 3.0,
-            "eq_low": (200, 3.5), "eq_mid": (2200, 3.0), "eq_high": (6000, 3.5),
-            "agc_target": 0.25, "vad_threshold": 0.006,
-            "min_silence_sec": 0.25, "deesser_freq": 6000, "deesser_db": -2.5,
-            "noise_gate": 0.003, "limiter": 0.95
-        },
-        "Cerca del Micrófono": {
-            "desc": "Estudio o micrófono de solapa, calidad máxima",
-            "hp_freq": 80, "lp_freq": 9000,
-            "noise_prof_sec": 0.5, "noise_decrease": 0.5,
-            "comp_th": 0.20, "comp_ratio": 2.5,
-            "eq_low": (180, 2.0), "eq_mid": (2500, 2.5), "eq_high": (5000, 1.5),
-            "agc_target": 0.28, "vad_threshold": 0.005,
-            "min_silence_sec": 0.2, "deesser_freq": 7500, "deesser_db": -2.0,
-            "noise_gate": 0.002, "limiter": 0.96
-        }
-    }
-
-    def __init__(self, profile_name="Clase Universitaria", fast_mode=False, use_vad=True):
-        self.profile = self.PROFILES.get(profile_name, self.PROFILES["Clase Universitaria"])
-        self.fast_mode = fast_mode
-        self.use_vad = use_vad
-        self.p = self.profile
-
-    def process(self, audio, progress_callback=None):
-        audio = audio.astype(np.float64)
-        steps = 9 if not self.fast_mode else 5
-        step = 0
-
-        def report(name):
-            nonlocal step
-            step += 1
-            if progress_callback:
-                progress_callback(step, steps, name)
-
-        rms = np.sqrt(np.mean(audio**2))
-        if rms > 0:
-            audio *= 0.18 / rms
-        report("Normalización de nivel")
-
-        sos_hp = signal.butter(8, self.p["hp_freq"], btype='high', fs=SAMPLE_RATE, output='sos')
-        audio = signal.sosfilt(sos_hp, audio)
-        report(f"Filtro pasa-altas ({self.p['hp_freq']}Hz)")
-
-        # Limitar la frecuencia de corte al maximo valido (fs/2 - 1): los
-        # perfiles con lp_freq >= 8000 romperian butter() con un ValueError
-        # (Wn debe ser 0 < Wn < fs/2).
-        lp_freq = min(self.p["lp_freq"], SAMPLE_RATE // 2 - 1)
-        sos_lp = signal.butter(8, lp_freq, btype='low', fs=SAMPLE_RATE, output='sos')
-        audio = signal.sosfilt(sos_lp, audio)
-        report(f"Filtro pasa-bajas ({lp_freq}Hz)")
-
-        if not self.fast_mode:
-            try:
-                import noisereduce as nr
-                ns = int(self.p["noise_prof_sec"] * SAMPLE_RATE)
-                npf = audio[:ns] if len(audio) > ns else audio[:max(1, len(audio)//10)]
-                audio = nr.reduce_noise(
-                    y=audio, y_noise=npf, sr=SAMPLE_RATE,
-                    prop_decrease=self.p["noise_decrease"], stationary=False,
-                    n_fft=1024, n_jobs=1
-                )
-                report("Reducción de ruido avanzada")
-            except Exception:
-                report("Reducción de ruido (no disponible)")
-        else:
-            report("Modo rápido — sin reducción de ruido")
-
-        audio = self._noise_gate(audio, self.p["noise_gate"])
-        report("Noise Gate")
-
-        audio = self._deesser(audio, self.p["deesser_freq"], self.p["deesser_db"])
-        report("De-esser (sibilancias)")
-
-        audio = self._multiband_comp(audio)
-        report("Compresión multibanda")
-
-        audio = self._eq(audio, self.p["eq_low"][0], self.p["eq_low"][1], Q=1.8)
-        audio = self._eq(audio, self.p["eq_mid"][0], self.p["eq_mid"][1], Q=2.2)
-        audio = self._eq(audio, self.p["eq_high"][0], self.p["eq_high"][1], Q=2.0)
-        report("Ecualización de voz (3 bandas)")
-
-        audio = self._agc_vad_limiter(audio)
-        report("AGC + VAD + Limitador final")
-
-        return audio.astype(np.float32)
-
-    def _noise_gate(self, audio, threshold):
-        mask = np.abs(audio) < threshold
-        gated = audio.copy()
-        gated[mask] *= 0.05
-        return gated
-
-    def _deesser(self, audio, freq, db_reduction):
-        w0 = 2 * np.pi * freq / SAMPLE_RATE
-        Q = 3.0
-        alpha = np.sin(w0) / (2 * Q)
-        A = 10**(db_reduction / 40)
-        b0, b1, b2 = 1 + alpha*A, -2*np.cos(w0), 1 - alpha*A
-        a0, a1, a2 = 1 + alpha/A, -2*np.cos(w0), 1 - alpha/A
-        if abs(a0) < 1e-10:
-            return audio
-        return signal.lfilter(np.array([b0,b1,b2])/a0, np.array([a0,a1,a2])/a0, audio)
-
-    def _multiband_comp(self, audio):
-        sos_low = signal.butter(4, 500, btype='low', fs=SAMPLE_RATE, output='sos')
-        sos_mid = signal.butter(4, [500, 4000], btype='band', fs=SAMPLE_RATE, output='sos')
-        sos_high = signal.butter(4, 4000, btype='high', fs=SAMPLE_RATE, output='sos')
-
-        low = signal.sosfilt(sos_low, audio)
-        mid = signal.sosfilt(sos_mid, audio)
-        high = signal.sosfilt(sos_high, audio)
-
-        low = self._comp_band(low, self.p["comp_th"] * 1.2, self.p["comp_ratio"] * 0.8)
-        mid = self._comp_band(mid, self.p["comp_th"], self.p["comp_ratio"])
-        high = self._comp_band(high, self.p["comp_th"] * 0.8, self.p["comp_ratio"] * 1.2)
-
-        return low + mid + high
-
-    def _comp_band(self, audio, th, ratio):
-        c = np.copy(audio)
-        mask = np.abs(audio) > th
-        if np.any(mask):
-            c[mask] = np.sign(audio[mask]) * (th + (np.abs(audio[mask]) - th) / ratio)
-            gain = 1.0 / (th + (1.0 - th) / ratio)
-            c *= gain
-        return c
-
-    def _eq(self, audio, fc, gdb, Q=2.0):
-        w0 = 2 * np.pi * fc / SAMPLE_RATE
-        alpha = np.sin(w0) / (2 * Q)
-        A = 10**(gdb / 40)
-        b0, b1, b2 = 1 + alpha*A, -2*np.cos(w0), 1 - alpha*A
-        a0, a1, a2 = 1 + alpha/A, -2*np.cos(w0), 1 - alpha/A
-        if abs(a0) < 1e-10:
-            return audio
-        return signal.lfilter(np.array([b0,b1,b2])/a0, np.array([a0,a1,a2])/a0, audio)
-
-    def _frame_rms(self, audio, window, hop, batch=16384):
-        """RMS de cada trama (inicios 0, hop, 2*hop, ... < len-window) en UNA
-        sola pasada vectorizada con sliding_window_view, procesada por bloques
-        para no duplicar memoria en clases largas (una clase de 3h genera
-        ~540k tramas). Resultado identico al bucle por trama original."""
-        n = len(audio)
-        if n <= window:
-            return np.zeros(0, dtype=np.float64)
-        sw = np.lib.stride_tricks.sliding_window_view(audio, window)[0 : n - window : hop]
-        out = np.empty(sw.shape[0], dtype=np.float64)
-        for b in range(0, sw.shape[0], batch):
-            rows = sw[b:b + batch]
-            out[b:b + rows.shape[0]] = np.sqrt(np.mean(rows * rows, axis=1))
-        return out
-
-    def _agc_vad_limiter(self, audio):
-        window = int(0.04 * SAMPLE_RATE)
-        hop = window // 2
-        output = np.zeros_like(audio)
-        window_fn = np.hanning(window)
-
-        # RMS de todas las tramas en UNA sola pasada vectorizada (antes se
-        # recorria el audio DOS veces por trama: una para estimar el umbral
-        # adaptativo y otra para aplicar la ganancia).
-        frames_rms = self._frame_rms(audio, window, hop)
-        if len(frames_rms) > 0:
-            # Umbral VAD adaptativo al piso de ruido del ambiente: se estima
-            # con las tramas mas silenciosas del audio (percentil 10, que suele
-            # caer en las pausas entre frases). Asi un ruido de fondo constante
-            # (ventilador, aire acondicionado) NO se trata como voz y no se
-            # re-amplifica entre frases: solo se amplifica lo que supera
-            # claramente el ruido.
-            noise_floor = float(np.percentile(frames_rms, 10))
-            # Tope anti-caso-limite: si el ventilador es tan ruidoso que el piso
-            # (p10) se acerca al nivel de la voz, el factor fijo x3.0 comeria la
-            # voz suave (las tramas entre el piso y el umbral se atenuarian x0.05
-            # y, peor aun, _remove_silences las borraria de la salida). El tope
-            # actua cuando hay indicios de habla real (p90/p10 > 2.0; el
-            # solo-ruido da ~1.5) y el umbral viejo quedaria por encima del nivel
-            # de habla: entonces el umbral baja al 60% del nivel de habla (p90),
-            # rescatando las frases suaves sin amplificar el ruido de fondo.
-            speech_ref = float(np.percentile(frames_rms, 90))
-            spread = (speech_ref / noise_floor) if noise_floor > 0 else 0.0
-            if spread > 2.0 and noise_floor * 3.0 > speech_ref * 0.6:
-                vad_thr = max(self.p["vad_threshold"], speech_ref * 0.6)
-            else:
-                vad_thr = max(self.p["vad_threshold"], noise_floor * 3.0)
-            silence_thr = max(self.p["vad_threshold"] * 0.4, noise_floor * 0.5)
-        else:
-            vad_thr = self.p["vad_threshold"]
-            silence_thr = self.p["vad_threshold"] * 0.4
-
-        for k, i in enumerate(range(0, len(audio) - window, hop)):
-            chunk = audio[i:i + window]
-            rms = float(frames_rms[k])
-
-            if rms > vad_thr:
-                target = self.p["agc_target"]
-                gain = target / rms if rms > 0 else 1.0
-                gain = min(gain, 10.0)
-                output[i:i + window] += chunk * gain * window_fn
-            else:
-                output[i:i + window] += chunk * 0.05 * window_fn
-
-        output = np.clip(output, -self.p["limiter"], self.p["limiter"])
-
-        if self.use_vad:
-            output = self._remove_silences(output, silence_thr)
-
-        return output
-
-    def _remove_silences(self, audio, silence_threshold=None):
-        """Recorta silencios largos. silence_threshold se puede pasar como
-        umbral adaptativo (estimado del piso de ruido); si no, usa el fijo."""
-        window = int(0.02 * SAMPLE_RATE)
-        threshold = silence_threshold if silence_threshold is not None else self.p["vad_threshold"] * 0.4
-        max_silent = int(self.p["min_silence_sec"] * SAMPLE_RATE / window)
-
-        segments = []
-        current = []
-        silent_frames = 0
-
-        for i in range(0, len(audio), window):
-            chunk = audio[i:i+window]
-            rms = np.sqrt(np.mean(chunk**2)) if len(chunk) > 0 else 0
-
-            if rms > threshold:
-                if silent_frames > 0 and silent_frames <= max_silent:
-                    current.append(np.zeros(window))
-                silent_frames = 0
-                current.append(chunk)
-            else:
-                silent_frames += 1
-                if silent_frames > max_silent:
-                    if current:
-                        segments.append(np.concatenate(current))
-                        current = []
-                    silent_frames = 0
-
-        if current:
-            segments.append(np.concatenate(current))
-
-        return np.concatenate(segments) if segments else audio
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MOTORES DE TRANSCRIPCIÓN
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class LocalWhisperEngine:
-    """Motor de transcripción local con tiny/base/small."""
-
-    def __init__(self, model_name="tiny"):
-        self.model_name = model_name
-        self.model = None
-        self.loading = False
-        self.ready = False
-        self.error = None
-
-    def _resolve_model(self):
-        """Devuelve la ruta del modelo empaquetado en el bundle (modo frozen,
-        para funcionar sin internet) o el nombre del modelo (modo desarrollo,
-        donde whisper usa su cache o lo descarga la primera vez)."""
-        if getattr(sys, "frozen", False):
-            base = getattr(sys, "_MEIPASS", "") or os.path.dirname(os.path.abspath(sys.executable))
-            for name in (self.model_name, "tiny"):
-                p = os.path.join(base, "models", f"{name}.pt")
-                if os.path.exists(p):
-                    # Si el modelo pedido no va empaquetado, cargamos tiny y
-                    # actualizamos self.model_name para que el resultado no
-                    # reporte un modelo distinto del realmente cargado.
-                    self.model_name = name
-                    return p
-        return self.model_name
-
-    def load(self, callback=None):
-        if self.loading or self.ready:
-            return
-        self.loading = True
-
-        def _load():
-            try:
-                import whisper
-                self.model = whisper.load_model(self._resolve_model())
-                self.ready = True
-                if callback:
-                    callback("ready", self.model_name)
-            except Exception as e:
-                self.error = str(e)
-                if callback:
-                    callback("error", str(e))
-            finally:
-                self.loading = False
-
-        threading.Thread(target=_load, daemon=True).start()
-
-    def transcribe(self, audio_path, timestamps=False, cancel_event=None, progress_callback=None):
-        import whisper
-        if self.model is None:
-            self.model = whisper.load_model(self._resolve_model())
-
-        sr, data = wavfile.read(audio_path)
-        if data.dtype == np.int16:
-            data = data.astype(np.float32) / 32768.0
-        elif data.dtype == np.int32:
-            data = data.astype(np.float32) / 2147483648.0
-        else:
-            data = data.astype(np.float32)
-
-        if len(data.shape) > 1:
-            data = np.mean(data, axis=1)
-        if sr != SAMPLE_RATE:
-            # .astype(np.float32): signal.resample devuelve float64 y Whisper
-            # (torch.from_numpy) lo acepta pero a coste doble en clases largas.
-            data = signal.resample(data, int(len(data) * SAMPLE_RATE / sr)).astype(np.float32)
-
-        chunk_samples = int(30 * SAMPLE_RATE)
-        chunks = [data[i:i+chunk_samples] for i in range(0, len(data), chunk_samples)]
-        total = len(chunks)
-        if total == 0:
-            return {"text": "", "segments": [], "model": self.model_name,
-                    "device": "cpu", "chunks": 0}
-
-        # ── Procesamiento PARALELO de chunks (ThreadPoolExecutor) ────────────
-        # Un worker por nucleo de CPU. openai-whisper 20250625 NO es thread-safe
-        # para transcribe() concurrente sobre el MISMO modelo (instala hooks de
-        # kv_cache sobre el modulo compartido -> KeyError), asi que cada worker
-        # carga SU PROPIA copia del modelo (deepcopy aísla el cache interno de
-        # whisper). Cada copia usa UN solo hilo de torch (set_num_threads(1))
-        # para evitar oversubscription: si 8 workers usaran los 8 hilos de torch
-        # por defecto, el SO alternaria 64 hilos en 8 nucleos y el total
-        # tardaria MAS que en secuencial. Presupuesto de RAM: ~1.5 GB maximo en
-        # copias del modelo.
-        cores = os.cpu_count() or 4
-        mb = {"tiny": 75, "base": 142, "small": 466}.get(self.model_name, 150)
-        by_mem = max(1, min(8, int(1536 / mb)))
-        workers = max(1, min(cores, total, by_mem))
-        # Nota de calidad: en paralelo cada chunk se transcribe de forma
-        # independiente (condition_on_previous_text=False). Whisper solo
-        # condiciona segmentos DENTRO de la misma llamada; en chunks de 30s
-        # (1-3 segmentos) la perdida es despreciable y el initial_prompt
-        # academico sigue anclando el estilo en cada chunk.
-
-        PROMPT = (
-            "Esta es una transcripción de una clase universitaria o conferencia académica en español. "
-            "El orador principal es el docente o conferencista. "
-            "Ignora murmullos de fondo, interrupciones breves y preguntas sin respuesta del docente. "
-            "Preserva datos duros: números, fechas, dosis, nomenclaturas técnicas y definiciones literales exactas. "
-            "Transcribe fielmente solo lo dicho por el orador principal."
-        )
-
-        def _transcribe_with(mdl, chunk, use_cond):
-            # Se pasa el array float32 directamente a Whisper (sin escribir
-            # WAV temporal): evita depender de ffmpeg y funciona offline.
-            return mdl.transcribe(
-                chunk, language="es", task="transcribe",
-                fp16=False, verbose=False,
-                condition_on_previous_text=use_cond,
-                initial_prompt=PROMPT
-            )
-
-        if workers == 1:
-            # ── Camino secuencial (1 chunk, 1 nucleo o modelo grande) ─────────
-            if self.model is None:
-                import whisper
-                self.model = whisper.load_model(self._resolve_model())
-
-            parts, segs, ct = [], [], 0.0
-            chunk_times = []   # tiempos reales -> media movil (ultimos 3)
-            est_dur = 30.0     # seed del 1er chunk: 1x su duracion (30s)
-            for i, chunk in enumerate(chunks, 1):
-                if cancel_event and cancel_event.is_set():
-                    return {"cancelled": True}
-                if progress_callback:
-                    progress_callback(i - 1, total, f"Procesando chunk {i}/{total}...")
-
-                # Whisper no reporta progreso dentro del chunk: un hilo auxiliar
-                # estima el avance con la media movil del tiempo por chunk.
-                stop = threading.Event()
-                t0 = time.time()
-
-                def _report(i=i, t0=t0, est=est_dur, stop=stop):
-                    while not stop.is_set():
-                        el = time.time() - t0
-                        frac = min(el / est, 0.95) if est > 0 else 0.0
-                        if stop.is_set():
-                            break
-                        if progress_callback:
-                            pct = int((i - 1 + frac) / total * 100)
-                            rem = max(0, int(est - el))
-                            progress_callback(i - 1 + frac, total,
-                                              f"Chunk {i}/{total} · {pct}% · ~{rem}s rest")
-                        stop.wait(0.25)
-
-                rthread = threading.Thread(target=_report, daemon=True)
-                rthread.start()
-
-                try:
-                    result = _transcribe_with(self.model, chunk, True)
-                finally:
-                    stop.set()
-                    rthread.join(timeout=1.0)
-
-                chunk_times.append(time.time() - t0)
-                est_dur = float(np.mean(chunk_times[-3:]))
-
-                if progress_callback:
-                    progress_callback(i, total, f"Chunk {i}/{total} listo")
-
-                if result.get("text"):
-                    parts.append(result["text"].strip())
-                if timestamps and "segments" in result:
-                    for s in result["segments"]:
-                        sc = dict(s)
-                        sc["start"] += ct
-                        sc["end"] += ct
-                        segs.append(sc)
-                ct += 30
-
-            return {
-                "text": " ".join(parts),
-                "segments": segs,
-                "model": self.model_name,
-                "device": "cpu",
-                "chunks": total,
-                "workers": 1
-            }
-
-        # ── Camino PARALELO: un modelo Whisper POR WORKER (thread-local) ──────
-        import torch
-        prev_threads = torch.get_num_threads()
-        torch.set_num_threads(1)
-
-        import copy
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        results = {}     # indice -> resultado (acceso bajo lock)
-        started = {}     # indice -> t0 real de inicio del worker
-        times = []       # tiempos reales por chunk -> media movil (ultimos 3)
-        est = [30.0]     # seed del 1er chunk: 1x su duracion (30s)
-        last_num = [0.0] # maximo reportado: la barra nunca retrocede
-        lock = threading.Lock()
-        stop = threading.Event()
-        _local = threading.local()
-
-        def _init_worker(path):
-            # Nota: los hilos del ThreadPoolExecutor ya son daemon en CPython
-            # (se marcan antes de start() en concurrent.futures.thread), asi
-            # que la app nunca se cuelga al cerrar por chunks en curso: el
-            # proceso sale limpio sin hacer join() de los workers.
-            # (NO intentar self.current_thread().daemon=True aqui: el hilo ya
-            # esta iniciado y lanza RuntimeError que rompe el pool entero.)
-            import whisper
-            # deepcopy: esta copia queda aislada de cualquier cache interno de
-            # whisper (los hooks de kv_cache se instalan sobre el modelo
-            # compartido y romperian la transcripcion concurrente).
-            _local.model = copy.deepcopy(whisper.load_model(path))
-
-        def _report():
-            # Whisper no reporta progreso dentro del chunk: este hilo estima el
-            # avance global = chunks terminados + fraccion estimada de los que
-            # siguen corriendo (media movil del tiempo por chunk). max(last_num)
-            # sujeta el avance para que la barra NUNCA retroceda.
-            while not stop.is_set():
-                with lock:
-                    done = len(results)
-                    running = [(i, t0) for i, t0 in started.items() if i not in results]
-                now = time.time()
-                frac_sum = 0.0
-                for _i, t0 in running:
-                    frac_sum += min((now - t0) / est[0], 0.95) if est[0] > 0 else 0.0
-                # Lectura/escritura de last_num bajo lock: ambos hilos (este y
-                # el bucle principal) la comparten, y asi la monotonia es
-                # estricta sin micro-carreras.
-                with lock:
-                    num = max(last_num[0], done + frac_sum)
-                    last_num[0] = num
-                pct = int(num / total * 100)
-                rem = max(0, int((total - done) / workers * est[0]))
-                if progress_callback:
-                    progress_callback(num, total,
-                                      f"⚡ {workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest")
-                stop.wait(0.25)
-
-        def _transcribe_one(idx, chunk):
-            with lock:
-                started[idx] = time.time()
-            return idx, _transcribe_with(_local.model, chunk, False)
-
-        pool = ThreadPoolExecutor(max_workers=workers,
-                                  initializer=_init_worker,
-                                  initargs=(self._resolve_model(),))
-        futures = [pool.submit(_transcribe_one, i, ch) for i, ch in enumerate(chunks)]
-        rthread = threading.Thread(target=_report, daemon=True)
-        rthread.start()
-
-        cancelled = False
-        error = None
-        try:
-            for fut in as_completed(futures):
-                if cancel_event and cancel_event.is_set():
-                    cancelled = True
-                    break
-                try:
-                    idx, result = fut.result()
-                except Exception as e:
-                    error = e
-                    break
-                with lock:
-                    started_t0 = started.get(idx)
-                    results[idx] = result
-                if started_t0 is not None:
-                    with lock:
-                        times.append(time.time() - started_t0)
-                        est[0] = float(np.mean(times[-3:]))
-                if progress_callback:
-                    with lock:
-                        done = len(results)
-                        # Clamp al maximo reportado: el reporter puede haber
-                        # avanzado hasta done + 0.95 x chunks en curso, y un
-                        # mensaje con done entero haria la barra RETROCEDER.
-                        num = max(last_num[0], float(done))
-                        last_num[0] = num
-                    progress_callback(num, total, f"{done}/{total} chunks listos")
-        finally:
-            stop.set()
-            rthread.join(timeout=1.0)
-            if cancelled or error:
-                pool.shutdown(wait=False, cancel_futures=True)
-            else:
-                pool.shutdown(wait=True)
-            torch.set_num_threads(prev_threads)
-
-        if cancelled:
-            return {"cancelled": True}
-        if error:
-            raise error
-
-        # Reconstruir en ORDEN original (los chunks terminan desordenados)
-        parts, segs = [], []
-        for i in range(total):
-            r = results.get(i)
-            if not r:
-                continue
-            if r.get("text"):
-                parts.append(r["text"].strip())
-            if timestamps and "segments" in r:
-                for s in r["segments"]:
-                    sc = dict(s)
-                    sc["start"] += i * 30.0
-                    sc["end"] += i * 30.0
-                    segs.append(sc)
-
-        return {
-            "text": " ".join(parts),
-            "segments": segs,
-            "model": self.model_name,
-            "device": "cpu",
-            "chunks": total,
-            "workers": workers
-        }
-
-
-class CloudColabEngine:
-    """Motor de transcripción vía Google Colab (Medium/Large)."""
-
-    def __init__(self, url="", api_key="audioclass"):
-        self.url = url.rstrip("/") if url else ""
-        self.api_key = api_key
-        self.connected = False
-
-    def test_connection(self):
-        if not self.url:
-            return False, "Sin URL configurada"
-        try:
-            import requests
-            r = requests.get(f"{self.url}/status", timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                return True, f"Conectado: {data.get('model','?')} en {data.get('device','?')}"
-            return False, f"Error HTTP {r.status_code}"
-        except Exception as e:
-            return False, str(e)
-
-    def transcribe(self, audio_path, timestamps=False, cancel_event=None, progress_callback=None):
-        import requests
-        endpoint = f"{self.url}/transcribe_ts" if timestamps else f"{self.url}/transcribe"
-
-        if progress_callback:
-            progress_callback(1, 3, "Subiendo audio a Colab...")
-
-        with open(audio_path, "rb") as f:
-            files = {"file": (os.path.basename(audio_path), f, "audio/wav")}
-            data = {"key": self.api_key}
-
-            if progress_callback:
-                progress_callback(2, 3, "Transcribiendo en GPU...")
-
-            r = requests.post(endpoint, files=files, data=data, timeout=300)
-
-        if cancel_event and cancel_event.is_set():
-            return {"cancelled": True}
-
-        if r.status_code == 200:
-            result = r.json()
-            result["device"] = result.get("device", "gpu")
-            result["model"] = result.get("model", "cloud")
-            return result
-        else:
-            return {"error": f"HTTP {r.status_code}: {r.text[:200]}"}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MOTOR DE ADAPTACIÓN INTELIGENTE (GEMINI API)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class GeminiAdaptationEngine:
-    """Adapta transcripciones en bruto a formatos útiles usando Gemini API."""
-
-    # Prompt académico de élite proporcionado por el usuario
-    ACADEMIC_PROMPT = """Actúa como un filtro cognitivo académico especializado en minería de textos con múltiples hablantes. Tu misión es procesar una transcripción densa de una clase, identificando al orador principal por su volumen de texto y autoridad temática, e ignorando totalmente las voces secundarias —como interrupciones, murmullos o preguntas irrelevantes— a menos que el orador principal retome explícitamente una pregunta para desarrollar un concepto; en ese caso, extraerás únicamente la respuesta del orador. Debes aplicar dos reglas de oro para garantizar la fidelidad absoluta: primero, tienes prohibido alucinar, lo que significa que no puedes añadir ejemplos, definiciones ni datos que no estén escritos textualmente en la transcripción; segundo, debes preservar los datos duros, por lo que si el orador menciona números, fechas, dosis, nomenclaturas técnicas o definiciones literales, los transcribirás tal cual, sin parafrasearlos. En cuanto a la extensión, el resumen ejecutivo no debe exceder las doscientas palabras, lo que equivale aproximadamente a mil cuatrocientos caracteres, muy por debajo del límite de dos mil, lo que te da un margen seguro para cumplir siempre la restricción. El formato de salida debe ser exclusivamente el siguiente: en primer lugar, redacta un resumen ejecutivo en un párrafo único, cohesivo y ultracompacto, que narre la evolución del tema principal desde la introducción hasta el cierre del orador. En segundo lugar, presenta una extracción estructurada que contenga cuatro elementos obligatorios: la tesis central, expresada en una frase concisa que capture el propósito global de la clase; los pilares argumentales, que serán una lista de máximo cinco ideas medulares que sostienen dicha tesis; la evidencia y datos duros, donde citarás el ejemplo, cifra o definición textual más relevante que el docente usó como ancla; y la implicación o aplicabilidad, donde resumirás en una línea cualquier mención del docente sobre utilidad en la vida real o en el campo profesional. Por último, deberás incluir un registro de filtrado, enumerando en una sola línea los tipos de comentarios que descartaste, como anécdotas personales sin valor teórico, murmullos de fondo o preguntas no respondidas, para evidenciar que aplicaste correctamente el filtro. Una vez recibidas estas instrucciones, procede con el análisis de la transcripción que se te proporcionará a continuación."""
-
-    TEMPLATES = {
-        "Análisis Académico Profundo": {
-            "prompt": ACADEMIC_PROMPT + "\n\nTRANSCRIPCIÓN:\n{TEXT}\n\nANÁLISIS ACADÉMICO:",
-            "icon": "🎓",
-            "desc": "Filtro cognitivo con tesis, pilares, evidencia y registro de filtrado",
-            "max_tokens": 4096,
-            "temperature": 0.1
-        },
-        "Resumen Ejecutivo": {
-            "prompt": "Analiza la siguiente transcripción de una clase o conferencia y genera un RESUMEN EJECUTIVO profesional.\n\nInstrucciones:\n- Extrae los 5-7 puntos más importantes\n- Usa bullets claros y concisos\n- Incluye conclusiones clave\n- Máximo 500 palabras\n- Formato: Markdown simple\n\nTranscripción:\n{TEXT}\n\nResumen Ejecutivo:",
-            "icon": "📋",
-            "desc": "Puntos clave y conclusiones",
-            "max_tokens": 2048,
-            "temperature": 0.3
-        },
-        "Guía de Estudio": {
-            "prompt": "Convierte la siguiente transcripción de clase en una GUÍA DE ESTUDIO estructurada para estudiantes.\n\nInstrucciones:\n1. Identifica el tema principal y subtemas\n2. Crea secciones con títulos claros\n3. Destaca definiciones importantes en negrita\n4. Lista fórmulas, fechas o datos clave\n5. Añade una sección de 'Puntos Clave para Recordar'\n6. Formato: Markdown con headers (# ## ###)\n\nTranscripción:\n{TEXT}\n\nGuía de Estudio:",
-            "icon": "📚",
-            "desc": "Secciones, definiciones y puntos clave",
-            "max_tokens": 4096,
-            "temperature": 0.2
-        },
-        "Flashcards (Preguntas)": {
-            "prompt": "Genera FLASHCARDS de estudio a partir de esta transcripción de clase.\n\nInstrucciones:\n- Crea 10-15 preguntas y respuestas\n- Cada flashcard debe ser concisa\n- Formato exacto:\n  Q: [Pregunta]\n  A: [Respuesta]\n  ---\n- Cubre los conceptos más importantes\n\nTranscripción:\n{TEXT}\n\nFlashcards:",
-            "icon": "🎯",
-            "desc": "Preguntas y respuestas para memorizar",
-            "max_tokens": 4096,
-            "temperature": 0.2
-        },
-        "Preguntas de Examen": {
-            "prompt": "Genera PREGUNTAS DE EXAMEN tipo test a partir de esta transcripción.\n\nInstrucciones:\n- 10 preguntas de opción múltiple (A, B, C, D)\n- 3 preguntas de respuesta corta\n- 2 preguntas de desarrollo\n- Indica la respuesta correcta para las de opción múltiple\n- Formato claro y ordenado\n\nTranscripción:\n{TEXT}\n\nPreguntas de Examen:",
-            "icon": "❓",
-            "desc": "Test, respuesta corta y desarrollo",
-            "max_tokens": 4096,
-            "temperature": 0.2
-        },
-        "Mapa Conceptual (Texto)": {
-            "prompt": "Genera un MAPA CONCEPTUAL en formato texto jerárquico a partir de esta transcripción.\n\nInstrucciones:\n- Usa indentación con tabs para mostrar jerarquía\n- Concepto principal al nivel 0\n- Subconceptos indentados\n- Relaciones claras entre ideas\n- Formato:\n  CONCEPTO PRINCIPAL\n    ├─ Subconcepto A\n    │  ├─ Detalle 1\n    │  └─ Detalle 2\n    └─ Subconcepto B\n\nTranscripción:\n{TEXT}\n\nMapa Conceptual:",
-            "icon": "🗺️",
-            "desc": "Jerarquía visual en texto",
-            "max_tokens": 4096,
-            "temperature": 0.2
-        },
-        "Texto Limpio (Corrección)": {
-            "prompt": "Corrige y limpia la siguiente transcripción en bruto.\n\nInstrucciones:\n- Corrige errores gramaticales y ortográficos obvios\n- Elimina repeticiones ('eh', 'mmm', 'este...')\n- Mejora la puntuación\n- Divide en párrafos lógicos\n- Mantén TODO el contenido, no resumas\n- Formato: texto corrido y limpio\n\nTranscripción:\n{TEXT}\n\nTexto Corregido:",
-            "icon": "✨",
-            "desc": "Corrección de errores y muletillas",
-            "max_tokens": 4096,
-            "temperature": 0.1
-        },
-        "Cronología / Timeline": {
-            "prompt": "Extrae una CRONOLOGÍA o timeline de eventos, fechas o procesos mencionados en esta transcripción.\n\nInstrucciones:\n- Lista en orden cronológico\n- Formato: [Fecha/Evento] → Descripción\n- Si no hay fechas exactas, usa orden lógico (primero, luego, después, finalmente)\n- Destaca causas y consecuencias\n\nTranscripción:\n{TEXT}\n\nCronología:",
-            "icon": "📅",
-            "desc": "Orden cronológico de eventos",
-            "max_tokens": 2048,
-            "temperature": 0.2
-        }
-    }
-
-    # Modelos Gemini vigentes (gemini-1.5 fue retirado en 2025)
-    # flash = 2.0 (menor coste/latencia) | pro = 2.5 (maxima calidad)
-    GEMINI_MODELS = {
-        "flash": "gemini-2.0-flash",
-        "pro": "gemini-2.5-pro",
-    }
-
-    def __init__(self, api_key="", model="flash"):
-        self.api_key = api_key
-        self.model = model
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
-
-    def _model_name(self):
-        """Resuelve el alias (flash/pro) al ID de modelo Gemini actual."""
-        return self.GEMINI_MODELS.get(self.model, "gemini-2.0-flash")
-
-    def test_key(self):
-        if not self.api_key or len(self.api_key) < 10:
-            return False, "API Key no configurada"
-        try:
-            import requests
-        except ImportError:
-            return False, "Falta el paquete 'requests' (pip install requests)"
-
-        try:
-            model_name = self._model_name()
-            url = f"{self.base_url}/{model_name}:generateContent?key={self.api_key}"
-            r = requests.post(url, json={"contents": [{"parts": [{"text": "Hola"}]}]}, timeout=15)
-
-            if r.status_code == 200:
-                return True, "API Key válida"
-
-            # Extraer el mensaje real del error del cuerpo JSON de Gemini
-            detail, status = "", ""
-            try:
-                err = r.json().get("error", {})
-                detail = (err.get("message") or "").strip()
-                status = (err.get("status") or "").strip()
-            except Exception:
-                pass
-
-            # Casos estructurados primero: la heuristica de texto solo como fallback
-            if status == "PERMISSION_DENIED" or r.status_code == 403:
-                return False, "Permiso denegado: habilita la Gemini API o revisa la facturación"
-            if r.status_code == 401:
-                return False, "Sin autenticación (401): revisa que la API Key sea válida"
-            if r.status_code == 404:
-                return False, f"Modelo no encontrado: {model_name}"
-            if r.status_code == 429:
-                return False, "Límite de cuota superado (429). Espera o revisa tu plan."
-            if r.status_code >= 500:
-                return False, "Error del servidor de Gemini. Intenta más tarde."
-
-            low = (detail + " " + status).lower()
-            if "api key" in low or "apikey" in low or "invalid" in low:
-                return False, "API Key inválida (cópiala completa desde aistudio.google.com/app/apikey)"
-
-            msg = detail or f"Error HTTP {r.status_code}"
-            return False, f"{msg} (HTTP {r.status_code})"
-        except requests.exceptions.Timeout:
-            return False, "Tiempo de espera agotado. Revisa tu conexión a internet."
-        except requests.exceptions.ConnectionError:
-            return False, "No se pudo conectar con Gemini. Revisa tu conexión a internet."
-        except Exception as e:
-            return False, f"Error inesperado: {e}"
-
-    def adapt(self, text, template_name, progress_callback=None):
-        """Adapta texto usando Gemini. Segmenta automáticamente si es muy largo."""
-        import requests
-
-        if template_name not in self.TEMPLATES:
-            return {"error": f"Template '{template_name}' no existe"}
-
-        template = self.TEMPLATES[template_name]
-        model_name = self._model_name()
-        url = f"{self.base_url}/{model_name}:generateContent?key={self.api_key}"
-
-        # Segmentación inteligente: si el texto es muy largo, usar enfoque map-reduce
-        # Para Análisis Académico Profundo, usamos un umbral más bajo por la complejidad del prompt
-        MAX_CHARS = 12000 if template_name == "Análisis Académico Profundo" else 15000
-
-        if len(text) > MAX_CHARS:
-            if progress_callback:
-                progress_callback(1, 3, "Texto largo detectado. Segmentando para análisis profundo...")
-
-            chunks = [text[i:i+MAX_CHARS] for i in range(0, len(text), MAX_CHARS)]
-            partial_results = []
-
-            for i, chunk in enumerate(chunks):
-                if progress_callback:
-                    progress_callback(1, 3, f"Analizando parte {i+1}/{len(chunks)}...")
-
-                # Para análisis académico, usamos un prompt reducido por chunk
-                if template_name == "Análisis Académico Profundo":
-                    chunk_prompt = (
-                        "Eres un filtro cognitivo académico. Analiza este FRAGMENTO de una clase "
-                        "y extrae: 1) Ideas principales del orador, 2) Datos duros exactos, 3) "
-                        "Tesis si es evidente. Ignora murmullos e interrupciones. NO inventes nada.\n\n"
-                        f"FRAGMENTO {i+1}/{len(chunks)}:\n{chunk}\n\nEXTRACCIÓN:"
-                    )
-                else:
-                    chunk_prompt = template["prompt"].replace("{TEXT}", chunk)
-
-                payload = {
-                    "contents": [{"parts": [{"text": chunk_prompt}]}],
-                    "generationConfig": {
-                        "temperature": template.get("temperature", 0.3),
-                        "maxOutputTokens": 2048,
-                        "topP": 0.9
-                    }
-                }
-
-                try:
-                    r = requests.post(url, json=payload, timeout=60)
-                    if r.status_code == 200:
-                        data = r.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            partial_results.append(candidates[0]["content"]["parts"][0]["text"])
-                except Exception as e:
-                    return {"error": f"Error en chunk {i+1}: {e}"}
-
-            # Reduce: combinar resultados parciales con el prompt completo
-            if progress_callback:
-                progress_callback(2, 3, "Sintetizando análisis final...")
-
-            combined = "\n\n".join(partial_results)
-
-            if template_name == "Análisis Académico Profundo":
-                final_prompt = (
-                    self.ACADEMIC_PROMPT + "\n\n"
-                    "A continuación recibirás EXTRACCIONES PARCIALES de una clase larga. "
-                    "Tu tarea es sintetizarlas en UN SOLO análisis académico completo, "
-                    "siguiendo estrictamente el formato de salida original (resumen ejecutivo, "
-                    "tesis central, pilares argumentales, evidencia y datos duros, implicación, "
-                    "y registro de filtrado). NO repitas información. Consolidad ideas similares.\n\n"
-                    f"EXTRACCIONES PARCIALES:\n{combined}\n\n"
-                    "ANÁLISIS ACADÉMICO FINAL:"
-                )
-            else:
-                final_prompt = template["prompt"].replace("{TEXT}", combined)
-
-            payload = {
-                "contents": [{"parts": [{"text": final_prompt}]}],
-                "generationConfig": {
-                    "temperature": template.get("temperature", 0.2),
-                    "maxOutputTokens": template.get("max_tokens", 4096),
-                    "topP": 0.9
-                }
-            }
-        else:
-            # Texto corto: proceso directo con prompt completo
-            prompt = template["prompt"].replace("{TEXT}", text)
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": template.get("temperature", 0.3),
-                    "maxOutputTokens": template.get("max_tokens", 4096),
-                    "topP": 0.9
-                }
-            }
-
-        if progress_callback:
-            progress_callback(2, 3, "Generando con Gemini...")
-
-        try:
-            r = requests.post(url, json=payload, timeout=120)
-            if r.status_code != 200:
-                return {"error": f"Gemini HTTP {r.status_code}: {r.text[:300]}"}
-
-            data = r.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return {"error": "Gemini no generó respuesta"}
-
-            result_text = candidates[0]["content"]["parts"][0]["text"]
-
-            if progress_callback:
-                progress_callback(3, 3, "¡Listo!")
-
-            return {
-                "text": result_text,
-                "template": template_name,
-                "model": model_name,
-                "icon": template["icon"]
-            }
-
-        except Exception as e:
-            return {"error": f"Error Gemini: {e}"}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# EXPORTACIÓN A GOOGLE DOCS (OAUTH 2.0)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class GoogleDocsExporter:
-    """Exporta transcripciones y adaptaciones a Google Docs usando OAuth 2.0.
-
-    Requiere:
-      1. Un proyecto en Google Cloud Console con la Docs API habilitada
-      2. Credenciales OAuth tipo "App de escritorio" (client_secret.json)
-      3. google-auth-oauthlib + google-api-python-client instalados
-
-    El token autorizado se guarda en ~/AudioClass_Recordings/google_token.json
-    y se reutiliza/renueva automáticamente.
-    """
-
-    SCOPES = ["https://www.googleapis.com/auth/documents"]
-    TOKEN_NAME = "google_token.json"
-
-    def __init__(self, creds_path="", token_path=""):
-        self.creds_path = creds_path
-        self.token_path = token_path or os.path.join(OUTPUT_DIR, self.TOKEN_NAME)
-        self.error = None
-
-    def is_configured(self):
-        return bool(self.creds_path) and os.path.exists(self.creds_path)
-
-    def _load_creds(self, refresh=True):
-        try:
-            from google.oauth2.credentials import Credentials
-            from google.auth.transport.requests import Request
-        except ImportError:
-            self.error = "Faltan librerías: pip install google-auth-oauthlib google-api-python-client"
-            return None
-
-        creds = None
-        if os.path.exists(self.token_path):
-            try:
-                creds = Credentials.from_authorized_user_file(self.token_path, self.SCOPES)
-            except Exception:
-                creds = None
-
-        if creds and creds.valid:
-            return creds
-        if refresh and creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                self._save_token(creds)
-                return creds
-            except Exception:
-                pass
-        return None
-
-    def _save_token(self, creds):
-        try:
-            with open(self.token_path, "w", encoding="utf-8") as f:
-                f.write(creds.to_json())
-        except Exception:
-            pass
-
-    def test_connection(self, refresh=False):
-        """Comprueba si hay token válido (sin abrir navegador).
-        refresh=False evita llamadas de red (para uso en el hilo principal)."""
-        creds = self._load_creds(refresh=refresh)
-        if creds:
-            return True, "Conectado a Google"
-        if self.is_configured():
-            return False, "Sin autorizar (pulsa Conectar con Google)"
-        return False, "Sin credenciales configuradas"
-
-    def connect(self, progress_callback=None):
-        """Flujo OAuth completo: abre el navegador, guarda el token. Bloqueante."""
-        if not self.is_configured():
-            self.error = "Selecciona primero tu archivo client_secret.json"
-            return False
-
-        creds = self._load_creds()
-        if creds:
-            return True
-
-        try:
-            from google_auth_oauthlib.flow import InstalledAppFlow
-        except ImportError:
-            self.error = "Faltan librerías: pip install google-auth-oauthlib google-api-python-client"
-            return False
-
-        if progress_callback:
-            progress_callback(1, 2, "Abriendo el navegador para autorizar...")
-        try:
-            flow = InstalledAppFlow.from_client_secrets_file(self.creds_path, self.SCOPES)
-            creds = flow.run_local_server(port=0)
-            self._save_token(creds)
-            if progress_callback:
-                progress_callback(2, 2, "Autorizado")
-            return True
-        except Exception as e:
-            self.error = f"Error OAuth: {e}"
-            return False
-
-    def export(self, title, text, progress_callback=None):
-        """Crea un documento nuevo en Google Docs con el texto. Devuelve dict."""
-        creds = self._load_creds(refresh=True)
-        if not creds:
-            return {"error": "No conectado a Google. Conecta primero en Configuracion."}
-        try:
-            from googleapiclient.discovery import build
-        except ImportError:
-            return {"error": "Faltan librerías: pip install google-api-python-client"}
-
-        if progress_callback:
-            progress_callback(1, 2, "Creando documento en Google Docs...")
-        try:
-            service = build("docs", "v1", credentials=creds)
-            doc = service.documents().create(body={"title": title}).execute()
-            doc_id = doc["documentId"]
-
-            # Insertar el texto en chunks (límite ~1MB por request; usamos 100k chars)
-            CHUNK = 100000
-            requests_list = []
-            idx = 1
-            for i in range(0, len(text), CHUNK):
-                chunk = text[i:i+CHUNK]
-                requests_list.append({"insertText": {"location": {"index": idx}, "text": chunk}})
-                idx += len(chunk)
-
-            if requests_list:
-                service.documents().batchUpdate(documentId=doc_id, body={"requests": requests_list}).execute()
-
-            if progress_callback:
-                progress_callback(2, 2, "¡Listo!")
-            return {"url": f"https://docs.google.com/document/d/{doc_id}/edit", "doc_id": doc_id, "title": title}
-        except Exception as e:
-            return {"error": f"Error al exportar: {e}"}
-
-
+from audioclass_core import (AudioPipeline, LocalWhisperEngine,
+                             CloudColabEngine, GeminiAdaptationEngine,
+                             OpenAIAdaptationEngine, build_adaptation_engine,
+                             GoogleDocsExporter)
 # ═══════════════════════════════════════════════════════════════════════════════
 # UI PRINCIPAL — AudioClass v9.1 (continuación)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1206,6 +369,26 @@ _PDF_FALLBACK_CHARS = {
     "—": "-", "–": "-", "…": "...", "•": "-", "→": "->",
     "├": "|", "└": "`", "“": '"', "”": '"', "‘": "'", "’": "'",
 }
+
+_GDOCS_IMPORTABLE = None
+
+
+def _gdocs_importable():
+    """True si google-auth-oauthlib + googleapiclient estan instalados
+    (necesarios para exportar a Google Docs). En el exe de distribucion NO
+    viajan por defecto: el boton se desactiva con mensaje claro en lugar de
+    fallar al pulsarlo. Lazy + cache para no pagar el import al arrancar."""
+    global _GDOCS_IMPORTABLE
+    if _GDOCS_IMPORTABLE is None:
+        try:
+            import google_auth_oauthlib  # noqa: F401
+            import googleapiclient        # noqa: F401
+            import google.oauth2.credentials  # noqa: F401
+            _GDOCS_IMPORTABLE = True
+        except Exception:
+            _GDOCS_IMPORTABLE = False
+    return _GDOCS_IMPORTABLE
+
 
 class App(ctk.CTk if CTK else ctk.Tk):
     def __init__(self):
@@ -1227,24 +410,55 @@ class App(ctk.CTk if CTK else ctk.Tk):
             C.clear(); C.update(PALETTES["dark" if self.dark else "light"])
             if CTK: ctk.set_appearance_mode("dark" if self.dark else "light")
 
+            # Ventana adaptativa: cabe en pantallas pequenas (1366x768) y
+            # aprovecha las grandes. Antes fijaba 1450x1050 y en pantallas
+            # menores el editor de transcripcion quedaba recortado fuera de
+            # vista (el grid no comprime por debajo del tamano natural).
+            sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+            # h = sh - 70: descuenta la barra de tareas (~40px) y la de titulo
+            # (~31px) para que la ventana NUNCA quede parcialmente fuera de
+            # pantalla (antes el borde inferior quedaba negro en la captura).
+            w = min(1450, max(900, sw))
+            h = min(1050, max(600, sh - 70))
+            # Modo compacto para pantallas pequenas: el contenido natural del
+            # grid (~950px) no cabe en 1366x768, asi que se ocultan piezas de
+            # cromo (banner de siguiente paso, subtitulo de Modo Facil, pie de
+            # salida) y se encogen waveform y editor para que la transcripcion
+            # quede visible.
+            self._compact = bool(sh < 950)
             if self.config.get("first_run", True):
                 # Asistente de bienvenida: ventana compacta que quepa en
                 # portatiles (la principal se restaura al terminar).
                 self.geometry("1120x720")
                 self.minsize(900, 560)
             else:
-                self.geometry("1450x1050")
-                self.minsize(1250, 900)
+                # Centrar en la pantalla (y con margen para la barra de tareas).
+                px = max(0, (sw - w) // 2)
+                py = max(0, (sh - 40 - h) // 2)
+                self.geometry(f"{w}x{h}+{px}+{py}")
+                self.minsize(1000, 620)
+            if CTK:
+                # El root de CTk usa por defecto el gris del tema; pintarlo con
+                # la paleta activa para que el fondo nunca quede negro.
+                try:
+                    self.configure(fg_color=C["bg"])
+                except Exception:
+                    pass
 
             self.recording = False
+            self._stop_done = False   # idempotencia de _stoprec (doble clic)
+            self._proc_active = False # _procsave en curso (race con _close)
             self.buffer = []
             self.vizbuf = np.zeros(VISUAL_SAMPLES, dtype=np.float32)
             self.last_path = None
             self.last_text = ""
             self.last_segments = []
+            self.last_model = "Whisper"
             self.cancel = False
             self.stop_ev = threading.Event()
             self.q = queue.Queue()
+            # Estabilidad: limpiar temporales abandonados de sesiones previas
+            _sweep_stale_temps()
             self.history = []
             self.sel = None
             self.compile_buffer = []
@@ -1267,15 +481,16 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self.vu_rms_hist_full = []  # historial RMS ultimos 10 s (125 lecturas) para mini-grafico
             self.vu_sens = float(self.config.get("vu_sensitivity", 0.25))  # umbral CV de sensibilidad
 
-            self.local_engine = LocalWhisperEngine(self.config.get("local_model", "tiny"))
+            self.local_engine = LocalWhisperEngine(
+                self.config.get("local_model", "base"),
+                self.config.get("whisper_language", "auto")
+            )
             self.cloud_engine = CloudColabEngine(
                 self.config.get("colab_url", ""),
-                self.config.get("colab_key", "audioclass")
+                self.config.get("colab_key", "audioclass"),
+                self.config.get("whisper_language", "auto")
             )
-            self.gemini_engine = GeminiAdaptationEngine(
-                self.config.get("gemini_api_key", ""),
-                self.config.get("gemini_model", "flash")
-            )
+            self.adapt_engine = self._build_adapt_engine()
             self.docs_exporter = GoogleDocsExporter(
                 self.config.get("google_creds_path", "")
             )
@@ -1315,29 +530,47 @@ class App(ctk.CTk if CTK else ctk.Tk):
         d = {"font": (self.FB, 12), "corner_radius": 10, "height": 40}
         d.update(kw)
         no_theme = d.pop("no_theme", False)
+        # Unificacion de tema: sin fg_color explicito, el boton usaba el azul
+        # por defecto del tema CTk (fuera de paleta) y texto gray60 al estar
+        # disabled (contraste ~2:1 sobre azul). Default = C["button"] de la
+        # paleta y registro para re-tematizado claro/oscuro.
+        if not d.get("fg_color"):
+            d["fg_color"] = C["button"]
         if CTK:
             w = ctk.CTkButton(p, text=txt, command=cmd, **d)
-            # Registrar los botones con color de paleta para re-tematizarlos en
-            # el cambio claro/oscuro (igual que _lbl/_frame). Los que usan
-            # colores fijos (hover literales, estado dinamico) no se registran.
+            # Texto de contraste segun el fondo del boton (WCAG AA): oscuro
+            # sobre fondos claros, blanco sobre fondos oscuros.
+            fg = d.get("fg_color")
+            if fg and fg != "transparent":
+                try:
+                    w.configure(text_color=_btn_text_color(fg),
+                                text_color_disabled=C["muted"])
+                except Exception:
+                    pass
+            # Registrar los botones para re-tematizarlos en el cambio
+            # claro/oscuro (igual que _lbl/_frame). Los que usan colores
+            # fijos (hover literales, estado dinamico) no se registran.
             if not no_theme:
-                fg = d.get("fg_color")
-                if fg and fg != "transparent":
-                    key = self._palette_key(fg)
-                    if key:
-                        self._themeable.append(("frame", w, key))
+                key = self._palette_key(fg)
+                if key:
+                    self._themeable.append(("btn", w, key))
             return w
         b = ctk.Button(p, text=txt, command=cmd, font=d.get("font"))
         if "state" in d: b.config(state=d["state"])
-        if "fg_color" in d: b.config(bg=d["fg_color"], fg="white")
+        if "fg_color" in d:
+            b.config(bg=d["fg_color"], fg=_btn_text_color(d["fg_color"]))
         return b
 
     def _lbl(self, p, txt, **kw):
+        # theme_key fuerza la clave de paleta cuando dos colores comparten hex
+        # en un tema (p. ej. head_text == text en oscuro) y el remapeo claro/
+        # oscuro iria a la clave equivocada.
+        tkey = kw.pop("theme_key", None)
         if CTK:
             w = ctk.CTkLabel(p, text=txt, **kw)
             col = kw.get("text_color", C["text"])
             if col:
-                key = self._palette_key(col)
+                key = tkey or self._palette_key(col)
                 if key:
                     self._themeable.append(("label", w, key))
             return w
@@ -1477,9 +710,9 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         f2 = self._frame(body, fg_color=C["card"])
         f2.pack(fill="x", padx=100, pady=10)
-        self._lbl(f2, "3. ¿Tienes la API Key de Gemini? (opcional, pero recomendada)",
+        self._lbl(f2, "3. ¿Tienes una API Key de IA? (opcional, pero recomendada)",
                   font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
-        self._lbl(f2, "Sirve para analizar tus clases con IA (resúmenes, guías, exámenes). Es gratis: aistudio.google.com/app/apikey",
+        self._lbl(f2, "Sirve para analizar tus clases con IA (resúmenes, guías, exámenes). Gemini es gratis: aistudio.google.com/app/apikey. También puedes usar OpenAI (GPT): añade su clave luego en Configuración.",
                   font=("Segoe UI", 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
         self.wiz_gemini = self._entry(f2, width=500, font=("Segoe UI", 12), placeholder_text="Pega aquí tu API Key de Gemini (puedes dejarlo vacío y añadirla luego)...")
         self.wiz_gemini.pack(anchor="w", padx=20, pady=(0, 15))
@@ -1526,14 +759,24 @@ class App(ctk.CTk if CTK else ctk.Tk):
         save_config(self.config)
 
         self.pipeline = AudioPipeline(self.config["audio_profile"])
-        self.gemini_engine = GeminiAdaptationEngine(gemini_key, self.config.get("gemini_model", "flash"))
+        self.adapt_engine = self._build_adapt_engine()
 
         self.wizard.destroy()
         self._build_main_ui()
-        # Restaurar el tamano de ventana de la app completa
+        # Restaurar el tamano de ventana de la app completa (adaptativo)
         try:
-            self.geometry("1450x1050")
-            self.minsize(1250, 900)
+            sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+            w = min(1450, max(900, sw))
+            h = min(1050, max(600, sh - 70))
+            px = max(0, (sw - w) // 2)
+            py = max(0, (sh - 40 - h) // 2)
+            self.geometry(f"{w}x{h}+{px}+{py}")
+            self.minsize(1000, 620)
+        except Exception:
+            pass
+        try:
+            if CTK:
+                self.configure(fg_color=C["bg"])
         except Exception:
             pass
         # Despues del asistente el siguiente paso debe ser obvio: toast verde
@@ -1546,7 +789,8 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.grid_rowconfigure(0, weight=1)
 
         sb = self._frame(self, width=300, fg_color=C["card"])
-        sb.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(15, 8), pady=15)
+        sb.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(15, 8),
+                pady=8 if getattr(self, "_compact", False) else 15)
         sb.grid_propagate(False)
 
         self._lbl(sb, "🗂  Historial de Clases", font=(self.FH, 16, "bold"), text_color=C["text"]).pack(pady=(18, 12), padx=15, anchor="w")
@@ -1565,37 +809,43 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.bplay.pack(fill="x", pady=(0, 6))
         self.btransh = self._btn(bf, "Transcribir", self._transh, state="disabled", width=260, height=32)
         self.btransh.pack(fill="x", pady=(0, 6))
-        self.bdel = self._btn(bf, "Eliminar", self._delh, state="disabled", width=260, height=32, fg_color=C["err"], hover_color="#dc2626")
+        self.bdel = self._btn(bf, "Eliminar", self._delh, state="disabled", width=260, height=32, fg_color=C["err"], hover_color=C["err"])
         self.bdel.pack(fill="x", pady=(0, 6))
-        self.bcompile = self._btn(bf, "Compilar Todo", self._compile, state="disabled", width=260, height=32, fg_color=C["cloud"], hover_color="#7c3aed")
+        self.bcompile = self._btn(bf, "Compilar Todo", self._compile, state="disabled", width=260, height=32, fg_color=C["cloud"], hover_color=C["cloud"])
         self.bcompile.pack(fill="x", pady=(0, 6))
         self.bguide = self._btn(bf, "❓ Guía Rápida", self._open_guide, width=260, height=32, fg_color=C["accent"], hover_color=C["accent_hover"])
         self.bguide.pack(fill="x", pady=(0, 6))
         self.bconfig = self._btn(bf, "⚙️ Configuración", self._open_config, width=260, height=32)
         self.bconfig.pack(fill="x", pady=(0, 6))
         self.badv = self._btn(bf, "⚙️ Opciones avanzadas", self._toggle_advanced, width=260, height=32,
-                              fg_color=C["cloud"], hover_color="#7c3aed")
+                              fg_color=C["cloud"], hover_color=C["cloud"])
         self.badv.pack(fill="x")
 
         mn = self._frame(self, fg_color=C["bg"])
-        mn.grid(row=0, column=1, sticky="nsew", padx=(8, 15), pady=15)
+        mn.grid(row=0, column=1, sticky="nsew", padx=(8, 15),
+                pady=8 if getattr(self, "_compact", False) else 15)
         mn.grid_columnconfigure(0, weight=1)
+        # SOLO la fila Gemini (6) flexa: cuando la ventana es corta, el grid
+        # comprime las filas con weight por debajo de su tamano natural antes
+        # que las fijas. Las filas esenciales (controls 2, waveform 5,
+        # transcripcion 7) van SIN weight para conservar su tamano y que el
+        # editor de transcripcion nunca quede colapsado o fuera de pantalla.
         mn.grid_rowconfigure(6, weight=1)
 
         hd = self._frame(mn, fg_color=C["header"], border_width=1, border_color=C["border"], theme_key="header")
-        hd.grid(row=0, column=0, sticky="ew", padx=22, pady=(14, 8))
+        hd.grid(row=0, column=0, sticky="ew", padx=22, pady=(12, 6))
         hd.grid_columnconfigure(0, weight=1)
         brand = self._frame(hd, fg_color="transparent")
-        brand.grid(row=0, column=0, sticky="w", padx=(18, 8), pady=(8, 2))
-        self._lbl(brand, "🎓", font=(self.FH, 24)).pack(side="left", padx=(0, 12))
+        brand.grid(row=0, column=0, sticky="w", padx=(18, 8), pady=(1, 0))
+        self._lbl(brand, "🎓", font=(self.FH, 24), text_color=C["head_text"], theme_key="head_text").pack(side="left", padx=(0, 12))
         btb = self._frame(brand, fg_color="transparent")
         btb.pack(side="left")
-        self._lbl(btb, APP_NAME, font=(self.FH, 21, "bold"), text_color="#FFFFFF").pack(anchor="w")
+        self._lbl(btb, APP_NAME, font=(self.FH, 21, "bold"), text_color=C["head_text"], theme_key="head_text").pack(anchor="w")
         self._lbl(btb, "Grabación y transcripción académica con IA",
-                  font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w")
+                  font=(self.FB, 11), text_color=C["head_text"], theme_key="head_text").pack(anchor="w")
         hdr = self._frame(hd, fg_color="transparent")
         hdr.grid(row=0, column=1, sticky="e", padx=(8, 16), pady=(8, 2))
-        self.lconn = self._lbl(hdr, "🖥️ Motor local", font=(self.FB, 11), text_color=C["muted"])
+        self.lconn = self._lbl(hdr, "🖥️ Motor local", font=(self.FB, 11), text_color=C["head_text"], theme_key="head_text")
         self.lconn.pack(side="left", padx=(0, 12))
         self.btheme_hd = self._btn(hdr, "🌙" if self.dark else "☀️", self._theme,
                                    width=44, height=34, font=(self.FB, 14),
@@ -1613,7 +863,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         # Cada paso es clicable: abre la Guia Rapida en su seccion.
         # NOTA: hd se gestiona con grid; nunca mezclar pack aqui.
         steps = self._frame(hd, fg_color="transparent")
-        steps.grid(row=2, column=0, columnspan=2, sticky="ew", padx=18, pady=(10, 0))
+        steps.grid(row=2, column=0, columnspan=2, sticky="ew", padx=18, pady=(2, 0))
         self.steps_frame = steps
         self.step_lbls = {}
         for i, (num, txt) in enumerate([("1", "Graba"), ("2", "Transcribe"), ("3", "Analiza"), ("4", "Guarda")]):
@@ -1633,38 +883,43 @@ class App(ctk.CTk if CTK else ctk.Tk):
             except Exception:
                 pass
             self.step_lbls[paso] = lbl
-        self._lbl(hd, "👆 Pulsa un paso para ver cómo se hace",
-                  font=(self.FB, 10), text_color=C["muted"]).grid(row=3, column=0, columnspan=2, sticky="w", padx=18, pady=(4, 0))
+        # (La pista "pulsa un paso" se omite en pantallas cortas: el banner
+        # "Siguiente paso" con su boton de ayuda ya guia al usuario.)
         self._set_step(1)
 
         # Banner permanente "Siguiente paso": tras el asistente y durante todo
         # el flujo, el usuario siempre sabe QUE hacer a continuacion. Se
         # actualiza solo con _update_next_step() segun el estado (grabar,
         # transcribir, analizar o guardar) y el boton de ayuda abre la Guia
-        # Rapida en la seccion de ese paso.
-        nx = self._frame(hd, fg_color=C["card"], border_width=2, border_color=C["accent"])
-        nx.grid(row=4, column=0, columnspan=2, sticky="ew", padx=18, pady=(12, 2))
-        nx.grid_columnconfigure(0, weight=1)
-        self.next_step_frame = nx
-        self.lnext = self._lbl(nx, "", font=(self.FH, 15, "bold"), text_color=C["accent"],
-                               anchor="w", wraplength=1000)
-        self.lnext.grid(row=0, column=0, sticky="ew", padx=(16, 8), pady=(10, 2))
-        self.lnext_sub = self._lbl(nx, "", font=(self.FB, 11), text_color=C["muted"],
+        # Rapida en la seccion de ese paso. En modo compacto se omite (los
+        # pasos clicables + el boton de ayuda de la barra lateral siguen
+        # guiando) para que la transcripcion quepa en pantallas pequenas.
+        self.next_step_frame = None
+        if not getattr(self, "_compact", False):
+            nx = self._frame(hd, fg_color=C["card"], border_width=2, border_color=C["accent"])
+            nx.grid(row=4, column=0, columnspan=2, sticky="ew", padx=18, pady=(8, 2))
+            nx.grid_columnconfigure(0, weight=1)
+            self.next_step_frame = nx
+            self.lnext = self._lbl(nx, "", font=(self.FH, 15, "bold"), text_color=C["accent"],
                                    anchor="w", wraplength=1000)
-        self.lnext_sub.grid(row=1, column=0, sticky="ew", padx=(16, 8), pady=(0, 4))
-        self._btn(nx, "❓ ¿Cómo se hace?", lambda: self._open_guide(self._next_guide_step or 1),
-                  width=170, height=32, font=(self.FB, 11), fg_color=C["accent"],
-                  hover_color=C["accent_hover"]).grid(row=0, column=1, rowspan=2, padx=(8, 16), pady=8)
+            self.lnext.grid(row=0, column=0, sticky="ew", padx=(16, 8), pady=(6, 2))
+            self.lnext_sub = self._lbl(nx, "", font=(self.FB, 11), text_color=C["muted"],
+                                       anchor="w", wraplength=1000)
+            self.lnext_sub.grid(row=1, column=0, sticky="ew", padx=(16, 8), pady=(0, 2))
+            self._btn(nx, "❓ ¿Cómo se hace?", lambda: self._open_guide(self._next_guide_step or 1),
+                      width=170, height=32, font=(self.FB, 11), fg_color=C["accent"],
+                      hover_color=C["accent_hover"]).grid(row=0, column=1, rowspan=2, padx=(8, 16), pady=6)
 
         easy = self._frame(mn, fg_color=C["card"], border_width=2, border_color=C["easy"])
         easy.grid(row=1, column=0, sticky="ew", padx=22, pady=10)
 
-        self._lbl(easy, "MODO FACIL", font=(self.FH, 16, "bold"), text_color=C["easy"]).pack(anchor="w", padx=18, pady=(12, 4))
-        self._lbl(easy, "Un solo boton hace TODO: Grabar → Procesar → Transcribir → Analizar Academicamente",
-                   font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=18, pady=(0, 8))
+        self._lbl(easy, "MODO FACIL", font=(self.FH, 16, "bold"), text_color=C["easy"]).pack(anchor="w", padx=18, pady=(2, 2))
+        if not getattr(self, "_compact", False):
+            self._lbl(easy, "Un solo boton hace TODO: Grabar → Procesar → Transcribir → Analizar Academicamente",
+                       font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=18, pady=(0, 4))
 
         easy_row = self._frame(easy, fg_color="transparent")
-        easy_row.pack(fill="x", padx=18, pady=(0, 12))
+        easy_row.pack(fill="x", padx=18, pady=(0, 3))
 
         self.easy_var = ctk.BooleanVar(value=self.config.get("modo_facil", False))
         if CTK:
@@ -1694,27 +949,33 @@ class App(ctk.CTk if CTK else ctk.Tk):
         ct.grid(row=2, column=0, sticky="ew", padx=22, pady=10)
 
         self.brec = self._btn(ct, "🎙️", self._togglerec, width=64, height=64, corner_radius=32,
-                               font=(self.FB, 26), fg_color=C["accent"], hover_color=C["accent_hover"],
+                               font=(self.FB, 26), fg_color=C["mic"], hover_color=C["err"],
                                no_theme=True)
-        self.brec.pack(side="left", padx=(18, 12), pady=14)
+        self.brec.pack(side="left", padx=(18, 12), pady=10)
 
         self.bstop = self._btn(ct, "🛑 Detener", self._stoprec, width=150, height=52,
-                                font=(self.FB, 14, "bold"), fg_color=C["err"], hover_color="#DC2626")
-        self.bstop.pack(side="left", padx=(0, 12), pady=16)
+                                font=(self.FB, 14, "bold"), fg_color=C["err"], hover_color=C["err"])
+        self.bstop.pack(side="left", padx=(0, 12), pady=10)
         self.bstop.pack_forget()
 
         self.btr = self._btn(ct, "📝 Transcribir", lambda: self._starttrans(False), width=150, height=42, state="disabled")
-        self.btr.pack(side="left", padx=(0, 8), pady=16)
+        self.btr.pack(side="left", padx=(0, 8), pady=10)
         self.bts = self._btn(ct, "⏱️ Con tiempos", lambda: self._starttrans(True), width=130, height=42, state="disabled")
-        self.bts.pack(side="left", padx=(0, 8), pady=16)
+        self.bts.pack(side="left", padx=(0, 8), pady=10)
         self.bpdf = self._btn(ct, "📄 Guardar PDF", self._pdf, width=130, height=42, state="disabled")
-        self.bpdf.pack(side="left", padx=(0, 8), pady=16)
+        self.bpdf.pack(side="left", padx=(0, 8), pady=10)
+        self.bdocx = self._btn(ct, "📝 Guardar DOCX", self._export_docx, width=140, height=42, state="disabled")
+        self.bdocx.pack(side="left", padx=(0, 8), pady=10)
         self.bdocs = self._btn(ct, "🌐 Google Docs", self._export_docs, width=140, height=42, state="disabled",
-                                fg_color=C["ok"], hover_color="#059669")
-        self.bdocs.pack(side="left", padx=(0, 8), pady=16)
+                                fg_color=C["ok"], hover_color=C["ok"])
+        # Si el componente OAuth no esta disponible (exe de distribucion), el
+        # boton queda desactivado con etiqueta clara en vez de fallar al pulsar.
+        if not _gdocs_importable():
+            self.bdocs.configure(text="🌐 Google Docs (no disponible)", width=180)
+        self.bdocs.pack(side="left", padx=(0, 8), pady=10)
         self.bcancel = self._btn(ct, "Cancelar", self._cancel, width=100, height=42, state="disabled",
-                                  fg_color=C["err"], hover_color="#dc2626")
-        self.bcancel.pack(side="left", padx=(0, 18), pady=16)
+                                  fg_color=C["err"], hover_color=C["err"])
+        self.bcancel.pack(side="left", padx=(0, 18), pady=10)
 
         # Medidor de nivel de entrada (VU meter) visible durante la grabacion:
         # barra + dB en vivo + historico de los ultimos 10 s (mini-grafico) +
@@ -1765,7 +1026,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         # El estado se muestra fuera del frame de configuracion para que siga
         # visible en Modo Guiado (que oculta Perfil/Motor/Modelo)
         self.lstatus = self._lbl(ct, "Listo para grabar", font=("Segoe UI", 12), text_color=C["muted"])
-        self.lstatus.pack(side="right", padx=(20, 18), pady=16)
+        self.lstatus.pack(side="right", padx=(20, 18), pady=10)
 
         cfg = self._frame(mn, fg_color=C["card"])
         cfg.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 10))
@@ -1775,10 +1036,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
         # controles (Perfil/Motor/Modelo) y se muestra cuando el Modo Guiado
         # los oculta, para que el usuario sepa que hay sin ver los controles.
         cfg_sum = self._frame(mn, fg_color=C["card"])
-        cfg_sum.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 10))
+        cfg_sum.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 4))
         self.cfg_sum_frame = cfg_sum
         self.lcfg_sum = self._lbl(cfg_sum, "", font=("Segoe UI", 11), text_color=C["muted"])
-        self.lcfg_sum.pack(anchor="w", padx=18, pady=12)
+        self.lcfg_sum.pack(anchor="w", padx=18, pady=3)
 
         self._lbl(cfg, "Perfil:", font=("Segoe UI", 12)).pack(side="left", padx=(18, 6), pady=12)
         self.profile_var = ctk.StringVar(value=self.config.get("audio_profile", "Clase Universitaria"))
@@ -1793,13 +1054,23 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self._lbl(cfg, "Motor:", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6), pady=12)
         self.mode_var = ctk.StringVar(value=self.config.get("transcription_mode", "local"))
         if CTK:
-            ctk.CTkSegmentedButton(cfg, values=["local", "cloud"], variable=self.mode_var,
-                                   font=("Segoe UI", 11), command=self._chmode).pack(side="left", padx=(0, 20), pady=12)
+            # Radiobuttons en vez de segmented: CTkSegmentedButton aplica UN
+            # solo text_color a todos los segmentos, y el acento (activo) y el
+            # fondo (inactivo) exigen colores opuestos (blanco/negro) — con un
+            # solo color uno de los dos estados queda <4.5:1. Los radiobuttons
+            # tienen texto propio por opcion y cumplen WCAG en ambos estados.
+            for val, lbl in (("local", "Local"), ("cloud", "Cloud")):
+                rb = ctk.CTkRadioButton(cfg, text=lbl, variable=self.mode_var, value=val,
+                                        command=self._chmode, font=("Segoe UI", 11),
+                                        text_color=C["text"])
+                rb.pack(side="left", padx=(0, 14), pady=12)
+                # Registrar para re-tematizar el texto al cambiar claro/oscuro
+                self._themeable.append(("label", rb, "text"))
         else:
             ctk.OptionMenu(cfg, self.mode_var, "local", "cloud", command=self._chmode).pack(side="left", padx=(0, 20), pady=12)
 
         self._lbl(cfg, "Modelo:", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6), pady=12)
-        self.model_var = ctk.StringVar(value=self.config.get("local_model", "tiny"))
+        self.model_var = ctk.StringVar(value=self.config.get("local_model", "base"))
         if CTK:
             self.cmb_model = ctk.CTkOptionMenu(cfg, values=["tiny", "base", "small"], 
                                                 variable=self.model_var, width=90,
@@ -1807,6 +1078,18 @@ class App(ctk.CTk if CTK else ctk.Tk):
         else:
             self.cmb_model = ctk.OptionMenu(cfg, self.model_var, "tiny", "base", "small", command=self._chlocalmodel)
         self.cmb_model.pack(side="left", padx=(0, 20), pady=12)
+
+        # Idioma de whisper: "auto" detecta el idioma del audio (para
+        # grabaciones en otro idioma o TTS); un codigo ISO lo fuerza.
+        self._lbl(cfg, "Idioma:", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6), pady=12)
+        self.lang_var = ctk.StringVar(value=self.config.get("whisper_language", "auto"))
+        _langs = ["auto", "es", "en", "pt", "fr", "de", "it"]
+        if CTK:
+            self.cmb_lang = ctk.CTkOptionMenu(cfg, values=_langs, variable=self.lang_var,
+                                              width=82, command=self._chlang, font=("Segoe UI", 11))
+        else:
+            self.cmb_lang = ctk.OptionMenu(cfg, self.lang_var, *_langs, command=self._chlang)
+        self.cmb_lang.pack(side="left", padx=(0, 20), pady=12)
 
         self.fast_var = ctk.BooleanVar(value=False)
         if CTK:
@@ -1839,10 +1122,13 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.pbar.pack(fill="x", padx=18, pady=(0, 14))
 
         vz = self._frame(mn, fg_color=C["card"])
-        vz.grid(row=5, column=0, sticky="nsew", padx=22, pady=(0, 10))
+        vz.grid(row=5, column=0, sticky="nsew", padx=22, pady=(0, 6))
 
         if MPL:
-            self.fig = Figure(figsize=(8, 2.2), dpi=100, facecolor=C["card"])
+            # Waveform compacto: ~150px en vez de ~240px para que el editor de
+            # transcripcion quepa en pantallas pequenas.
+            self.fig = Figure(figsize=(8, 0.6 if getattr(self, "_compact", False) else 1.5),
+                              dpi=100, facecolor=C["card"])
             self.ax = self.fig.add_subplot(111)
             self.ax.set_facecolor(C["card"])
             self.ax.tick_params(colors=C["muted"], labelsize=8)
@@ -1853,7 +1139,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self.line, = self.ax.plot([], [], color=C["accent"], linewidth=1.8)
             self.canvas = FigureCanvasTkAgg(self.fig, master=vz)
             self.canvas.draw()
-            self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+            self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=6)
         else:
             self._lbl(vz, "Instala matplotlib: pip install matplotlib", text_color=C["warn"]).pack(pady=35)
 
@@ -1864,9 +1150,9 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         ah = self._frame(adapt, fg_color="transparent")
         ah.grid(row=0, column=0, sticky="ew", padx=18, pady=(12, 6))
-        self._lbl(ah, "Adaptacion Inteligente (Gemini)", font=("Segoe UI", 14, "bold"), text_color=C["gemini"]).pack(side="left")
-        self.lgemini = self._lbl(ah, "Sin API Key", font=("Segoe UI", 11), text_color=C["warn"])
-        self.lgemini.pack(side="right")
+        self._lbl(ah, "Adaptacion Inteligente", font=("Segoe UI", 14, "bold"), text_color=C["gemini"]).pack(side="left")
+        self.ladapt = self._lbl(ah, "Sin API Key", font=("Segoe UI", 11), text_color=C["warn"])
+        self.ladapt.pack(side="right")
 
         self._lbl(adapt, "Selecciona que quieres generar a partir de la transcripcion:",
                    font=("Segoe UI", 11), text_color=C["muted"]).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 8))
@@ -1893,10 +1179,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         if CTK:
             self.adapt_txt = ctk.CTkTextbox(adapt, font=("Consolas", 11), wrap="word", corner_radius=8,
-                                             fg_color=C["bg"], text_color=C["text"], height=220)
+                                             fg_color=C["bg"], text_color=C["text"], height=140)
         else:
             self.adapt_txt = scrolledtext.ScrolledText(adapt, wrap=ctk.WORD, font=("Consolas", 11), 
-                                                        bg=C["bg"], fg=C["text"], height=11)
+                                                        bg=C["bg"], fg=C["text"], height=7)
         self.adapt_txt.grid(row=4, column=0, sticky="nsew", padx=18, pady=(0, 14))
         self.adapt_txt.configure(state="disabled")
 
@@ -1905,7 +1191,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.bsave_adapt.grid(row=5, column=0, sticky="w", padx=18, pady=(0, 12))
 
         tr = self._frame(mn, fg_color=C["card"], border_width=1, border_color=C["border"])
-        tr.grid(row=7, column=0, sticky="nsew", padx=22, pady=(0, 14))
+        tr.grid(row=7, column=0, sticky="nsew", padx=22, pady=(0, 5))
         tr.grid_rowconfigure(1, weight=1)
         tr.grid_columnconfigure(0, weight=1)
 
@@ -1926,14 +1212,21 @@ class App(ctk.CTk if CTK else ctk.Tk):
         tbox.grid_columnconfigure(1, weight=1)
 
         # Gutter de numeros de linea (estilo editor de codigo)
+        # height=8 igual que el editor: sin esto el gutter pedía 24 lineas
+        # (~408px) y la fila de transcripcion empujaba el resto fuera de pantalla.
         self.txt_gutter = tk.Text(tbox, width=4, wrap="none", state="disabled",
+                                  height=5 if getattr(self, "_compact", False) else 8,
                                   bg=C["card"], fg=C["muted"], font=(self.FM, 11),
                                   padx=6, pady=8, relief="flat", borderwidth=0,
                                   highlightthickness=0, takefocus=0)
         self.txt_gutter.grid(row=0, column=0, sticky="nsew")
 
         # Area de transcripcion: tk.Text (permite tags + gutter) estilo codigo
+        # Altura compacta (6 lineas en pantallas pequenas, 8 en grandes): el
+        # editor nunca pide las 24 lineas por defecto (que empujaban la
+        # transcripcion fuera de pantalla).
         self.txt = tk.Text(tbox, wrap="word", state="disabled",
+                           height=5 if getattr(self, "_compact", False) else 8,
                            bg=C["bg"], fg=C["text"], insertbackground=C["text"],
                            font=(self.FM, 11), padx=12, pady=8,
                            relief="flat", borderwidth=0, highlightthickness=0)
@@ -1947,7 +1240,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self._fill_gutter()
 
         ft = self._frame(mn, fg_color=C["card"], border_width=1, border_color=C["border"])
-        ft.grid(row=8, column=0, sticky="ew", padx=22, pady=(0, 12))
+        ft.grid(row=8, column=0, sticky="ew", padx=22, pady=(0, 5))
         ftl = self._frame(ft, fg_color="transparent")
         ftl.pack(side="left")
         self._lbl(ftl, f"📁 {OUTPUT_DIR}", font=(self.FB, 10), text_color=C["muted"]).pack(side="left")
@@ -1957,11 +1250,13 @@ class App(ctk.CTk if CTK else ctk.Tk):
                   font=("Segoe UI", 10)).pack(side="left", padx=(12, 0))
         self._btn(ftl, "🎤 Probar micrófono", self._test_mic, width=170, height=28,
                   font=("Segoe UI", 10), fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="left", padx=(8, 0))
+        self._btn(ftl, "🎛️ Optimizar micrófono", self._open_mic_opt, width=195, height=28,
+                  font=("Segoe UI", 10), fg_color=C["ok"], hover_color=C["ok"]).pack(side="left", padx=(8, 0))
         self.ltime = self._lbl(ft, "", font=("Segoe UI", 10), text_color=C["muted"])
         self.ltime.pack(side="right")
 
         self._loadhist()
-        self._update_gemini_status()
+        self._update_adapt_status()
         self._chmode(self.mode_var.get())
         self.local_engine.load(callback=self._on_model_loaded)
         self._apply_guided()
@@ -2016,8 +1311,8 @@ class App(ctk.CTk if CTK else ctk.Tk):
         if modo == "cloud":
             modelo = self.config.get("cloud_model", "large-v3")
         else:
-            modelo = self.config.get("local_model", "tiny")
-        txt = f"Usando perfil: {perfil} · motor: {modo} · modelo: {modelo}"
+            modelo = self.config.get("local_model", "base")
+        txt = f"Usando perfil: {perfil} · motor: {modo} · modelo: {modelo} · idioma: {self.config.get('whisper_language', 'auto')}"
         try:
             if hasattr(self, "lcfg_sum") and self.lcfg_sum.winfo_exists():
                 self.lcfg_sum.configure(text=txt)
@@ -2043,29 +1338,45 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.config["transcription_mode"] = mode
         save_config(self.config)
         self._update_cfg_summary()
+        # El label de conexion vive en el header (fondo oscuro en ambos temas),
+        # asi que su texto siempre va en head_text (claro) para mantener contraste.
         if mode == "local":
             self.cmb_model.configure(state="normal")
             self.lmodel.configure(text=f"Local: {self.model_var.get()}", text_color=C["muted"])
             if hasattr(self, "lconn"):
-                self.lconn.configure(text=f"🖥️ Motor local · {self.model_var.get()}", text_color=C["muted"])
+                self.lconn.configure(text=f"🖥️ Motor local · {self.model_var.get()}", text_color=C["head_text"])
         else:
             self.cmb_model.configure(state="disabled")
             if self.config.get("colab_url"):
                 self.lmodel.configure(text="Cloud: Colab GPU", text_color=C["cloud"])
                 if hasattr(self, "lconn"):
-                    self.lconn.configure(text="☁️ Motor Cloud · GPU", text_color=C["cloud"])
+                    self.lconn.configure(text="☁️ Motor Cloud · GPU", text_color=C["head_text"])
             else:
                 self.lmodel.configure(text="Cloud: Sin URL", text_color=C["warn"])
                 if hasattr(self, "lconn"):
-                    self.lconn.configure(text="☁️ Motor Cloud · sin URL", text_color=C["warn"])
+                    self.lconn.configure(text="☁️ Motor Cloud · sin URL", text_color=C["head_text"])
 
     def _chlocalmodel(self, name):
         self.config["local_model"] = name
         save_config(self.config)
-        self.local_engine = LocalWhisperEngine(name)
+        self.local_engine = LocalWhisperEngine(
+            name, self.config.get("whisper_language", "auto"))
         self._update_cfg_summary()
         self.local_engine.load(callback=self._on_model_loaded)
         self.lmodel.configure(text=f"Cargando {name}...", text_color=C["warn"])
+
+    def _chlang(self, name):
+        """Cambia el idioma de whisper: 'auto' detecta solo, ISO lo fuerza.
+        Aplica a ambos motores (local y cloud) y no recarga el modelo (el
+        idioma se resuelve en cada transcribe)."""
+        self.config["whisper_language"] = name
+        save_config(self.config)
+        if hasattr(self, "local_engine"):
+            self.local_engine.language = name
+        if hasattr(self, "cloud_engine"):
+            self.cloud_engine.language = name
+        self._update_cfg_summary()
+        self._apptxt(f"\nIdioma de transcripción: {'auto (detecta el idioma)' if name == 'auto' else name}\n")
 
     def _on_model_loaded(self, status, msg):
         if status == "ready":
@@ -2073,12 +1384,32 @@ class App(ctk.CTk if CTK else ctk.Tk):
         else:
             self.q.put(("model_err", msg))
 
-    def _update_gemini_status(self):
-        key = self.config.get("gemini_api_key", "")
-        if key and len(key) > 10:
-            self.lgemini.configure(text="Gemini listo", text_color=C["ok"])
+    def _build_adapt_engine(self):
+        """Motor de adaptacion segun el proveedor elegido (gemini por defecto)."""
+        if self.config.get("adapt_provider", "gemini") == "openai":
+            return OpenAIAdaptationEngine(
+                self.config.get("openai_api_key", ""),
+                self.config.get("openai_model", "mini")
+            )
+        return GeminiAdaptationEngine(
+            self.config.get("gemini_api_key", ""),
+            self.config.get("gemini_model", "flash")
+        )
+
+    def _update_adapt_status(self):
+        if not hasattr(self, "ladapt"):
+            return
+        prov = self.config.get("adapt_provider", "gemini")
+        if prov == "openai":
+            key = self.config.get("openai_api_key", "")
+            label = "OpenAI"
         else:
-            self.lgemini.configure(text="Sin API Key", text_color=C["warn"])
+            key = self.config.get("gemini_api_key", "")
+            label = "Gemini"
+        if key and len(key) > 10:
+            self.ladapt.configure(text=f"{label} listo", text_color=C["ok"])
+        else:
+            self.ladapt.configure(text="Sin API Key", text_color=C["warn"])
 
     def _set_step(self, n):
         """Ilumina el paso actual del flujo guiado (1=Graba, 2=Transcribe, 3=Analiza, 4=Guarda)."""
@@ -2091,13 +1422,14 @@ class App(ctk.CTk if CTK else ctk.Tk):
             try:
                 if CTK:
                     if step == n:
-                        lbl.configure(text_color=C["bg"], fg_color=C["accent"])
+                        lbl.configure(text_color=_btn_text_color(C["accent"]),
+                                      fg_color=C["accent"])
                     elif step < n:
                         lbl.configure(text_color=C["ok"], fg_color=C["button"])
                     else:
-                        lbl.configure(text_color=C["muted"], fg_color=C["button"])
+                        lbl.configure(text_color=C["text"], fg_color=C["button"])
                 else:
-                    lbl.configure(fg=(C["bg"] if step == n else (C["ok"] if step < n else C["muted"])),
+                    lbl.configure(fg=(_btn_text_color(C["accent"]) if step == n else (C["ok"] if step < n else C["text"])),
                                   bg=(C["accent"] if step == n else C["button"]))
             except Exception:
                 pass
@@ -2123,7 +1455,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
             has_adapt = bool(self.adapt_txt.get("1.0", "end").strip())
         except Exception:
             pass
-        has_key = bool(self.config.get("gemini_api_key", ""))
+        if self.config.get("adapt_provider", "gemini") == "openai":
+            has_key = bool(self.config.get("openai_api_key", ""))
+        else:
+            has_key = bool(self.config.get("gemini_api_key", ""))
 
         if rec:
             main = "🛑 Estás grabando..."
@@ -2143,8 +1478,8 @@ class App(ctk.CTk if CTK else ctk.Tk):
                 sub = "Gemini convierte tu transcripción en apuntes: resumen, tesis, datos clave."
                 col, step = C["academic"], 3
             else:
-                main = "🎓 Añade tu API Key de Gemini (es gratis)"
-                sub = "Configuración → pega tu key de aistudio.google.com/app/apikey y podrás analizar."
+                main = "🎓 Añade tu API Key de IA (Gemini u OpenAI)"
+                sub = "Configuración → elige tu proveedor de IA y pega tu API Key para analizar tus clases."
                 col, step = C["gemini"], 3
         else:
             main = "📄 ¡Clase lista! Guárdala o compártela"
@@ -2188,9 +1523,9 @@ class App(ctk.CTk if CTK else ctk.Tk):
                 self._pulse_active = False
                 return
             self._pulse_on = not self._pulse_on
-            col = "#E8C96A" if self._pulse_on else C["accent"]
+            col = C["err"] if self._pulse_on else C["mic"]
             try:
-                self.brec.configure(fg_color=col, hover_color=C["accent_hover"])
+                self.brec.configure(fg_color=col, hover_color=C["err"])
             except Exception:
                 pass
             self._pulse_after = self.after(450, _tick)
@@ -2207,7 +1542,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self._pulse_after = None
         try:
             if hasattr(self, "brec") and self.brec.winfo_exists():
-                self.brec.configure(fg_color=C["accent"], hover_color=C["accent_hover"])
+                self.brec.configure(fg_color=C["mic"], hover_color=C["err"])
         except Exception:
             pass
 
@@ -2242,14 +1577,21 @@ class App(ctk.CTk if CTK else ctk.Tk):
                 pass
             self._toast_btn = None
 
+        # Toasts: colores de paleta por modo (dark/light) para que el texto
+        # siempre tenga contraste y siga el tema (antes hex literales fijos).
         _PILL = {
-            "ok":   ("#065f46", "#a7f3d0"),   # verde oscuro / verde claro
-            "err":  ("#7f1d1d", "#fecaca"),   # rojo oscuro / rojo claro
-            "warn": ("#78350f", "#fde68a"),   # ambar oscuro / ambar claro
+            "ok":   ("#0F172A", "#7DD3FC"),
+            "err":  ("#450A0A", "#FCA5A5"),
+            "warn": ("#451A03", "#FDE68A"),
         }
-        _PULSE = {"ok": "#6ee7b7", "err": "#fca5a5", "warn": "#fcd34d"}
-        pill_bg, pill_fg = _PILL.get(kind, _PILL["ok"])
-        pulse_col = _PULSE.get(kind, "#6ee7b7")
+        _PILL_LIGHT = {
+            "ok":   ("#E0F2FE", "#075985"),
+            "err":  ("#FEE2E2", "#991B1B"),
+            "warn": ("#FEF3C7", "#92400E"),
+        }
+        _PULSE = {"ok": C["accent"], "err": C["err"], "warn": C["warn"]}
+        pill_bg, pill_fg = (_PILL if self.dark else _PILL_LIGHT).get(kind, (_PILL if self.dark else _PILL_LIGHT)["ok"])
+        pulse_col = _PULSE.get(kind, C["accent"])
         self._toast_btn = None
         if CTK:
             lbl = ctk.CTkLabel(self.steps_frame, text="✓ " + msg,
@@ -2472,7 +1814,7 @@ CONSEJOS:
         box.configure(state="disabled")
 
         self._btn(top, "Entendido ✓", top.destroy, width=200, height=40, fg_color=C["ok"],
-                  hover_color="#059669").pack(pady=(0, 18))
+                  hover_color=C["ok"]).pack(pady=(0, 18))
 
         if step is not None:
             self._jump_guide(step)
@@ -2531,6 +1873,15 @@ CONSEJOS:
                 if kind == "frame":
                     if CTK: w.configure(fg_color=newval)
                     else: w.configure(bg=newval)
+                elif kind == "btn":
+                    # Los botones ademas actualizan el texto de contraste
+                    # (WCAG AA) y el disabled (muted de paleta) al cambiar de tema.
+                    tcol = _btn_text_color(newval)
+                    if CTK:
+                        w.configure(fg_color=newval, text_color=tcol,
+                                    text_color_disabled=C["muted"])
+                    else:
+                        w.configure(bg=newval, fg=tcol)
                 else:
                     if CTK: w.configure(text_color=newval)
                     else: w.configure(fg=newval)
@@ -2565,6 +1916,10 @@ CONSEJOS:
             # clave no cubre estos CTkLabel crudos creados fuera de _lbl).
             if getattr(self, "_cur_step", None) is not None and getattr(self, "step_lbls", None):
                 self._set_step(self._cur_step)
+            # Historial: el re-mapeo resetea el fg_color de los botones al
+            # default de paleta; restaurar el highlight de la seleccion activa.
+            if getattr(self, "sel", None) is not None and hasattr(self, "hist_frame"):
+                self._selhist(self.sel)
             if hasattr(self, "adapt_txt"):
                 if CTK: self.adapt_txt.configure(fg_color=C["bg"], text_color=C["text"])
                 else: self.adapt_txt.configure(bg=C["bg"], fg=C["text"])
@@ -2597,11 +1952,15 @@ CONSEJOS:
         except Exception:
             pass
 
-    def _test_gemini(self, entry, model_var):
-        """Prueba la API Key de Gemini desde la ventana de configuracion (asincrono)."""
+    def _test_adapt(self, entry, model_var, provider="gemini"):
+        """Prueba la API Key de un proveedor (gemini/openai) desde configuracion (asincrono)."""
+        is_gemini = provider == "gemini"
+        lbl_attr = "gemini_test_lbl" if is_gemini else "openai_test_lbl"
+        btn_attr = "btn_test_gemini" if is_gemini else "btn_test_openai"
+        prov_label = "Gemini" if is_gemini else "OpenAI"
         try:
             # El dialogo pudo haberse cerrado (auto-test con after): no tocar widgets destruidos
-            if not (hasattr(self, "gemini_test_lbl") and self.gemini_test_lbl.winfo_exists()):
+            if not (hasattr(self, lbl_attr) and getattr(self, lbl_attr).winfo_exists()):
                 return
             key = entry.get().strip()
             model = model_var.get()  # leer en el hilo principal, nunca dentro del worker
@@ -2609,18 +1968,21 @@ CONSEJOS:
             return
 
         if len(key) < 10:
-            self.gemini_test_lbl.configure(text="Introduce una API Key primero", text_color=C["warn"])
+            getattr(self, lbl_attr).configure(text="Introduce una API Key primero", text_color=C["warn"])
             return
-        if hasattr(self, "btn_test_gemini") and self.btn_test_gemini.winfo_exists():
-            self.btn_test_gemini.configure(state="disabled", text="Probando...")
-        self.gemini_test_lbl.configure(text="Probando conexión con Gemini...", text_color=C["warn"])
+        if hasattr(self, btn_attr) and getattr(self, btn_attr).winfo_exists():
+            getattr(self, btn_attr).configure(state="disabled", text="Probando...")
+        getattr(self, lbl_attr).configure(text=f"Probando conexión con {prov_label}...", text_color=C["warn"])
 
         def worker():
             try:
-                engine = GeminiAdaptationEngine(key, model)
-                self.q.put(("gemini_test", engine.test_key()))
+                if is_gemini:
+                    engine = GeminiAdaptationEngine(key, model)
+                else:
+                    engine = OpenAIAdaptationEngine(key, model)
+                self.q.put(("adapt_test", (provider, engine.test_key())))
             except Exception as e:
-                self.q.put(("gemini_test", (False, f"Error inesperado: {e}")))
+                self.q.put(("adapt_test", (provider, (False, f"Error inesperado: {e}"))))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2657,6 +2019,14 @@ CONSEJOS:
 
     def _export_docs(self):
         """Exporta la transcripcion (o la adaptacion) actual a Google Docs."""
+        if not _gdocs_importable():
+            self._msg("warning", "Google Docs",
+                      "La exportación a Google Docs no está disponible en esta versión: "
+                      "el componente google-auth-oauthlib no está incluido en el instalador.\n\n"
+                      "Puedes seguir usando PDF, DOCX o copiar el texto.\n"
+                      "Para activarla (solo usuarios avanzados):\n"
+                      "  pip install google-auth-oauthlib google-api-python-client")
+            return
         if not self.last_text:
             self._msg("warning", "Sin contenido", "Primero transcribe o adapta una clase.")
             return
@@ -2759,8 +2129,7 @@ CONSEJOS:
         self.mic_result.pack(padx=30, pady=(4, 10))
 
         self.btn_mic_test = self._btn(top, "🎙️ Comenzar prueba (8 s)", self._mic_test_start,
-                                      width=280, height=44, font=("Segoe UI", 14, "bold"),
-                                      fg_color=C["err"], hover_color="#dc2626")
+                                      width=280, height=44, font=("Segoe UI", 14, "bold"),                                       fg_color=C["err"], hover_color=C["err"])
         self.btn_mic_test.pack(pady=(4, 8))
         self._btn(top, "Cerrar", top.destroy, width=140, height=36).pack(pady=(0, 14))
 
@@ -2858,40 +2227,283 @@ CONSEJOS:
         lines.append(f"Pico: {pk:.3f} (limite {self.pipeline.p['limiter']:.2f}, sin clipping)")
         return "\n".join(lines)
 
+    # ── Optimizador de microfono (integrado, sin salir de la app) ──────────
+    def _open_mic_opt(self):
+        """Ventana del optimizador de microfono: diagnostica el nivel de
+        entrada, el permiso de privacidad y todos los microfonos, y puede
+        aplicar la correccion (nivel 100% + desmute + boost) SIN salir de la
+        app. Reutiliza las funciones CoreAudio de optimizar_mic.py (ctypes)."""
+        if getattr(self, "mic_opt_top", None) is not None:
+            try:
+                if self.mic_opt_top.winfo_exists():
+                    self.mic_opt_top.lift()
+                    self.mic_opt_top.focus_force()
+                    return
+            except Exception:
+                pass
+
+        top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
+        top.title("🎛️ Optimizador de micrófono")
+        top.geometry("680x560")
+        top.transient(self)
+        top.grab_set()
+        self.mic_opt_top = top
+
+        self._lbl(top, "🎛️ Optimizador de micrófono", font=("Segoe UI", 18, "bold"),
+                  text_color=C["accent"]).pack(pady=(16, 4))
+        self._lbl(top, "Diagnostica el nivel de entrada y corrige las grabaciones en silencio. "
+                       "Habla en voz alta durante cada prueba de 4 segundos.",
+                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=620).pack(pady=(0, 10))
+
+        lvl_row = self._frame(top, fg_color="transparent")
+        lvl_row.pack(fill="x", padx=30, pady=(0, 4))
+        self._lbl(lvl_row, "Nivel:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        if CTK:
+            self.mic_opt_lvl_bar = ctk.CTkProgressBar(lvl_row, height=14, corner_radius=7,
+                                                      progress_color=C["muted"])
+        else:
+            self.mic_opt_lvl_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
+        self.mic_opt_lvl_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.mic_opt_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=("Segoe UI", 10), text_color=C["muted"])
+        self.mic_opt_lvl_lbl.pack(side="left")
+
+        self.mic_opt_state_lbl = self._lbl(top, "", font=("Segoe UI", 12), text_color=C["warn"])
+        self.mic_opt_state_lbl.pack(pady=(6, 4))
+
+        if CTK:
+            self.mic_opt_txt = ctk.CTkTextbox(top, height=250, font=("Consolas", 10),
+                                              text_color=C["text"], fg_color=C["card"],
+                                              border_width=1, border_color=C["border"],
+                                              wrap="word", state="disabled")
+        else:
+            self.mic_opt_txt = tk.Text(top, height=16, font=("Consolas", 10),
+                                       bg=C["card"], fg=C["text"], wrap="word",
+                                       state="disabled", relief="flat", borderwidth=1,
+                                       highlightthickness=1, highlightbackground=C["border"])
+        self.mic_opt_txt.pack(fill="both", expand=True, padx=30, pady=(4, 8))
+
+        btns = self._frame(top, fg_color="transparent")
+        btns.pack(fill="x", padx=30, pady=(0, 14))
+        self.btn_mic_opt_diag = self._btn(btns, "🔍 Diagnosticar", lambda: self._mic_opt_start(False),
+                                          width=200, height=40, font=("Segoe UI", 12, "bold"),
+                                          fg_color=C["accent"], hover_color=C["accent_hover"])
+        self.btn_mic_opt_diag.pack(side="left", padx=(0, 8))
+        self.btn_mic_opt_apply = self._btn(btns, "⚡ Aplicar optimización", lambda: self._mic_opt_start(True),
+                                           width=225, height=40, font=("Segoe UI", 12, "bold"),
+                                           fg_color=C["ok"], hover_color=C["ok"])
+        self.btn_mic_opt_apply.pack(side="left", padx=(0, 8))
+        self._btn(btns, "Cerrar", top.destroy, width=100, height=36).pack(side="left")
+
+    def _mic_opt_start(self, do_apply):
+        """Arranca el diagnostico/optimizacion en un hilo (no bloquea la UI)."""
+        try:
+            if getattr(self, "_mic_opt_busy", False):
+                return
+            self._mic_opt_busy = True
+            for b in ("btn_mic_opt_diag", "btn_mic_opt_apply"):
+                w = getattr(self, b, None)
+                if w is not None:
+                    try:
+                        if w.winfo_exists():
+                            w.configure(state="disabled")
+                    except Exception:
+                        pass
+            if hasattr(self, "mic_opt_txt"):
+                try:
+                    self.mic_opt_txt.configure(state="normal")
+                    self.mic_opt_txt.delete("1.0", "end")
+                    self.mic_opt_txt.configure(state="disabled")
+                except Exception:
+                    pass
+            threading.Thread(target=self._mic_opt_worker, args=(do_apply,), daemon=True).start()
+        except Exception:
+            self._mic_opt_busy = False
+
+    def _mic_opt_worker(self, do_apply):
+        """Hilo del optimizador: diagnostica (dispositivo, nivel, mute, permiso,
+        todos los mics) y, si do_apply, aplica 100% + desmute + boost. Los
+        avances van por la cola (_poll) para no tocar widgets desde el hilo."""
+        try:
+            if sys.platform != "win32":
+                self.q.put(("mic_opt_log", "El optimizador solo aplica en Windows.\n"))
+                self.q.put(("mic_opt_done", "NO_WINDOWS"))
+                return
+            import optimizar_mic as om
+            log = self.q.put
+
+            log(("mic_opt_log", "Leyendo dispositivo por defecto...\n"))
+            dev = om._default_capture_device()
+            did = om._device_id(dev)
+            sname = "?"
+            try:
+                sname = sd.query_devices(sd.default.device[0])["name"]
+            except Exception:
+                pass
+            log(("mic_opt_log", f"Dispositivo por defecto: {sname}\n"))
+            st = om.get_mic_state(dev)
+            if st:
+                log(("mic_opt_log", f"  Nivel: {st[0]}%  |  Mute: {'SÍ ⚠️' if st[1] else 'No'}\n"))
+            else:
+                log(("mic_opt_log", "  (nivel no accesible)\n"))
+
+            pv = om.privacy_mic()
+            if pv != "Allow":
+                log(("mic_opt_log", f"Permiso de micrófono: {pv}  ⚠️ DENEGADO — permite el acceso en "
+                                     "Configuración > Privacidad > Micrófono\n"))
+            else:
+                log(("mic_opt_log", "Permiso de micrófono: Allow\n"))
+
+            log(("mic_opt_log", "Microfonos activos:\n"))
+            try:
+                for did2, lvl, mute in om.list_mics():
+                    mark = " [DEFAULT]" if did2 == did else ""
+                    extra = f"nivel {lvl}%" + (" mute ⚠️" if mute else "")
+                    log(("mic_opt_log", f"  {extra}{mark}  {did2[:64]}\n"))
+            except Exception as e:
+                log(("mic_opt_log", f"  (no enumerable: {e})\n"))
+
+            # Prueba de señal ANTES (piso/p90/peak) con medidor en vivo
+            self.q.put(("mic_opt_state", "🎙️ HABLA AHORA durante 4 s"))
+            antes = om.measure_signal(4.0, on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
+            self.q.put(("mic_opt_state", ""))
+            log(("mic_opt_log", f"Prueba: {antes['dur']:.1f}s | piso {antes['piso']:.4f} | "
+                                 f"p90 {antes['p90']:.4f} | peak {antes['peak']:.3f} → {antes['veredicto']}\n"))
+            if not do_apply:
+                if antes["veredicto"] == "OK":
+                    log(("mic_opt_log", "✅ El micrófono captura bien. No se requiere optimización.\n"))
+                else:
+                    log(("mic_opt_log", "Sugerencia: pulsa '⚡ Aplicar optimización' para subir el nivel "
+                                         "al 100% y activar el boost si el driver lo permite.\n"))
+                self.q.put(("mic_opt_done", antes["veredicto"]))
+                return
+
+            # ── Aplicar optimizacion ────────────────────────────────────────
+            log(("mic_opt_log", "\nAPLICANDO OPTIMIZACIÓN...\n"))
+            ok1, err1 = om.apply_mic_level(dev, 100)
+            log(("mic_opt_log", f"  [{'OK' if ok1 else 'NO'}] nivel → 100% + desmute  {err1}\n"))
+            ok2, msg2 = om.apply_boost(dev)
+            log(("mic_opt_log", f"  [{'OK' if ok2 else 'NO'}] boost del nodo de volumen  {msg2}\n"))
+            time.sleep(0.5)
+            st2 = om.get_mic_state(dev)
+            if st2:
+                log(("mic_opt_log", f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ ⚠️' if st2[1] else 'No'}\n"))
+
+            self.q.put(("mic_opt_state", "🎙️ HABLA AHORA durante 4 s (post-optimización)"))
+            despues = om.measure_signal(4.0, on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
+            self.q.put(("mic_opt_state", ""))
+            log(("mic_opt_log", f"Post: {despues['dur']:.1f}s | piso {despues['piso']:.4f} | "
+                                 f"p90 {despues['p90']:.4f} | peak {despues['peak']:.3f} → {despues['veredicto']}\n"))
+            mejo = despues["p90"] / max(antes["p90"], 1e-6)
+            log(("mic_opt_log", f"RESUMEN: p90 {antes['p90']:.4f} → {despues['p90']:.4f}  (x{mejo:.1f})\n"))
+            if despues["veredicto"] == "OK":
+                log(("mic_opt_log", "✅ El micrófono quedó optimizado. La app ya capturará tu voz.\n"))
+            elif despues["veredicto"] == "DÉBIL":
+                log(("mic_opt_log", "⚠️ Sigue débil. Si NO hablaste en la prueba, repítela hablando. Si hablaste "
+                                     "y sigue débil: acércate al micro, revisa el boost en Realtek Audio Console "
+                                     "o desactiva la supresión de ruido agresiva.\n"))
+            else:
+                log(("mic_opt_log", "❌ Sigue sin señal: revisa que el micro no esté físicamente desactivado "
+                                     "y que el dispositivo por defecto sea el correcto.\n"))
+            self.q.put(("mic_opt_done", despues["veredicto"]))
+        except Exception as e:
+            log_exc("mic optimizer")
+            try:
+                self.q.put(("mic_opt_log", f"Error: {str(e)[:120]}\n"))
+            except Exception:
+                pass
+            self.q.put(("mic_opt_done", "ERROR"))
+
     def _open_config(self):
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
         top.title("Configuracion de AudioClass")
-        top.geometry("650x920")
+        top.geometry("650x1060")
         top.transient(self)
         top.grab_set()
 
         f1 = self._frame(top, fg_color=C["card"])
         f1.pack(fill="x", padx=20, pady=10)
-        self._lbl(f1, "API Key de Google AI Studio (Gemini)", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(f1, "Consiguela gratis en: aistudio.google.com/app/apikey", font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        gemini_entry = self._entry(f1, width=500, font=("Segoe UI", 11))
-        gemini_entry.pack(anchor="w", padx=15, pady=(0, 8))
+        self._lbl(f1, "🤖 Proveedor de IA para el análisis", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f1, "Elige con qué servicio analizar tus clases (resúmenes, guías, exámenes):",
+                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
+        adapt_provider = ctk.StringVar(value=self.config.get("adapt_provider", "gemini"))
+        prov_row = self._frame(f1, fg_color="transparent")
+        prov_row.pack(anchor="w", padx=15, pady=(0, 8))
+        for val, lbl in (("gemini", "✨ Gemini (Google)"), ("openai", "🤖 OpenAI (GPT)")):
+            rb = ctk.CTkRadioButton(prov_row, text=lbl, variable=adapt_provider, value=val,
+                                    font=("Segoe UI", 11), text_color=C["text"])
+            rb.pack(side="left", padx=(0, 25))
+            self._themeable.append(("label", rb, "text"))
+
+        # ── Sección Gemini ──
+        f1g = self._frame(f1, fg_color="transparent")
+        f1g.pack(fill="x", padx=15, pady=(0, 8))
+        self._lbl(f1g, "API Key de Google AI Studio (Gemini)", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(f1g, "Consiguela gratis en: aistudio.google.com/app/apikey", font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+        gemini_entry = self._entry(f1g, width=500, font=("Segoe UI", 11))
+        gemini_entry.pack(anchor="w", pady=(0, 4))
         gemini_entry.insert(0, self.config.get("gemini_api_key", ""))
 
         gemini_model = ctk.StringVar(value=self.config.get("gemini_model", "flash"))
+        gmod_row = self._frame(f1g, fg_color="transparent")
+        gmod_row.pack(anchor="w", pady=(0, 4))
         if CTK:
-            ctk.CTkSegmentedButton(f1, values=["flash", "pro"], variable=gemini_model,
-                                   font=("Segoe UI", 11)).pack(anchor="w", padx=15, pady=(0, 12))
+            # Radiobuttons en vez de segmented: el texto unico del segmented no
+            # cumple contraste en ambos estados (activo=acento / inactivo=gris).
+            for val, lbl in (("flash", "Flash"), ("pro", "Pro")):
+                rb = ctk.CTkRadioButton(gmod_row, text=lbl, variable=gemini_model, value=val,
+                                        font=("Segoe UI", 11), text_color=C["text"])
+                rb.pack(side="left", padx=(0, 20))
+                self._themeable.append(("label", rb, "text"))
         else:
-            ctk.OptionMenu(f1, gemini_model, "flash", "pro").pack(anchor="w", padx=15, pady=(0, 12))
-        self._lbl(f1, "flash = rapido y economico (Gemini 2.0 Flash) | pro = maxima calidad (Gemini 2.5 Pro)", font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 12))
+            ctk.OptionMenu(f1g, gemini_model, "flash", "pro").pack(anchor="w", padx=15, pady=(0, 12))
+        self._lbl(f1g, "flash = rapido y economico (Gemini 2.0 Flash) | pro = maxima calidad (Gemini 2.5 Pro)",
+                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
 
-        test_row = self._frame(f1, fg_color="transparent")
-        test_row.pack(fill="x", padx=15, pady=(0, 12))
+        test_row = self._frame(f1g, fg_color="transparent")
+        test_row.pack(fill="x", pady=(0, 4))
         self.gemini_test_lbl = self._lbl(test_row, "", font=("Segoe UI", 10), text_color=C["muted"])
         self.gemini_test_lbl.pack(side="left", padx=(0, 10))
         self.btn_test_gemini = self._btn(test_row, "Probar Conexión",
-                                         lambda: self._test_gemini(gemini_entry, gemini_model),
+                                         lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"),
                                          width=150, height=30, fg_color=C["accent"])
         self.btn_test_gemini.pack(side="left")
 
-        if self.config.get("gemini_api_key"):
-            self.after(400, lambda: self._test_gemini(gemini_entry, gemini_model))
+        # ── Sección OpenAI ──
+        f1o = self._frame(f1, fg_color="transparent")
+        f1o.pack(fill="x", padx=15, pady=(0, 8))
+        self._lbl(f1o, "API Key de OpenAI (GPT)", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(f1o, "Consiguela en: platform.openai.com/api-keys (tiene plan gratuito inicial)",
+                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+        openai_entry = self._entry(f1o, width=500, font=("Segoe UI", 11))
+        openai_entry.pack(anchor="w", pady=(0, 4))
+        openai_entry.insert(0, self.config.get("openai_api_key", ""))
+
+        openai_model = ctk.StringVar(value=self.config.get("openai_model", "mini"))
+        omod_row = self._frame(f1o, fg_color="transparent")
+        omod_row.pack(anchor="w", pady=(0, 4))
+        for val, lbl in (("mini", "GPT-4o mini"), ("gpt4o", "GPT-4o")):
+            rb = ctk.CTkRadioButton(omod_row, text=lbl, variable=openai_model, value=val,
+                                    font=("Segoe UI", 11), text_color=C["text"])
+            rb.pack(side="left", padx=(0, 20))
+            self._themeable.append(("label", rb, "text"))
+        self._lbl(f1o, "mini = rapido y economico | GPT-4o = maxima calidad",
+                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+
+        otest_row = self._frame(f1o, fg_color="transparent")
+        otest_row.pack(fill="x", pady=(0, 4))
+        self.openai_test_lbl = self._lbl(otest_row, "", font=("Segoe UI", 10), text_color=C["muted"])
+        self.openai_test_lbl.pack(side="left", padx=(0, 10))
+        self.btn_test_openai = self._btn(otest_row, "Probar Conexión",
+                                         lambda: self._test_adapt(openai_entry, openai_model, "openai"),
+                                         width=150, height=30, fg_color=C["accent"])
+        self.btn_test_openai.pack(side="left")
+
+        # Auto-test solo del proveedor activo al abrir la ventana
+        if self.config.get("adapt_provider", "gemini") == "openai":
+            if self.config.get("openai_api_key"):
+                self.after(400, lambda: self._test_adapt(openai_entry, openai_model, "openai"))
+        elif self.config.get("gemini_api_key"):
+            self.after(400, lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"))
 
         f2 = self._frame(top, fg_color=C["card"])
         f2.pack(fill="x", padx=20, pady=10)
@@ -2911,7 +2523,7 @@ CONSEJOS:
         self._lbl(f0, "Graba 8 segundos y comprueba que tu microfono capta bien tu voz.",
                   font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
         self._btn(f0, "🎙️ Abrir prueba de microfono", self._test_mic, width=240, height=36,
-                  fg_color=C["err"], hover_color="#dc2626").pack(anchor="w", padx=15, pady=(0, 12))
+                  fg_color=C["err"], hover_color=C["err"]).pack(anchor="w", padx=15, pady=(0, 12))
 
         f3 = self._frame(top, fg_color=C["card"])
         f3.pack(fill="x", padx=20, pady=10)
@@ -2933,6 +2545,11 @@ CONSEJOS:
         has_key = bool(self.config.get("gemini_api_key"))
         self._lbl(status_frame, "Configurado" if has_key else "Sin Key", 
                   font=("Segoe UI", 11), text_color=C["ok"] if has_key else C["err"]).pack(side="left", padx=5)
+
+        self._lbl(status_frame, "OpenAI:", font=("Segoe UI", 11)).pack(side="left")
+        has_oai = bool(self.config.get("openai_api_key"))
+        self._lbl(status_frame, "Configurado" if has_oai else "Sin Key", 
+                  font=("Segoe UI", 11), text_color=C["ok"] if has_oai else C["err"]).pack(side="left", padx=5)
 
         f4 = self._frame(top, fg_color=C["card"])
         f4.pack(fill="x", padx=20, pady=10)
@@ -2965,31 +2582,41 @@ CONSEJOS:
         self.gdoc_lbl.pack(anchor="w", padx=15, pady=(0, 12))
 
         # Estado inicial de Google Docs (sin abrir navegador ni refrescar token en el hilo principal)
-        try:
-            gok, gmsg = self.docs_exporter.test_connection(refresh=False)
-            self.gdoc_lbl.configure(text=("✓ " if gok else "· ") + gmsg,
-                                    text_color=C["ok"] if gok else C["muted"])
-        except Exception:
-            pass
+        if not _gdocs_importable():
+            try:
+                self.btn_gdoc_connect.configure(state="disabled")
+                self.gdoc_lbl.configure(text="No disponible en esta versión: falta google-auth-oauthlib "
+                                             "(no incluido en el instalador).", text_color=C["warn"])
+            except Exception:
+                pass
+        else:
+            try:
+                gok, gmsg = self.docs_exporter.test_connection(refresh=False)
+                self.gdoc_lbl.configure(text=("✓ " if gok else "· ") + gmsg,
+                                        text_color=C["ok"] if gok else C["muted"])
+            except Exception:
+                pass
 
         def save():
+            self.config["adapt_provider"] = adapt_provider.get()
             self.config["gemini_api_key"] = gemini_entry.get().strip()
             self.config["gemini_model"] = gemini_model.get()
+            self.config["openai_api_key"] = openai_entry.get().strip()
+            self.config["openai_model"] = openai_model.get()
             self.config["colab_url"] = colab_entry.get().strip()
             self.config["colab_key"] = colab_key.get().strip()
             self.config["google_creds_path"] = gdoc_entry.get().strip()
             save_config(self.config)
 
-            self.gemini_engine = GeminiAdaptationEngine(
-                self.config["gemini_api_key"], self.config["gemini_model"]
-            )
+            self.adapt_engine = self._build_adapt_engine()
             self.cloud_engine = CloudColabEngine(
-                self.config["colab_url"], self.config["colab_key"]
+                self.config["colab_url"], self.config["colab_key"],
+                self.config.get("whisper_language", "auto")
             )
             self.docs_exporter = GoogleDocsExporter(
                 self.config["google_creds_path"]
             )
-            self._update_gemini_status()
+            self._update_adapt_status()
             self._chmode(self.mode_var.get())  # ya refresca el resumen de configuracion
             top.destroy()
             self._msg("info", "Guardado", "Configuracion actualizada correctamente.")
@@ -3011,10 +2638,12 @@ CONSEJOS:
         if CTK:
             b = ctk.CTkButton(self.hist_frame, text="🗂  " + name, anchor="w", font=(self.FB, 11),
                                height=36, corner_radius=8, fg_color=C["button"],
+                               text_color=C["text"],
                                hover_color=C["border"], border_width=1, border_color=C["border"],
                                command=lambda p=path: self._selhist(p))
             b.pack(fill="x", pady=(0, 4), padx=2)
             b._path = path
+            self._themeable.append(("btn", b, "button"))
         else:
             b = ctk.Button(self.hist_frame, text=name, anchor="w", font=("Segoe UI", 11),
                             bg=C["card"], fg=C["text"], command=lambda p=path: self._selhist(p))
@@ -3023,10 +2652,13 @@ CONSEJOS:
 
     def _selhist(self, path):
         self.sel = path
-        self.bplay.configure(state="normal")
-        self.btransh.configure(state="normal")
-        self.bdel.configure(state="normal")
-        self.bcompile.configure(state="normal" if self.compile_buffer else "disabled")
+        for btn in ("bplay", "btransh", "bdel", "bcompile"):
+            b = getattr(self, btn, None)
+            if b is not None:
+                try:
+                    b.configure(state="normal" if btn != "bcompile" or self.compile_buffer else "disabled")
+                except Exception:
+                    pass
         for c in self.hist_frame.winfo_children():
             if hasattr(c, '_path'):
                 col = C["accent"] if c._path == path else (C["button"] if CTK else C["card"])
@@ -3106,6 +2738,14 @@ CONSEJOS:
             return True
 
     def _startrec(self):
+        # Idempotencia: ya grabando (doble clic) o un procesamiento anterior
+        # sigue en curso -> no arrancar otra vez. _proc_active (no _stop_done)
+        # es la senal correcta: _stop_done se reinicia en _procsave, y guardar
+        # con el bloquearia el ciclo grabar->parar->grabar para siempre.
+        # _mic_probe_pending cubre el doble clic mientras dura el pre-check.
+        if (getattr(self, "recording", False) or getattr(self, "_proc_active", False)
+                or getattr(self, "_mic_probe_pending", False)):
+            return
         if not self._disk_ok(100):
             self._msg("warning", "Espacio", "Necesitas 100 MB libres.")
             return
@@ -3114,9 +2754,322 @@ CONSEJOS:
         except Exception as e:
             self._msg("error", "Microfono", str(e))
             return
+        # Si la prueba de microfono esta corriendo, abortarla: dos InputStreams
+        # simultaneos pueden fallar en algunos host APIs de PortAudio.
+        if getattr(self, "_mic_busy", False):
+            try:
+                if hasattr(self, "mic_test_top") and self.mic_test_top.winfo_exists():
+                    self.mic_test_top.destroy()
+            except Exception:
+                pass
+            self._mic_busy = False
 
+        # ── Pre-check de nivel de entrada ──────────────────────────────────
+        # Mide ~1.5 s ANTES de grabar (hilo; la UI sigue respondiendo). Si el
+        # microfono esta muy debil (p90 < umbral), _mic_probe_done muestra una
+        # advertencia visible y pide confirmacion; solo entonces arranca la
+        # grabacion real (_begin_recording).
+        self._mic_probe_pending = True
+        try:
+            self.lstatus.configure(text="🔍 Comprobando micrófono...", text_color=C["warn"])
+        except Exception:
+            pass
+        threading.Thread(target=self._mic_probe_worker, daemon=True).start()
+
+    def _mic_probe_worker(self):
+        """Hilo del pre-check: captura ~1.5 s y calcula el p90 del RMS de
+        tramos de 100 ms (misma metrica que optimizar_mic.py). Envia el nivel
+        por la cola; None si el microfono no se puede abrir (entonces NO se
+        bloquea la grabacion: el flujo real ya reporta el error si existe)."""
+        try:
+            win = int(0.1 * SAMPLE_RATE)
+            buf = []
+
+            def cb(indata, frames, ti, status):
+                buf.append(indata.copy().flatten())
+
+            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
+                                blocksize=win, callback=cb):
+                time.sleep(MIC_PROBE_SECONDS)
+            if not buf:
+                self.q.put(("mic_probe", None))
+                return
+            raw = np.concatenate(buf).flatten()
+            fr = self.pipeline._frame_rms(raw.astype(np.float64), win, win // 2)
+            p90 = float(np.percentile(fr, 90)) if len(fr) else 0.0
+            self.q.put(("mic_probe", p90))
+        except Exception as e:
+            log_exc("mic probe")
+            self.q.put(("mic_probe", None))
+
+    def _mic_probe_done(self, level):
+        """Resultado del pre-check (desde _poll): si el nivel de entrada es
+        muy debil abre el dialogo de advertencia con p90 + medidor EN VIVO;
+        si no, arranca la grabacion directo. Nunca bloquea la grabacion salvo
+        que el usuario cancele explicitamente."""
+        self._mic_probe_pending = False
+        try:
+            if level is not None and level < MIC_PROBE_P90_MIN:
+                self._open_mic_warn_dialog(level)
+                return
+        except Exception:
+            # Si abrir el dialogo falla (p.ej. la ventana se cerro), no
+            # bloquear nunca la grabacion: se continua con el flujo normal.
+            log_exc("mic probe done")
+        try:
+            self._begin_recording()
+        except Exception:
+            log_exc("begin recording")
+            self.recording = False
+
+    def _open_mic_warn_dialog(self, level):
+        """Dialogo de advertencia de microfono debil ANTES de grabar: muestra
+        el p90 medido y un medidor EN VIVO para que el usuario vea cuanto
+        mejora al acercarse al microfono antes de decidir Continuar/Cancelar."""
+        if getattr(self, "mic_warn_top", None) is not None:
+            try:
+                if self.mic_warn_top.winfo_exists():
+                    self.mic_warn_top.lift()
+                    self.mic_warn_top.focus_force()
+                    return
+            except Exception:
+                pass
+
+        self._mic_warn_decided = False
+        # Running max del p90 de la sesion en vivo: arranca en el p90 medido
+        # por el pre-check y solo sube si el usuario alcanza mejor senal.
+        self.mic_warn_frames = []
+        self.mic_warn_best_p90 = level
+        # Tendencia del p90 para el mini-grafico: ventanas de 0.5 s (5
+        # lecturas), max 20 barras = ultimos ~10 s. Arranca con el p90
+        # medido por el pre-check para ver el punto de partida.
+        self.mic_warn_bucket = []
+        self.mic_warn_p90_hist = [level]
+        top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
+        top.title("🎤 Micrófono muy bajo")
+        top.geometry("620x490")
+        top.transient(self)
+        top.grab_set()
+        self.mic_warn_top = top
+
+        self._lbl(top, "🎤 Micrófono muy bajo", font=("Segoe UI", 17, "bold"),
+                  text_color=C["err"]).pack(pady=(16, 4))
+        db = 20 * np.log10(max(level, 1e-6))
+        self._lbl(top, f"Nivel medido: p90 = {level:.4f}  ({db:+.0f} dB) — por debajo del umbral de voz.",
+                  font=("Segoe UI", 11), text_color=C["text"]).pack(pady=(0, 4))
+        self._lbl(top, "Acércate al micrófono y habla: el medidor se actualiza en vivo.\n"
+                       "La grabación puede salir casi en silencio si el nivel no sube.",
+                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=520).pack(pady=(0, 10))
+
+        lvl_row = self._frame(top, fg_color="transparent")
+        lvl_row.pack(fill="x", padx=36, pady=(0, 6))
+        self._lbl(lvl_row, "Ahora:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        if CTK:
+            self.mic_warn_bar = ctk.CTkProgressBar(lvl_row, width=300, height=16, corner_radius=8,
+                                                   fg_color=C["button"], progress_color=C["muted"])
+            self.mic_warn_bar.set(min(1.0, level * 10))
+        else:
+            self.mic_warn_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
+            self.mic_warn_bar['value'] = min(100, level * 1000)
+        self.mic_warn_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.mic_warn_lbl = self._lbl(lvl_row, f"{db:+.0f} dB", font=("Segoe UI", 11), text_color=C["warn"])
+        self.mic_warn_lbl.pack(side="left")
+
+        best_row = self._frame(top, fg_color="transparent")
+        best_row.pack(fill="x", padx=36, pady=(0, 4))
+        self._lbl(best_row, "Mejor p90:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        self.mic_warn_best_lbl = self._lbl(best_row, f"{level:.4f} ({db:+.0f} dB)  meta 0.03 (-30 dB)",
+                                           font=("Segoe UI", 11, "bold"), text_color=C["warn"])
+        self.mic_warn_best_lbl.pack(side="left")
+
+        # Mini-grafico de tendencia: la evolucion del p90 al acercarse al
+        # microfono, con la linea punteada de la meta (0.03 / -30 dB).
+        trend_row = self._frame(top, fg_color="transparent")
+        trend_row.pack(fill="x", padx=36, pady=(2, 2))
+        self._lbl(trend_row, "Tendencia p90 (10 s):", font=("Segoe UI", 9),
+                  text_color=C["muted"]).pack(side="left", padx=(0, 8))
+        self.mic_warn_trend = tk.Canvas(trend_row, width=380, height=40, bg=C["card"],
+                                        highlightthickness=1, highlightbackground=C["border"])
+        self.mic_warn_trend.pack(side="left", fill="x", expand=True)
+
+        self._lbl(top, "Meta: que la barra suba a verde (voz ≥ -30 dB / p90 ≥ 0.03).",
+                  font=("Segoe UI", 10), text_color=C["muted"]).pack(pady=(0, 10))
+
+        btns = self._frame(top, fg_color="transparent")
+        btns.pack(pady=(0, 6))
+        self._btn(btns, "🎙️ Continuar grabando", lambda: self._mic_warn_decide(True),
+                  width=230, height=42, font=("Segoe UI", 12, "bold"),
+                  fg_color=C["err"], hover_color=C["err"]).pack(side="left", padx=(0, 10))
+        self._btn(btns, "Cancelar", lambda: self._mic_warn_decide(False),
+                  width=120, height=42, font=("Segoe UI", 12, "bold")).pack(side="left")
+        # Ruta de correccion sin cancelar: abre el optimizador y aplica la
+        # optimizacion (nivel 100% + desmute + boost) directamente.
+        opt_row = self._frame(top, fg_color="transparent")
+        opt_row.pack(pady=(0, 14))
+        self._btn(opt_row, "⚡ Abrir optimizador (corregir nivel ahora)",
+                  lambda: self._mic_warn_open_opt(),
+                  width=340, height=40, font=("Segoe UI", 12, "bold"),
+                  fg_color=C["ok"], hover_color=C["ok"]).pack()
+        top.protocol("WM_DELETE_WINDOW", lambda: self._mic_warn_decide(False))
+
+        # Medidor en vivo mientras el dialogo esta abierto: el hilo mide el
+        # nivel y envia el RMS de cada bloque (~100 ms) por la cola (_poll
+        # actualiza la barra). Se detiene al decidir o a los 60 s.
+        threading.Thread(target=self._mic_live_probe_worker, daemon=True).start()
+
+    def _update_mic_warn_best(self, r):
+        """Actualiza el 'Mejor p90' en vivo del dialogo de advertencia: ventana
+        de ~3 s (30 lecturas) y running max del p90, para que el usuario sepa
+        si YA alcanzo la meta (>= 0.03) aunque luego baje la voz."""
+        frames = getattr(self, "mic_warn_frames", None)
+        if frames is None:
+            frames = []
+            self.mic_warn_frames = frames
+        frames.append(r)
+        if len(frames) > 30:
+            del frames[:-30]
+        p90_now = float(np.percentile(frames, 90)) if frames else r
+        best = max(getattr(self, "mic_warn_best_p90", 0.0), p90_now)
+        self.mic_warn_best_p90 = best
+        # Tendencia del p90: agrupa lecturas en ventanas de 0.5 s (5 lecturas)
+        # y guarda su p90 (max 20 barras = ~10 s) para el mini-grafico.
+        bucket = getattr(self, "mic_warn_bucket", None)
+        if bucket is None:
+            bucket = []
+            self.mic_warn_bucket = bucket
+        bucket.append(r)
+        if len(bucket) >= 5:
+            p90b = float(np.percentile(bucket, 90)) if bucket else r
+            hist = getattr(self, "mic_warn_p90_hist", None)
+            if hist is None:
+                hist = []
+                self.mic_warn_p90_hist = hist
+            hist.append(p90b)
+            if len(hist) > 20:
+                del hist[:-20]
+            del bucket[:]
+            self._draw_mic_warn_trend()
+        try:
+            if getattr(self, "mic_warn_best_lbl", None) is not None and self.mic_warn_best_lbl.winfo_exists():
+                bdb = 20 * np.log10(max(best, 1e-6))
+                meta = "✓ ¡Meta alcanzada!" if best >= 0.03 else "meta 0.03 (-30 dB)"
+                self.mic_warn_best_lbl.configure(text=f"{best:.4f} ({bdb:+.0f} dB)  {meta}",
+                                                 text_color=C["ok"] if best >= 0.03 else C["warn"])
+        except Exception:
+            pass
+        return best
+
+    def _draw_mic_warn_trend(self):
+        """Mini-grafico de la tendencia del p90 en el dialogo de advertencia:
+        una barra por ventana de 0.5 s (ultimos ~10 s) y linea punteada de la
+        meta (0.03 / -30 dB). Verde = meta alcanzada en esa ventana."""
+        cv = getattr(self, "mic_warn_trend", None)
+        if cv is None:
+            return
+        try:
+            if not cv.winfo_exists():
+                return
+            cv.delete("all")
+            w = int(cv.winfo_width())
+            h = int(cv.winfo_height())
+            if w < 20 or h < 10:
+                return
+            hist = getattr(self, "mic_warn_p90_hist", []) or []
+            MAXB = 20
+            bw = w / MAXB
+            base = h - 2
+            for i, v in enumerate(hist):
+                db = 20 * np.log10(max(v, 1e-6))
+                frac = min(1.0, max(0.0, (db + 60) / 60))
+                bh = max(1.0, frac * (h - 6))
+                x0 = i * bw
+                col = C["ok"] if v >= 0.03 else (C["warn"] if v >= 0.01 else C["accent"])
+                cv.create_rectangle(x0, base - bh, x0 + bw - 2, base, fill=col, outline="")
+            # Linea de la meta: 0.03 ≈ -30.5 dB ≈ 49% de la escala
+            fg = max(0.0, min(1.0, (20 * np.log10(0.03) + 60) / 60))
+            yg = base - fg * (h - 6)
+            cv.create_line(0, yg, w, yg, fill=C["ok"], dash=(2, 2))
+        except Exception:
+            pass
+
+    def _mic_live_probe_worker(self):
+        """Mide el nivel en vivo mientras el dialogo de advertencia esta
+        abierto. Envia ("mic_live", rms) por la cola; nunca toca widgets."""
+        try:
+            win = int(0.1 * SAMPLE_RATE)
+            t0 = time.time()
+
+            def cb(indata, frames, ti, status):
+                r = float(np.sqrt(np.mean(indata.astype(np.float64) ** 2))) if len(indata) else 0.0
+                self.q.put(("mic_live", r))
+
+            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
+                                blocksize=win, callback=cb):
+                while not getattr(self, "_mic_warn_decided", False) and time.time() - t0 < 60:
+                    time.sleep(0.1)
+        except Exception:
+            log_exc("mic live probe")
+
+    def _mic_warn_open_opt(self):
+        """Boton 'Abrir optimizador' del dialogo de advertencia: cierra la
+        advertencia (detiene el medidor en vivo), abre el optimizador y lanza
+        la optimizacion directamente — corrige el nivel sin cancelar. La
+        grabacion no arranca aqui: al terminar, el usuario pulsa Grabar y el
+        pre-check ya pasa."""
+        self._mic_warn_decided = True
+        try:
+            if getattr(self, "mic_warn_top", None) is not None:
+                try:
+                    if self.mic_warn_top.winfo_exists():
+                        self.mic_warn_top.destroy()
+                except Exception:
+                    pass
+                self.mic_warn_top = None
+        except Exception:
+            pass
+        try:
+            self.lstatus.configure(text="Listo", text_color=C["ok"])
+        except Exception:
+            pass
+        try:
+            self._open_mic_opt()
+            self._mic_opt_start(True)
+        except Exception:
+            log_exc("mic warn open opt")
+
+    def _mic_warn_decide(self, continuar):
+        """Boton del dialogo de advertencia: cierra, detiene el medidor en
+        vivo y arranca la grabacion (True) o cancela restaurando la UI (False)."""
+        self._mic_warn_decided = True
+        try:
+            if getattr(self, "mic_warn_top", None) is not None:
+                try:
+                    if self.mic_warn_top.winfo_exists():
+                        self.mic_warn_top.destroy()
+                except Exception:
+                    pass
+                self.mic_warn_top = None
+        except Exception:
+            pass
+        if continuar:
+            try:
+                self._begin_recording()
+            except Exception:
+                log_exc("begin recording")
+                self.recording = False
+        else:
+            try:
+                self.lstatus.configure(text="Listo", text_color=C["ok"])
+            except Exception:
+                pass
+
+    def _begin_recording(self):
+        """Arranca la grabacion real (invocada por _mic_probe_done tras el
+        pre-check de nivel de entrada). Contiene el cuerpo original de
+        _startrec a partir de self.recording = True."""
         self.recording = True
         self.stop_ev.clear()
+        self._stop_done = False
         self.buffer = []
         self._audio_overflows = 0
         self.vu_clips = 0
@@ -3124,6 +3077,22 @@ CONSEJOS:
         self.vu_rms_hist = []
         self.vu_static = False
         self.vu_rms_hist_full = []
+        # ── Streaming a disco (#4): clases largas no acumulan cientos de MB en
+        # RAM. El audio se vuelca a un archivo temporal .raw (float32) mientras
+        # se graba y en memoria solo quedan las ultimas ~2s para el waveform.
+        # _procsave lee el archivo completo al detener.
+        # Streaming: abrir el temporal. Si falla, revertir el estado para que
+        # la UI no quede colgada en "GRABANDO".
+        try:
+            self._rec_raw_path = os.path.join(tempfile.gettempdir(), f"ac_rec_{int(time.time() * 1000)}.raw")
+            self._rec_fp = open(self._rec_raw_path, "wb")
+        except Exception as e:
+            log_exc("startrec open raw")
+            self.recording = False
+            self._msg("error", "Grabacion", f"No se pudo iniciar: {str(e)[:60]}")
+            return
+        self._rec_bytes = 0
+        self._flusher_thread = None
         if CTK:
             self.vu_bar.set(0)
             self.vu_lbl.configure(text="-∞ dB", text_color=C["muted"])
@@ -3141,11 +3110,16 @@ CONSEJOS:
         self._set_step(1)
 
         self.brec.pack_forget()
-        self.bstop.pack(side="left", padx=(18, 12), pady=16)
+        # before=self.btr: Tk re-inserta el widget al FINAL del orden de pack
+        # por defecto (despues del VU meter, que ahora es ancho) y el boton
+        # 'Detener' quedaba lejos o fuera de la ventana. Empaquetarlo antes de
+        # 'Transcribir' lo coloca exactamente donde estaba el boton rojo.
+        self.bstop.pack(side="left", padx=(18, 12), pady=16, before=self.btr)
         self.lstatus.configure(text="● GRABANDO", text_color=C["err"])
         self.btr.configure(state="disabled")
         self.bts.configure(state="disabled")
         self.bpdf.configure(state="disabled")
+        self.bdocx.configure(state="disabled")
         self.bdocs.configure(state="disabled")
         self._disable_adapt_buttons()
         self._cleartxt()
@@ -3154,17 +3128,41 @@ CONSEJOS:
 
         self.t0rec = time.time()
         self._updtimer()
-        threading.Thread(target=self._recloop, daemon=True).start()
+        try:
+            threading.Thread(target=self._recloop, daemon=True).start()
+            self._flusher_thread = threading.Thread(target=self._rec_flusher, daemon=True)
+            self._flusher_thread.start()
+        except Exception as e:
+            log_exc("startrec threads")
+            self.recording = False
+            try:
+                self._rec_fp.close()
+            except Exception:
+                pass
+            self._msg("error", "Grabacion", f"No se pudo iniciar: {str(e)[:60]}")
+            return
         if MPL: self._updviz()
         self._updvu()
 
     def _stoprec(self):
+        # Idempotente: un doble clic en "Detener" no debe lanzar dos _procsave
+        # en paralelo sobre el mismo archivo temporal.
+        if getattr(self, "_stop_done", False):
+            return
+        self._stop_done = True
         self.recording = False
         self.stop_ev.set()
-        self.bstop.pack_forget()
-        self.brec.pack(side="left", padx=(18, 12), pady=16)
-        self.lstatus.configure(text="Procesando audio profesional...", text_color=C["warn"])
-        self.ltime.configure(text="")
+        # Proteger la UI: si una operacion Tk lanza (p.ej. TclError al cerrar
+        # la ventana en pleno clic), _stop_done no debe quedar en True o la app
+        # quedaria sin poder volver a grabar. Con esto el flujo siempre llega a
+        # un punto de reinicio (camino sin audio o el finally de _procsave).
+        try:
+            self.bstop.pack_forget()
+            self.brec.pack(side="left", padx=(18, 12), pady=16, before=self.btr)
+            self.lstatus.configure(text="Procesando audio profesional...", text_color=C["warn"])
+            self.ltime.configure(text="")
+        except Exception:
+            pass
         # El medidor se apaga (el ticker _updvu deja de re-programarse solo)
         try:
             if CTK:
@@ -3179,8 +3177,31 @@ CONSEJOS:
         except Exception:
             pass
 
-        if not self.buffer:
+        # Esperar a que el flusher termine de volcar el resto ANTES de decidir
+        # si hubo audio: el flusher escribe al archivo y luego incrementa
+        # _rec_bytes, asi que leerlo sin join podia dar un falso "sin audio".
+        if getattr(self, "_flusher_thread", None):
+            try:
+                self._flusher_thread.join(timeout=10)
+            except Exception:
+                pass
+            self._flusher_thread = None
+        # Con streaming, el buffer en memoria puede estar vacio aunque haya
+        # audio (ya volcado a disco): la senal de captura es el archivo .raw.
+        if self._rec_bytes == 0 and not self.buffer:
             self.lstatus.configure(text="No se capturo audio", text_color=C["warn"])
+            try:
+                self._rec_fp.close()
+            except Exception:
+                pass
+            try:
+                if os.path.exists(getattr(self, "_rec_raw_path", "")):
+                    os.remove(self._rec_raw_path)
+                    self._rec_raw_path = ""
+            except Exception:
+                pass
+            # Reabrir el ciclo: sin audio no hay procsave que reinicie el flag.
+            self._stop_done = False
             return
         threading.Thread(target=self._procsave, daemon=True).start()
 
@@ -3188,27 +3209,69 @@ CONSEJOS:
         # El callback de audio debe ser lo mas ligero posible: si tarda mas que
         # la duracion de un bloque, PortAudio pierde muestras y la grabacion
         # sale con estatica y cortes. Solo se copia el bloque a la lista; el
-        # buffer visual se reconstruye en el hilo principal (_updviz).
+        # buffer visual se reconstruye en el hilo principal (_updviz) y un
+        # flusher (daemon) lo va volcando a disco en paralelo.
         def cb(indata, frames, ti, status):
             if status and status.input_overflow:
                 self._audio_overflows += 1
             if self.recording:
-                self.buffer.append(indata.copy())
+                # flatten() devuelve SIEMPRE una copia 1-D (CHUNK_SIZE,).
+                # No usar .ravel() aqui: seria una vista del buffer interno de
+                # PortAudio que se reutiliza en el siguiente bloque y corrompe
+                # el audio; los bloques 2-D (CHUNK_SIZE,1) rompian v[-n:]=recent
+                # en _updviz (broadcast error).
+                self.buffer.append(indata.flatten())
         try:
             with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
                                 blocksize=CHUNK_SIZE, callback=cb):
                 self.stop_ev.wait()
         except Exception as e:
+            log_exc("recloop")
             self.q.put(("status", f"Error: {str(e)[:40]}"))
             self.recording = False
+
+    def _rec_flusher(self):
+        """Vuelca el audio grabado a disco por tramos. En RAM solo se conservan
+        las ultimas ~2s (para el waveform); el resto se escribe como float32
+        crudo al archivo temporal. Al detener, vuelca el resto y cierra."""
+        KEEP = int(np.ceil(VISUAL_SAMPLES / CHUNK_SIZE)) + 4   # ~2s + margen
+        try:
+            while self.recording:
+                time.sleep(1.0)
+                n = len(self.buffer)
+                if n > KEEP:
+                    cut = n - KEEP
+                    arr = np.concatenate(self.buffer[:cut]).flatten()
+                    self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
+                    self._rec_bytes += len(arr) * 4
+                    del self.buffer[:cut]
+            # Vaciado final al detener
+            if self.buffer:
+                arr = np.concatenate(self.buffer).flatten()
+                self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
+                self._rec_bytes += len(arr) * 4
+                self.buffer = []
+        except Exception as e:
+            log_exc("rec_flusher")
+        finally:
+            try:
+                self._rec_fp.close()
+            except Exception:
+                pass
 
     def _updtimer(self):
         if self.recording:
             m, s = divmod(int(time.time() - self.t0rec), 60)
-            self.ltime.configure(text=f"{m:02d}:{s:02d}")
+            tstr = f"{m:02d}:{s:02d}"
+            # El cronometro se muestra junto a GRABANDO (area de controles,
+            # siempre visible) y tambien en el pie si este cabe en pantalla.
+            try:
+                self.ltime.configure(text=tstr)
+            except Exception:
+                pass
             # Indicador REC parpadeante mientras se graba
             dot = "●" if int(time.time() * 2) % 2 == 0 else "○"
-            self.lstatus.configure(text=f"{dot} GRABANDO", text_color=C["err"])
+            self.lstatus.configure(text=f"{dot} GRABANDO · {tstr}", text_color=C["err"])
             self.after(500, self._updtimer)
 
     def _updviz(self):
@@ -3217,7 +3280,9 @@ CONSEJOS:
                 # Solo se usan las ultimas muestras; concatenar todo el buffer
                 # cada fotograma seria O(n) en clases largas.
                 need = int(np.ceil(VISUAL_SAMPLES / CHUNK_SIZE)) + 2
-                recent = np.concatenate(self.buffer[-need:])
+                # Los bloques del callback son 2-D (CHUNK_SIZE, 1): aplanar a 1-D
+                # o v[-n:] = recent lanza broadcast error en los primeros frames.
+                recent = np.concatenate(self.buffer[-need:]).ravel()
                 n = len(recent)
                 if n >= VISUAL_SAMPLES:
                     self.vizbuf = recent[-VISUAL_SAMPLES:]
@@ -3372,12 +3437,30 @@ CONSEJOS:
             save_config(self.config)
 
     def _procsave(self):
+        # Flag activo: _close no debe borrar el temporal mientras este hilo lo
+        # esta leyendo (el finally de aqui lo limpia al terminar, tambien en
+        # error). Sin esto, cerrar justo tras detener daba un audio vacio.
+        # my_raw se captura al INICIO: si el usuario vuelve a grabar antes de
+        # que este finally corra, _rec_raw_path ya apunta a la grabacion nueva
+        # y no debe borrarse (solo se limpia si sigue siendo el nuestro).
+        my_raw = getattr(self, "_rec_raw_path", "")
+        self._proc_active = True
         try:
-            raw = np.concatenate(self.buffer).flatten()
+            # #4 Streaming: el audio completo vive en el archivo temporal
+            # (float32 crudo) que fue volcando el flusher durante la grabacion.
+            raw = np.zeros(0, dtype=np.float32)
+            if my_raw and os.path.exists(my_raw):
+                with open(my_raw, "rb") as f:
+                    raw = np.frombuffer(f.read(), dtype=np.float32).astype(np.float32).flatten()
+            if len(raw) == 0 and self.buffer:
+                raw = np.concatenate(self.buffer).flatten()
+
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dur = len(raw) / SAMPLE_RATE
 
             rp = os.path.join(OUTPUT_DIR, f"clase_{ts}_raw.wav")
             self._savewav(rp, raw)
+            log_info(f"Audio crudo guardado: {rp} ({dur:.1f}s)")
             self.q.put(("log", "Audio original guardado\n"))
 
             self.q.put(("status", "Aplicando pipeline profesional..."))
@@ -3393,6 +3476,25 @@ CONSEJOS:
 
             self.last_path = pp
             self.q.put(("log", "Audio mejorado guardado\n\n"))
+
+            # #8 Metadata por grabacion: JSON junto a los WAV con duracion,
+            # perfil, modelo y metricas de calidad (para el historial e informes).
+            try:
+                meta = {
+                    "fecha": ts,
+                    "duracion_s": round(dur, 2),
+                    "perfil": self.config.get("audio_profile", ""),
+                    "modelo": getattr(self, "last_model", "Whisper"),
+                    "overflows": getattr(self, "_audio_overflows", 0),
+                    "vu_clips": getattr(self, "vu_clips", 0),
+                    "vu_low": getattr(self, "vu_low", 0),
+                    "vu_static": bool(getattr(self, "vu_static", False)),
+                }
+                with open(os.path.join(OUTPUT_DIR, f"clase_{ts}.json"), "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2, ensure_ascii=False)
+            except Exception:
+                log_exc("metadata")
+
             if getattr(self, "_audio_overflows", 0) > 0:
                 self.q.put(("log", f"⚠ Se detectaron {self._audio_overflows} desbordamientos de audio.\n"
                                    "Puede haber cortes o estática. Cierra programas pesados y vuelve a grabar si es necesario.\n"))
@@ -3416,8 +3518,24 @@ CONSEJOS:
                 self.after(500, lambda: self._starttrans(False, auto_adapt=True))
 
         except Exception as e:
+            log_exc("procsave")
             self.q.put(("status", f"Error: {str(e)[:50]}"))
             self.q.put(("log", f"Error: {e}\n"))
+        finally:
+            # Limpiar el temporal SIEMPRE (exito o error): no dejar .raw en
+            # %TEMP% que se acumulen en cierres anormales. Se hace ANTES de
+            # liberar _proc_active: mientras el flag sigue en True, _startrec
+            # no puede arrancar una grabacion nueva, asi que _rec_raw_path
+            # todavia es my_raw y la comparacion siempre acierta (sin race).
+            try:
+                if my_raw and self._rec_raw_path == my_raw and os.path.exists(my_raw):
+                    os.remove(my_raw)
+                    self._rec_raw_path = ""
+            except Exception:
+                pass
+            # Reabrir el ciclo grabar->parar->grabar (exito o error).
+            self._proc_active = False
+            self._stop_done = False
 
     def _savewav(self, path, arr):
         wavfile.write(path, SAMPLE_RATE, np.int16(np.clip(arr, -1.0, 1.0) * 32767))
@@ -3451,6 +3569,7 @@ CONSEJOS:
         self.btr.configure(state="disabled")
         self.bts.configure(state="disabled")
         self.bpdf.configure(state="disabled")
+        self.bdocx.configure(state="disabled")
         self.bdocs.configure(state="disabled")
         self.bcancel.configure(state="normal")
         self._disable_adapt_buttons()
@@ -3463,6 +3582,8 @@ CONSEJOS:
         self._transcribing = True
         self._trans_start = time.time()
         self._trans_msg = "Iniciando transcripción..."
+        self._trans_frac = 0.0      # progreso actual (para ETA del ticker)
+        self._last_partial_len = 0  # throttle del streaming en vivo
         self._trans_ticker()
 
         if mode == "local":
@@ -3491,9 +3612,15 @@ CONSEJOS:
             def progress(current, total, msg):
                 self.q.put(("progress", (current / total, msg)))
 
-            result = self.local_engine.transcribe(path, timestamps, 
+            # Streaming (mejora #3): el motor emite el texto parcial acumulado
+            # por chunk; la UI lo muestra en vivo mientras transcribe.
+            def partial(txt):
+                self.q.put(("partial", txt))
+
+            result = self.local_engine.transcribe(path, True,
                                                    cancel_event=self.stop_ev,
-                                                   progress_callback=progress)
+                                                   progress_callback=progress,
+                                                   partial_callback=partial)
 
             if result.get("cancelled"):
                 self.q.put(("log", "\nCancelado.\n"))
@@ -3501,12 +3628,27 @@ CONSEJOS:
                 self.q.put(("enable", None))
                 return
 
+            # Pre-validacion de silencio (mejora #2): el motor detecto que el
+            # WAV es silencio digital y no gasto tiempo en transcribirlo.
+            if result.get("silence"):
+                self.q.put(("log", f"\n⚠ {result.get('silence_msg', 'Audio silencioso')}\n"))
+                self.q.put(("status", "Audio silencioso"))
+                self.q.put(("enable", None))
+                return
+
             if "error" in result:
                 raise Exception(result["error"])
+
+            omit = result.get("chunks_omitidos", 0)
+            if omit:
+                self.q.put(("log", f"⚠ {omit} segmento(s) de audio no se pudieron "
+                                   "transcribir (whisper falló o se quedó colgado en "
+                                   "ellos); la transcripción es parcial.\n"))
 
             self._process_transcription_result(result, path, timestamps, auto_adapt)
 
         except Exception as e:
+            log_exc("transcripcion local")
             self.q.put(("log", f"\nError: {e}\n"))
             self.q.put(("status", "Error de transcripcion"))
             self.q.put(("trans_err", str(e)))
@@ -3530,6 +3672,12 @@ CONSEJOS:
             if "error" in result:
                 raise Exception(result["error"])
 
+            omit = result.get("chunks_omitidos", 0)
+            if omit:
+                self.q.put(("log", f"⚠ {omit} segmento(s) de audio no se pudieron "
+                                   "transcribir (whisper falló o se quedó colgado en "
+                                   "ellos); la transcripción es parcial.\n"))
+
             self._process_transcription_result(result, path, timestamps, auto_adapt)
 
         except Exception as e:
@@ -3542,6 +3690,7 @@ CONSEJOS:
         text = result.get("text", "")
         self.last_text = text
         self.last_segments = result.get("segments", [])
+        self.last_model = result.get("model", "Whisper")
 
         base = os.path.splitext(os.path.basename(path))[0]
         if timestamps and self.last_segments:
@@ -3561,8 +3710,14 @@ CONSEJOS:
                 f.write(f"Generada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Modelo: {result.get('model', '?')} | {result.get('device', '?')}\n\n" + text)
 
+        # Garantiza que la barra muestre el 100% al terminar, aunque el ultimo
+        # mensaje del motor fuese una estimacion intermedia (ej. 99%).
+        self.q.put(("progress", (1.0, "✓ 100% · Transcripción completada")))
         self.q.put(("trans_done", text))
-        self.q.put(("log", f"\nTranscripcion completada\n{result.get('model','?')} | {result.get('device','?')}\nGuardado\n"))
+        _be = result.get("backend", "")
+        _be_str = f" | {_be}" if _be else ""
+        self.q.put(("log", f"\nTranscripcion completada\n{result.get('model','?')} | "
+                            f"{result.get('device','?')}{_be_str}\nGuardado\n"))
         self.q.put(("status", "Transcripcion lista"))
         self.q.put(("enable", None))
 
@@ -3577,9 +3732,18 @@ CONSEJOS:
             self._msg("warning", "Sin transcripcion", "Primero transcribe un audio.")
             return
 
-        key = self.config.get("gemini_api_key", "")
+        prov = self.config.get("adapt_provider", "gemini")
+        if prov == "openai":
+            key = self.config.get("openai_api_key", "")
+            prov_lbl = "OpenAI"
+            url = "platform.openai.com/api-keys"
+        else:
+            key = self.config.get("gemini_api_key", "")
+            prov_lbl = "Gemini"
+            url = "aistudio.google.com/app/apikey"
         if not key or len(key) < 10:
-            self._msg("warning", "Sin API Key", "Configura tu API Key de Gemini en Configuracion (aistudio.google.com/app/apikey)")
+            self._msg("warning", "Sin API Key",
+                      f"Configura tu API Key de {prov_lbl} en Configuracion ({url})")
             return
 
         info = GeminiAdaptationEngine.TEMPLATES.get(template_name, {})
@@ -3588,6 +3752,10 @@ CONSEJOS:
         self._disable_adapt_buttons()
         self.bcancel.configure(state="normal")
         self.lstatus.configure(text=f"Adaptando: {template_name}...", text_color=C["gemini"])
+        # Barra propia para la adaptacion (evita que salte de 100% a 33%).
+        if CTK: self.pbar.set(0)
+        else: self.pbar['value'] = 0
+        self.lprog.configure(text=f"Adaptando: {template_name}...")
         self._apptxt(f"\nIniciando adaptacion: {template_name}...\n")
 
         threading.Thread(target=self._adapt_worker, args=(self.last_text, template_name), daemon=True).start()
@@ -3597,7 +3765,7 @@ CONSEJOS:
             def progress(current, total, msg):
                 self.q.put(("progress", (current / total, msg)))
 
-            result = self.gemini_engine.adapt(text, template_name, progress_callback=progress)
+            result = self.adapt_engine.adapt(text, template_name, progress_callback=progress)
 
             if self.cancel:
                 self.q.put(("log", "\nCancelado.\n"))
@@ -3617,7 +3785,7 @@ CONSEJOS:
             with open(ap, "w", encoding="utf-8") as f:
                 f.write(f"{icon} {template_name}\n")
                 f.write(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Motor: Gemini {result.get('model', '?')}\n")
+                f.write(f"Motor: {result.get('provider', self.adapt_engine.PROVIDER)} {result.get('model', '?')}\n")
                 f.write("="*60 + "\n\n")
                 f.write(adapted)
 
@@ -3729,6 +3897,66 @@ CONSEJOS:
             t = t.replace(k, v)
         return t.encode("latin-1", "replace").decode("latin-1")
 
+    def _fmt_ts(self, sec):
+        """Segundos -> mm:ss para timestamps de exportacion."""
+        sec = int(sec or 0)
+        m, s = divmod(sec, 60)
+        return f"{m:02d}:{s:02d}"
+
+    def _export_lines(self, max_len=90):
+        """Devuelve (has_ts, lines) para exportar: lineas numeradas con su
+        timestamp. Si hay segmentos (transcripcion 'Con tiempos') cada linea
+        lleva [mm:ss - mm:ss]; si no, el texto se parte en lineas numeradas
+        (has_ts=False)."""
+        segs = getattr(self, "last_segments", []) or []
+        lines = []
+        if segs:
+            for s in segs:
+                txt = str(s.get("text", "") or "").strip()
+                if txt:
+                    lines.append((s.get("start", 0), s.get("end", 0), txt))
+            if lines:
+                return True, lines
+        # Sin timestamps: partir el texto en lineas numeradas
+        t = (self.last_text or "").replace("\r", "").strip()
+        for para in t.split("\n"):
+            para = para.strip()
+            if not para:
+                continue
+            while len(para) > max_len:
+                cut = para.rfind(" ", 0, max_len)
+                if cut < 20:
+                    cut = max_len
+                lines.append((None, None, para[:cut]))
+                para = para[cut:].strip()
+            if para:
+                lines.append((None, None, para))
+        if not lines:
+            lines = [(None, None, t)]
+        return False, lines
+
+    def _pdf_badge(self, pdf, fam, tit_style, full_unicode):
+        """Insignia verde '✓ Revisado por IA' (bloque redondeado, texto
+        blanco) centrada en la pagina. Con fuente latin-1 cae al texto plano."""
+        try:
+            label = "✓ Revisado por IA" if full_unicode else "Revisado por IA"
+            pdf.set_font(fam, tit_style, 10)
+            bw = pdf.get_string_width(label) + 12
+            bx = (210 - bw) / 2
+            by = pdf.get_y()
+            pdf.set_fill_color(59, 130, 246)  # azul acento (paleta activa)
+            try:
+                pdf.rect(bx, by, bw, 8, style="F", round_corners=True, corner_radius=4)
+            except Exception:
+                pdf.rect(bx, by, bw, 8, style="F")
+            pdf.set_xy(bx, by + 1)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(bw, 6, label, align="C")
+            pdf.set_xy(10, by + 10)
+            pdf.set_text_color(30, 30, 30)
+        except Exception:
+            pass
+
     def _pdf(self):
         if not self.last_text:
             self._msg("warning", "Sin transcripcion", "Primero transcribe un audio.")
@@ -3754,29 +3982,226 @@ CONSEJOS:
                 ttf_ok, full_unicode, has_bold = False, False, True
             fam = "Uni" if ttf_ok else "Arial"
             tit_style = "B" if has_bold else ""
+            has_ts, lines = self._export_lines()
+            model = getattr(self, "last_model", "Whisper")
             pdf.add_page()
             pdf.set_auto_page_break(auto=True, margin=15)
             pdf.set_font(fam, tit_style, 16)
-            pdf.cell(0, 10, "Transcripcion de Clase", ln=True, align="C")
-            pdf.ln(5)
+            # Con fuente latin-1 (sin Unicode) el titulo con acento saldria '?'
+            titulo = "Transcripción de Clase" if full_unicode else "Transcripcion de Clase"
+            pdf.cell(0, 10, titulo, ln=True, align="C")
+            pdf.ln(4)
             pdf.set_font(fam, "", 10)
             pdf.set_text_color(80, 80, 80)
             pdf.cell(0, 6, f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
-            pdf.cell(0, 6, "Modelo: Whisper", ln=True)
-            pdf.ln(8)
+            pdf.cell(0, 6, f"Modelo: {model}", ln=True)
+            pdf.ln(4)
+            # Insignia 'Revisado por IA'
+            self._pdf_badge(pdf, fam, tit_style, full_unicode)
             pdf.set_draw_color(200, 200, 200)
             pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(8)
-            pdf.set_font(fam, "", 11)
-            pdf.set_text_color(30, 30, 30)
-            t = self.last_text if full_unicode else self._pdf_fallback_text(self.last_text)
-            pdf.multi_cell(0, 7, t)
+            pdf.ln(6)
+            # Cuerpo: numeracion de lineas + timestamps en gris, texto en oscuro
+            for i, (st, en, txt) in enumerate(lines, 1):
+                if not full_unicode:
+                    txt = self._pdf_fallback_text(txt)
+                prefix = f"[{i:>3}] "
+                if st is not None and en is not None:
+                    prefix += f"[{self._fmt_ts(st)} - {self._fmt_ts(en)}] "
+                # multi_cell deja el cursor X en el margen derecho: se resetea
+                # al margen izquierdo antes de cada linea para que el prefijo
+                # de la siguiente iteracion no se desborde ("Not enough space").
+                pdf.set_x(pdf.l_margin)
+                pdf.set_font(fam, "", 10)
+                pdf.set_text_color(110, 110, 110)
+                pw = pdf.get_string_width(prefix)
+                pdf.cell(pw, 7, prefix)
+                pdf.set_font(fam, "", 11)
+                pdf.set_text_color(30, 30, 30)
+                pdf.multi_cell(0, 7, txt)
             pdf.output(fp)
             self._set_step(4)
             self._msg("info", "PDF Exportado", f"Guardado en:\n{fp}")
             self.q.put(("log", "PDF exportado\n"))
         except Exception as e:
             self._msg("error", "Error PDF", str(e))
+
+    def _docx_p(self, text, bold=False, size=22, color=None, shading=None, center=False, mono=False):
+        """Genera un parrafo WordprocessingML a partir de texto plano.
+        El orden de los hijos de w:pPr debe seguir la secuencia del esquema
+        OOXML (CT_PPr): w:shd va ANTES de w:spacing y w:jc; si no, Word puede
+        marcar el archivo como corrupto o ignorar el sombreado."""
+        from xml.sax.saxutils import escape
+        rpr = ""
+        if bold:
+            rpr += "<w:b/>"
+        if color:
+            rpr += f'<w:color w:val="{color}"/>'
+        if mono:
+            rpr += '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>'
+        rpr += f'<w:sz w:val="{size}"/>'
+        ppr = ""
+        if shading:
+            ppr += f'<w:shd w:val="clear" w:color="auto" w:fill="{shading}"/>'
+        ppr += '<w:spacing w:after="60"/>' if not mono else '<w:spacing w:line="240" w:lineRule="auto"/>'
+        if center:
+            ppr += '<w:jc w:val="center"/>'
+        return ('<w:p><w:pPr>' + ppr + '</w:pPr><w:r><w:rPr>' + rpr +
+                '</w:rPr><w:t xml:space="preserve">' + escape(text) + '</w:t></w:r></w:p>')
+
+    def _docx_heading(self, text, size=24):
+        """Encabezado de seccion del informe (negrita, azul marino academico)."""
+        return self._docx_p(text, bold=True, size=size, color="0A1F44")
+
+    def _parse_adapt_sections(self, text):
+        """Parsea la adaptacion academica de Gemini (formato del prompt
+        ACADEMIC_PROMPT) en secciones: resumen ejecutivo, tesis central,
+        pilares argumentales, evidencia y datos duros, implicacion y registro
+        de filtrado. Soporta dos formatos: encabezado en su propia linea con
+        el cuerpo debajo, o encabezado INLINE ("**Resumen Ejecutivo:** texto").
+        Si no encuentra encabezados conocidos, devuelve una sola seccion con
+        el texto completo."""
+        import re
+        text = text.replace("\r", "")  # robustez ante CRLF
+        HEADERS = [
+            ("Resumen Ejecutivo", r"resumen\s+ejecutivo"),
+            ("Tesis Central", r"tesis\s+central"),
+            ("Pilares Argumentales", r"pilares\s+argumentales"),
+            ("Evidencia y Datos Duros", r"evidencia\s+y\s+datos\s+duros"),
+            ("Implicación o Aplicabilidad", r"implicaci[oó]n\s+o\s+aplicabilidad"),
+            ("Implicación", r"implicaci[oó]n"),
+            ("Registro de Filtrado", r"registro\s+de\s+filtrado"),
+        ]
+        lines = text.split("\n")
+        hits = []
+        for i, ln in enumerate(lines):
+            # Quitar numeracion, viñetas y markdown del inicio; colapsar espacios
+            norm = re.sub(r"^[\s\d.\-:()*#•]+", "", ln).strip(" *#\t")
+            norm = re.sub(r"\s+", " ", norm).lower()
+            for label, pat in HEADERS:
+                # re.match ancla la frase al INICIO de la linea: una frase de
+                # cuerpo como "La tesis central de la clase es..." no debe
+                # crear una seccion falsa a mitad del informe.
+                if re.match(pat, norm):
+                    if not hits or hits[-1][2] != i:
+                        hits.append((label, pat, i))
+                    break
+        if not hits:
+            return [("Análisis Académico", text.strip())]
+        sections = []
+        for k, (label, pat, idx) in enumerate(hits):
+            end = hits[k + 1][2] if k + 1 < len(hits) else len(lines)
+            # Cuerpo inline: lo que queda en la MISMA linea despues del label
+            # ("**Resumen Ejecutivo:** La clase explica...")
+            raw = lines[idx]
+            stripped = re.sub(r"^[\s\d.\-:()*#•]+", "", raw).strip()
+            m = re.search(pat, stripped, flags=re.IGNORECASE)
+            inline = ""
+            if m:
+                inline = re.sub(r"^[\s:.\-*#•]+", "", stripped[m.end():]).strip()
+            body_lines = [x.strip() for x in lines[idx + 1:end] if x.strip()]
+            body = "\n".join(filter(None, [inline] + body_lines)).strip()
+            sections.append((label, body))
+        return sections
+
+    def _export_docx(self):
+        """Exporta la transcripcion a DOCX (Word) con timestamps, numeracion,
+        insignia 'Revisado por IA' y, si existe una adaptacion de Gemini, un
+        INFORME ACADEMICO completo (resumen ejecutivo, tesis, pilares,
+        evidencia e implicacion). Genera el .docx directamente con XML (zip +
+        WordprocessingML) para no depender de python-docx."""
+        if not self.last_text:
+            self._msg("warning", "Sin transcripcion", "Primero transcribe un audio.")
+            return
+
+        # Adaptacion disponible? (mismo patron que _export_docs)
+        adapt_text = ""
+        try:
+            adapt_text = self.adapt_txt.get("1.0", "end").strip()
+        except Exception:
+            pass
+        include_report = False
+        if adapt_text:
+            # Quitar el encabezado que _set_adapt_text anade (icono + titulo + ===)
+            if "=" * 20 in adapt_text:
+                adapt_text = adapt_text.split("=" * 20, 1)[-1].strip()
+            if adapt_text.strip():
+                include_report = self._ask(
+                    "Exportar DOCX",
+                    "Incluir el INFORME ACADEMICO de Gemini (resumen, tesis, pilares, evidencia)?\n\n"
+                    "Si = informe completo + transcripcion\nNo = solo transcripcion")
+
+        fp = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word", "*.docx")],
+                                           initialdir=OUTPUT_DIR,
+                                           initialfile=f"trans_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
+        if not fp: return
+        try:
+            import zipfile
+            has_ts, lines = self._export_lines()
+            model = getattr(self, "last_model", "Whisper")
+            paras = []
+            paras.append(self._docx_p("Transcripción de Clase", bold=True, size=28, center=True))
+            paras.append(self._docx_p(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Modelo: {model}", color="808080", size=20))
+            # Insignia 'Revisado por IA' (verde, texto blanco, centrada)
+            paras.append(self._docx_p("✓ Revisado por IA", bold=True, color="FFFFFF", shading="10B981", size=22, center=True))
+            paras.append(self._docx_p(""))
+
+            # Informe academico de Gemini (si el usuario lo pidio)
+            if include_report:
+                sections = self._parse_adapt_sections(adapt_text)
+                paras.append(self._docx_heading("Informe Académico (Gemini)", size=26))
+                paras.append(self._docx_p(""))
+                for label, body in sections:
+                    if not body.strip():
+                        continue
+                    paras.append(self._docx_p(label, bold=True, size=22, color="B8860B"))
+                    for bl in body.split("\n"):
+                        bl = bl.strip()
+                        if not bl:
+                            continue
+                        bullet = bl if bl.startswith(("•", "-", "*", "1.", "2.", "3.", "4.", "5.")) else "• " + bl
+                        paras.append(self._docx_p(bullet, size=20))
+                    paras.append(self._docx_p(""))
+                paras.append(self._docx_heading("Transcripción Completa", size=26))
+                paras.append(self._docx_p(""))
+
+            # Cuerpo: numeracion + timestamps en monospace
+            for i, (st, en, txt) in enumerate(lines, 1):
+                prefix = f"[{i:>3}]"
+                if st is not None and en is not None:
+                    prefix += f" [{self._fmt_ts(st)} - {self._fmt_ts(en)}]"
+                paras.append(self._docx_p(f"{prefix}  {txt}", mono=True, size=20))
+            doc_xml = (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                '<w:body>' + "".join(paras) +
+                '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>'
+                '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/>'
+                '</w:sectPr></w:body></w:document>'
+            )
+            ct_xml = (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                '<Default Extension="xml" ContentType="application/xml"/>'
+                '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+                '</Types>'
+            )
+            rels_xml = (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+                '</Relationships>'
+            )
+            with zipfile.ZipFile(fp, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("[Content_Types].xml", ct_xml)
+                z.writestr("_rels/.rels", rels_xml)
+                z.writestr("word/document.xml", doc_xml)
+            self._set_step(4)
+            self._msg("info", "DOCX Exportado", f"Guardado en:\n{fp}")
+            self.q.put(("log", "DOCX exportado\n"))
+        except Exception as e:
+            self._msg("error", "Error DOCX", str(e))
 
     def _cancel(self):
         self.cancel = True
@@ -3794,16 +4219,24 @@ CONSEJOS:
         self.lstatus.configure(text="Cancelando...", text_color=C["warn"])
 
     def _trans_ticker(self):
-        """Muestra en vivo el tiempo transcurrido mientras se transcribe, para
-        que el usuario sepa que el proceso avanza (Whisper local tarda mucho
-        por chunk y sin esto parece congelado en 'Iniciando transcripcion')."""
+        """Muestra en vivo el tiempo transcurrido + ETA estimado (mejora #3)
+        mientras se transcribe, para que el usuario sepa que el proceso avanza
+        y cuánto falta (Whisper local tarda por chunk y sin esto parece
+        congelado en 'Iniciando transcripcion')."""
         if not self._transcribing:
             return
         try:
             el = int(time.time() - self._trans_start)
             m, s = divmod(el, 60)
             msg = self._trans_msg or "Transcribiendo..."
-            self.lprog.configure(text=f"{msg}  ·  {m:02d}:{s:02d}")
+            eta = ""
+            frac = getattr(self, "_trans_frac", 0.0) or 0.0
+            if frac > 0.02 and frac < 0.999:
+                # ETA = tiempo transcurrido * fraccion restante / fraccion hecha
+                rem = int(el * (1.0 - frac) / frac)
+                em, es = divmod(rem, 60)
+                eta = f"  ·  ETA ~{em:02d}:{es:02d}"
+            self.lprog.configure(text=f"{msg}  ·  {m:02d}:{s:02d}{eta}")
             self.after(1000, self._trans_ticker)
         except Exception:
             pass
@@ -3824,11 +4257,14 @@ CONSEJOS:
                 elif mt == "enable":
                     self._transcribing = False
                     self._trans_msg = ""
+                    self._trans_frac = 0.0
+                    self._last_partial_len = 0
                     self._clear_live()
                     self.btr.configure(state="normal")
                     self.bts.configure(state="normal")
                     self.bpdf.configure(state="normal")
-                    self.bdocs.configure(state="normal")
+                    self.bdocx.configure(state="normal")
+                    self.bdocs.configure(state="normal" if _gdocs_importable() else "disabled")
                     self.bcancel.configure(state="disabled")
                     self._enable_adapt_buttons()
 
@@ -3858,15 +4294,18 @@ CONSEJOS:
                     self._show_toast("Error de transcripción", kind="err",
                                      retry=lambda: self._starttrans(*_req))
 
-                elif mt == "gemini_test":
-                    ok, msg = d
+                elif mt == "adapt_test":
+                    prov, (ok, msg) = d
                     try:
-                        if hasattr(self, "gemini_test_lbl") and self.gemini_test_lbl.winfo_exists():
-                            self.gemini_test_lbl.configure(
+                        is_g = prov == "gemini"
+                        lbl_attr = "gemini_test_lbl" if is_g else "openai_test_lbl"
+                        btn_attr = "btn_test_gemini" if is_g else "btn_test_openai"
+                        if hasattr(self, lbl_attr) and getattr(self, lbl_attr).winfo_exists():
+                            getattr(self, lbl_attr).configure(
                                 text=("✓ " if ok else "✗ ") + msg,
                                 text_color=C["ok"] if ok else C["err"])
-                        if hasattr(self, "btn_test_gemini") and self.btn_test_gemini.winfo_exists():
-                            self.btn_test_gemini.configure(state="normal", text="Probar Conexión")
+                        if hasattr(self, btn_attr) and getattr(self, btn_attr).winfo_exists():
+                            getattr(self, btn_attr).configure(state="normal", text="Probar Conexión")
                     except Exception:
                         pass
 
@@ -3886,7 +4325,10 @@ CONSEJOS:
                     ok, url = d
                     try:
                         if hasattr(self, "bdocs") and self.bdocs.winfo_exists():
-                            self.bdocs.configure(state="normal", text="🌐 Google Docs")
+                            if _gdocs_importable():
+                                self.bdocs.configure(state="normal", text="🌐 Google Docs")
+                            else:
+                                self.bdocs.configure(state="disabled", text="🌐 Google Docs (no disponible)")
                     except Exception:
                         pass
                     if ok:
@@ -3959,9 +4401,102 @@ CONSEJOS:
                 elif mt == "progress":
                     p, l = d
                     self._trans_msg = l
+                    self._trans_frac = p
                     if CTK: self.pbar.set(p)
                     else: self.pbar['value'] = p * 100
                     self.lprog.configure(text=l)
+
+                elif mt == "partial":
+                    # Streaming (mejora #3): texto parcial acumulado en vivo.
+                    # Throttle: solo redibuja si el texto crecio >= 200 chars
+                    # para no recargar el widget en cada chunk menor.
+                    if not d or not getattr(self, "_transcribing", False):
+                        pass
+                    else:
+                        prev = getattr(self, "_last_partial_len", 0)
+                        if len(d) - prev >= 200:
+                            self._stream_live(d)
+                            self._last_partial_len = len(d)
+
+                elif mt == "mic_probe":
+                    # Resultado del pre-check de microfono (_startrec): si el
+                    # nivel es muy debil, _mic_probe_done abre el dialogo de
+                    # advertencia con medidor en vivo.
+                    self._mic_probe_done(d)
+
+                elif mt == "mic_live":
+                    # Medidor en vivo del dialogo "microfono muy bajo": el
+                    # usuario ve cuanta senal llega al acercarse al micro, y el
+                    # 'Mejor p90' le dice si YA alcanzo la meta.
+                    r = d
+                    try:
+                        if getattr(self, "mic_warn_top", None) is not None and self.mic_warn_top.winfo_exists():
+                            col = C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
+                            if CTK:
+                                self.mic_warn_bar.set(min(1.0, r * 10))
+                                self.mic_warn_bar.configure(progress_color=col)
+                            else:
+                                self.mic_warn_bar['value'] = min(100, r * 1000)
+                            db = 20 * np.log10(max(r, 1e-6))
+                            self.mic_warn_lbl.configure(text=f"{db:+.0f} dB", text_color=col)
+                            self._update_mic_warn_best(r)
+                    except Exception:
+                        pass
+
+                elif mt == "mic_opt_log":
+                    # Optimizador de microfono: linea de progreso en su dialogo
+                    try:
+                        if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
+                            if hasattr(self, "mic_opt_txt"):
+                                self.mic_opt_txt.configure(state="normal")
+                                self.mic_opt_txt.insert("end", d)
+                                self.mic_opt_txt.see("end")
+                                self.mic_opt_txt.configure(state="disabled")
+                    except Exception:
+                        pass
+
+                elif mt == "mic_opt_lvl":
+                    # Nivel en vivo de la prueba del optimizador
+                    r = d
+                    try:
+                        if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
+                            if CTK:
+                                self.mic_opt_lvl_bar.set(min(1.0, r * 10))
+                                self.mic_opt_lvl_bar.configure(
+                                    progress_color=C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"]))
+                            else:
+                                self.mic_opt_lvl_bar['value'] = min(100, r * 1000)
+                            db = 20 * np.log10(max(r, 1e-6))
+                            self.mic_opt_lvl_lbl.configure(text=f"{db:+.0f} dB")
+                    except Exception:
+                        pass
+
+                elif mt == "mic_opt_state":
+                    # Aviso "HABLA AHORA" durante la prueba del optimizador
+                    try:
+                        if getattr(self, "mic_opt_state_lbl", None) is not None and self.mic_opt_state_lbl.winfo_exists():
+                            self.mic_opt_state_lbl.configure(text=d, text_color=C["err"] if d else C["warn"])
+                    except Exception:
+                        pass
+
+                elif mt == "mic_opt_done":
+                    # Fin del diagnostico/optimizacion: re-habilitar botones y veredicto
+                    self._mic_opt_busy = False
+                    try:
+                        if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
+                            for b in ("btn_mic_opt_diag", "btn_mic_opt_apply"):
+                                w = getattr(self, b, None)
+                                if w is not None:
+                                    try:
+                                        if w.winfo_exists():
+                                            w.configure(state="normal")
+                                    except Exception:
+                                        pass
+                            if hasattr(self, "mic_opt_state_lbl") and self.mic_opt_state_lbl.winfo_exists():
+                                col = C["ok"] if d == "OK" else C["err"]
+                                self.mic_opt_state_lbl.configure(text=f"Veredicto: {d}", text_color=col)
+                    except Exception:
+                        pass
 
                 elif mt == "addhist":
                     self._addhist(d)
@@ -4000,6 +4535,26 @@ CONSEJOS:
         self.txt.see("end")
         self.txt.configure(state="disabled")
         self._txt_yscroll(self.txt.yview()[0])
+
+    def _stream_live(self, t):
+        """Muestra el texto parcial en vivo (mejora #3) mientras transcribe:
+        reemplaza el contenido con lo transcrito hasta ahora, en dorado, para
+        que el usuario vea el texto crecer sin esperar al 100%. Al terminar,
+        _settxt() pinta la version final limpia."""
+        try:
+            self.txt.configure(state="normal")
+            self.txt.delete("1.0", "end")
+            hdr = "=" * 55 + "\n  TRANSCRIPCION EN VIVO (parcial):\n" + "=" * 55 + "\n\n"
+            self.txt.insert("end", hdr)
+            self.txt.tag_add("head", "1.0", "end-1c")
+            self.txt.insert("end", t + "\n\n⏳ Terminando...")
+            # Resaltado dorado de todo el bloque en vivo
+            self.txt.tag_add("live", "1.0", "end-1c")
+            self.txt.see("end")
+            self.txt.configure(state="disabled")
+            self._txt_yscroll(self.txt.yview()[0])
+        except Exception:
+            pass
 
     def _settxt(self, t):
         self.txt.configure(state="normal")
@@ -4081,10 +4636,39 @@ CONSEJOS:
         return "break"
 
     def _close(self):
-        if self.recording:
-            self.recording = False
-            self.stop_ev.set()
+        # Cancelar SIEMPRE el evento: cubre tanto la grabacion (recloop) como
+        # una transcripcion en curso (el motor consulta stop_ev por chunk).
+        # Sin esto, cerrar durante la transcripcion dejaba el pool procesando
+        # chunks hasta que el proceso salia (hilos daemon: no cuelga, pero
+        # quemaba CPU/RAM innecesariamente).
+        self.recording = False
         self.cancel = True
+        try:
+            self.stop_ev.set()
+        except Exception:
+            pass
+        # Cierre limpio: unir el flusher si quedo vivo y cerrar el archivo
+        # ANTES de intentar borrar el temporal (en Windows no se puede borrar
+        # un archivo abierto). El flusher cierra el fp en su finally; si el
+        # join expira, se cierra aqui para no filtrar el handle.
+        flusher = getattr(self, "_flusher_thread", None)
+        if flusher is not None and flusher.is_alive():
+            flusher.join(timeout=2.0)
+        try:
+            fp = getattr(self, "_rec_fp", None)
+            if fp is not None and not fp.closed:
+                fp.close()
+        except Exception:
+            pass
+        # Si _procsave esta leyendo el temporal, el lo borra en su finally;
+        # borrarlo aqui le daria un audio vacio (race de cierre rapido).
+        if not getattr(self, "_proc_active", False):
+            try:
+                if os.path.exists(getattr(self, "_rec_raw_path", "")):
+                    os.remove(self._rec_raw_path)
+                    self._rec_raw_path = ""
+            except Exception:
+                pass
         self.destroy()
 
 
@@ -4103,7 +4687,10 @@ if __name__ == "__main__":
             wav_path = sys.argv[i + 1]
             out_path = sys.argv[i + 2] if len(sys.argv) > i + 2 else "selftest_result.txt"
             prog_path = sys.argv[i + 3] if len(sys.argv) > i + 3 else "selftest_progress.txt"
-            eng = LocalWhisperEngine("tiny")
+            # Usa el modelo POR DEFECTO de la config (ahora 'base'): el selftest
+            # del despliegue valida asi el modelo real que recibe el usuario.
+            eng = LocalWhisperEngine(load_config().get("local_model", "base"),
+                                     load_config().get("whisper_language", "auto"))
             msgs = []
             def _prog(frac, total, msg):
                 msgs.append(f"{int(frac/total*100) if total else 0}% | {msg}")

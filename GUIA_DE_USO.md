@@ -91,7 +91,7 @@ La app mejora el audio sola: quita ruido, silencios y hace que la voz se escuche
 
 ## 🎓 Paso 4 — Analizar con Inteligencia Artificial
 
-En el panel **"Adaptación Inteligente (Gemini)"**:
+En el panel **"Adaptación Inteligente"**:
 
 1. Pulsa **"🎓 Análisis Académico Profundo"** → obtienes:
    - **Resumen ejecutivo** (el tema de la clase en un párrafo)
@@ -103,8 +103,10 @@ En el panel **"Adaptación Inteligente (Gemini)"**:
 2. Otras opciones: **📋 Resumen**, **📚 Guía de estudio**, **🎯 Tarjetas**,
    **❓ Preguntas de examen**, **🗺️ Mapa conceptual**, **✨ Texto limpio**, **📅 Cronología**.
 
-> 🔑 Esto necesita la **API Key de Gemini**. Si no la pusiste al inicio:
-> **Configuración → pega tu key → Probar Conexión → debe decir "✓ API Key válida"**.
+> 🔑 Esto necesita una **API Key de IA**. En **Configuración → Proveedor de IA**
+> elige **Gemini** (gratis en aistudio.google.com/app/apikey) u **OpenAI**
+> (platform.openai.com/api-keys), pega tu key → **Probar Conexión** →
+> debe decir "✓ API Key válida". La clave se guarda cifrada en tu PC.
 
 ---
 

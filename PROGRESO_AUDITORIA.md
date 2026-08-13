@@ -15,6 +15,7 @@
 
 ## 🔄 ACTUALIZACIÓN TRAS REINICIO (31 julio 2026, tarde)
 
+- ✅ **SEGUNDO PROVEEDOR DE IA: OPENAI (GPT)** (12 agosto 2026): la "Adaptación Inteligente" ya no es solo Gemini. Nuevo `OpenAIAdaptationEngine` en `audioclass_core.py` (misma interfaz `test_key()`/`adapt()`, reutiliza los TEMPLATES, Chat Completions contra `api.openai.com`, modelos `gpt-4o-mini` (mini) / `gpt-4o` (gpt4o), test de key vía `GET /v1/models`); `GeminiAdaptationEngine` refactorizado internamente (nuevo `_call()` común + `PROVIDER`) **sin cambiar comportamiento** (mismos payloads/URLs/timeouts, resultado añade `provider`). En la GUI: selector **"🤖 Proveedor de IA para el análisis"** (Gemini / OpenAI) en Configuración, secciones de API Key + modelo + "Probar Conexión" por proveedor, estado en el panel de Adaptación ("Gemini listo"/"OpenAI listo"), banner "Siguiente paso" y aviso de "Sin API Key" provider-aware, y `_SECRET_FIELDS` incluye `openai_api_key` (cifrada con DPAPI igual que Gemini). Config: `adapt_provider` (default `gemini`), `openai_api_key`, `openai_model` (default `mini`); configs antiguas reciben los defaults al cargar. Validado: `test_adapt_engines.py` (5 tests offline: contrato común, modelos, sin key, template inválido, fábrica) + smoke del diálogo de config + EXPORT_OK + MEJORAS_V10/LANG_AUTO/WATCHDOG en verde. (Nota: la transcripción LOCAL sigue siendo faster-whisper/openai-whisper — esto es solo para el análisis con IA.)
 - ✅ **Python 3.12.8 instalado correctamente** (solo-usuario en `%LOCALAPPDATA%\Programs\Python\Python312`, con tkinter).
 - ✅ **Dependencias GUI instaladas**: numpy, scipy, sounddevice, customtkinter 6.0.0, matplotlib, requests, fpdf2, noisereduce.
 - ✅ **Smoke test de la app PASADO (3 escenarios, HOME temporal, sin tocar datos reales)**:
@@ -178,3 +179,333 @@ validado desde fuente y dentro del exe):
 - `%TEMP%\audit_py312` — Python 3.12.8 embebido + numpy/scipy/requests (validación sin permisos).
 - `%TEMP%\pyfull.exe` — instalador de Python 3.12.8 descargado (NO instalado; falló por permisos).
 - `%TEMP%\audit_py312\python312._pth` — ajustado con `Lib\site-packages` + `import site` para pip.
+
+---
+
+## 🔧 FIX DEL FALLO/CUELGUE DE LA TRANSCRIPCIÓN LOCAL (7 agosto 2026)
+
+> Reporte del usuario: "sigue fallando la transcripción local, se estacionó en 98% por 3 horas para un audio de 30 segundos".
+
+**Causa raíz CONFIRMADA en `~/AudioClass_Recordings/logs/audioclass.log`** (6 ago 2026):
+la app llamaba a whisper con `verbose=False`, y openai-whisper 20250625 con ese valor
+**ACTIVA una barra tqdm** (`disable=verbose is not False`) que escribe a `sys.stdout`.
+En el exe compilado con `console=False` (o pythonw), `sys.stdout` es `None` y tqdm
+reventaba con `AttributeError: 'NoneType' object has no attribute 'write'` dentro de
+cada worker → la transcripción local fallaba al instante (traceback completo en el log).
+
+**Corregido en `audioclass_core.py` + `audioclass_v91.py`** (defensa en profundidad):
+1. **`verbose=None`** en `_transcribe_with` (camino secuencial y paralelo): desactiva
+   tqdm por completo → whisper ya no escribe a stdout (fix de la causa raíz).
+2. **Sumidero nulo de stdout/stderr** al arrancar la app si están en `None` (exe sin
+   consola): red de seguridad para cualquier otra librería que escriba.
+3. **Chunking corregido**: un audio de 30s generaba 2 chunks (30s + cola de 2s por el
+   overlap), forzando el camino paralelo con un chunk casi vacío propenso a que whisper
+   alucine timestamps. Ahora la cola ≤ overlap se fusiona: 30s → 1 chunk (secuencial).
+4. **Watchdog por chunk** (nuevo `CHUNK_BUDGET_FLOOR=120s`, `max(120, 4×media real)`):
+   si whisper se cuelga (bucle de timestamps sin avanzar en la misma ventana), el chunk
+   se omite y la transcripción continúa con el resto, reportando `chunks_omitidos` y
+   avisando en la UI. Antes podía esperar horas.
+
+**Validado** (todo con `models/tiny.pt`, mismo modelo del bundle):
+- `test_transcribe_headless.py` (NUEVO): simula el exe sin consola (`sys.stdout=None`)
+  — 30s → 1 chunk en **11s**, 100s → 4 workers en **21s**, progreso 100% y monótono, sin
+  AttributeError. Antes el mismo exe moría al instante.
+- `test_watchdog.py` (NUEVO): modelo falso que se cuelga → secuencial omite en 2s y
+  paralelo en 6s (4/4 chunks omitidos), en vez de colgar para siempre.
+- `test_parallel_transcribe.py`: OK (4 chunks, 4 workers, 3s, monótono).
+- Estabilidad A/B/C/E: OK. `py_compile`: OK.
+- Pendiente de voz real: `test_stress_transcripcion.py`, `test_stability.D` y
+  `test_funcional_independiente.py` requieren `prueba_voz_es.wav` (no está en el repo).
+- **Validación adicional (revisión de código)**: tras aplicar el fix de "error en vez
+  de texto vacío cuando TODOS los chunks fallan", se detectó y corrigió un bug de
+  anidamiento que dejaba el procesamiento del texto del camino secuencial como código
+  muerto (la transcripción volvía vacía). Se verificó que el callback final dispara
+  1.0 ("Chunk 1/1 listo"), que el texto se acumula y que los tiempos de chunks que
+  hacen timeout NO contaminan la media móvil del presupuesto (el siguiente presupuesto
+  ya no se infla ×4 del tiempo de cuelgue). Watchdog final: secuencial 2.0s, paralelo
+  4.7s, parcial 2.0s — siempre acotado, nunca horas.
+- **RECOMPILADO Y VALIDADO (7 agosto 2026, tarde)** tras el fix de transcripción:
+  `AudioClass_v91.spec` (onedir, `dist/AudioClass/AudioClass.exe`) y
+  `AudioClass_v91_onefile.spec` (onefile, `dist/AudioClass.exe`) recompilados con
+  PyInstaller 6.21.0. Entregables actualizados: `dist_onefile/AudioClass.exe`,
+  raíz `AudioClass COMPLETA v9.1.exe` y `AudioClass_v9.1_COMPLETA.zip` (mismos 5
+  archivos). Validación con `--selftest-transcribe`:
+  - Grabación real del usuario que falló (clase_20260806_194205, 57.8s): EXIT=0,
+    sin errores, 100%, 2/2 chunks (antes: AttributeError de tqdm). El audio es
+    silencio real (vu_low=687, raw rms=0.0014) → "SIN TEXTO" es el resultado
+    correcto (la app ya advertía del micro).
+  - Voz TTS real de Windows (22.4s → 1 chunk, camino secuencial, el caso "30s"
+    del usuario): EXIT=0, texto extraído, 100%. Ambos exes.
+  - Smoke GUI: ambos exes vivos a los 25s (vía subprocess; el arranque con
+    `&` de Git Bash no es fiable para exes GUI).
+
+## 🌐 Idioma 'auto' en la transcripción (whisper)
+
+**Problema**: la app forzaba `language="es"` en whisper; audio en otro idioma
+(o TTS en inglés) salía distorsionado en español.
+
+**Cambios**:
+- `audioclass_core.py` `LocalWhisperEngine(language=...)`: `"auto"` detecta el
+  idioma con `whisper.detect_language` sobre el primer chunk y lo aplica a
+  TODOS los chunks (consistencia); un código ISO (es/en/pt/...) lo fuerza.
+  Prompts académicos bilingües PROMPT_ES/PROMPT_EN según el idioma efectivo.
+  El resultado incluye `language`. En el camino paralelo el probe solo se
+  adquiere en modo auto y con fallback a 'es' si la carga/detección falla.
+- `audioclass_v91.py`: config `whisper_language="auto"` (default), selector
+  "Idioma" en la barra de configuración, `_chlang()` actualiza ambos motores.
+- `audioclass_colab_server_v91.py`: endpoints `/transcribe` y `/transcribe_ts`
+  aceptan `language` (Form, default "es"); `"auto"` → `language=None` sin
+  prompt (whisper detecta solo). `CloudColabEngine` envía el idioma.
+- `test_lang_auto.py` (5 casos con whisper falso: es forzado, auto→en,
+  auto→es, paralelo consistente, cloud envía language). Suite existente
+  (headless, paralelo, estabilidad, watchdog) pasa; selftest OK.
+
+**Validación**: `test_lang_auto.py` LANG_AUTO_ALL_OK · py_compile OK ·
+regresiones OK.
+
+## 🚀 Iteración v10 — 3 mejoras aplicadas y validadas (7-ago)
+
+**#1 faster-whisper (backend dual):** LocalWhisperEngine auto-elige faster-whisper
+(CTranslate2 int8, cpu_threads=1) en desarrollo y openai-whisper en el exe frozen
+(los .pt empaquetados no los lee CTranslate2). Deteccion de idioma via info.language,
+transcripcion via generador de segmentos, cache sin deepcopy (CTranslate2 no lo
+soporta), torch.set_num_threads solo openai. Medido: base 7 min -> 28.6s faster vs
+51s openai (1.8x); tiny cache caliente 6.5s vs 8.9s (1.4x). benchmark_results.json
+registra backend. NOTA: el exe compilado sigue con openai hasta recompilar con
+faster-whisper + modelos CT2 empaquetados.
+
+**#2 Pre-validacion de silencio:** audio_silence_stats + is_digital_silence
+(>50% muestras en cero o RMS < 5e-5, min 1s) antes de chunking; devuelve
+{silence: True, silence_msg} en <1s sin gastar transcripcion. La UI muestra aviso
+claro. El caso real (77% ceros) se detecta; voz TTS (rms 0.098) no da falso
+positivo. Flag check_silence para tests.
+
+**#3 Streaming + ETA:** partial_callback opcional emite texto parcial acumulado
+(secuencial por chunk, paralelo en orden por indice); la UI lo muestra en vivo con
+resaltado dorado (throttle 200 chars) y el ticker calcula ETA desde el progreso.
+El log final muestra el backend usado.
+
+**Tests:** nuevo test_mejoras_v10.py (6 casos: silencio, no-falso-positivo,
+streaming secuencial/paralelo, faster secuencial/paralelo con SKIP si falta
+faster-whisper). Tests existentes forzados a backend="openai" (parchean whisper/
+miden deepcopies del camino del exe). requirements_v91.txt incluye faster-whisper.
+Suite completa verde: HEADLESS, LANG_AUTO, WATCHDOG, PARALLEL, STABILITY,
+FUNCIONAL, STRESS, E2E, EXPORT, UI_SMOKE, UI_V91, BENCH (base 15.7% < tiny 30.0%).
+
+## 📦 Iteración v10 — exes recompilados con faster-whisper + modelos CT2 (7-ago)
+
+- models_ct2/tiny y models_ct2/base descargados (formato CT2: model.bin +
+  tokenizer.json + vocabulary.txt + config.json) y empaquetados en ambos specs.
+- Core: _pick_backend en frozen elige faster si existe models_ct2/ en el bundle
+  y faster_whisper importa (fallback openai para bundles antiguos solo .pt);
+  _resolve_model resuelve el directorio CT2 del modelo empaquetado.
+- Specs: +faster_whisper, ctranslate2, av, tokenizers, tqdm, onnxruntime en
+  hiddenimports; collect_data_files('faster_whisper') (silero VAD); modelos CT2
+  en datas. Se mantiene whisper/torch como respaldo.
+- Compilado con PyInstaller 6.21.0. Validado:
+  * dist/AudioClass/AudioClass.exe (onedir, 52 MB exe) --selftest: exit=0,
+    45s/138.5s (0.32x) con texto real es; TTS en ingles -> 'en' correcto en 14s.
+  * dist_onefile/AudioClass.exe (onefile, 599 MB) --selftest: exit=0, texto real,
+    100% progreso. GUI viva a los 30s.
+  * Bundle autosuficiente verificado: faster_whisper 1.2.1 + ctranslate2.dll +
+    _ext.pyd cargan desde _internal y WhisperModel(models_ct2/tiny) carga OK.
+  * El speedup real en el exe: 45s vs 84s del exe anterior (1.87x).
+- Entregables actualizados: AudioClass COMPLETA v9.1.exe (599 MB, 23:15),
+  AudioClass_v9.1_COMPLETA.zip (597 MB).
+- Regresion: MEJORAS_V10_OK, py_compile OK.
+
+## ✅ Auditoría de uso, esfuerzo y control (2026-08-08)
+
+- Suite de control (13 tests): PY_OK, LANG_AUTO_ALL_OK, WATCHDOG_ALL_OK (3/3 anti-cuelgue),
+  EXPORT_OK, SMOKE_OK, HEADLESS_ALL_OK (30s→5.8s, 100s→19.6s, monótono a 100%),
+  ALL_OK (paralelo), MEJORAS_V10_OK (faster 3.9s/chunk, streaming con partials),
+  STABILITY_ALL_OK, E2E_TRANS_OK, INDEPENDENT_FUNC_OK, BENCH_MODELS_OK
+  (base 15.7% < tiny 30.0%, std 0.00), UI_V91 TODO OK. Gemini: solo falta API key (ambiental).
+- Estrés: test_stress_transcripcion.py detectó falso positivo de memoria (media 105 MB > 100).
+  Diagnóstico de 7 corridas: objetos Whisper vivos CONSTANTES en 8 (6 cache + plantilla +
+  eng.model), 0 hooks de kv_cache, deltas sin tendencia (+262→+132→+66→-44→+189→+51,
+  media últimos 3 = 65 MB) → NO hay fuga real; es el high-water mark del allocator + el
+  working set deliberado de la cache (6 modelos ~2.1-2.3 GB) + recorte de Windows.
+  Fix del test: señal determinista = conteo de objetos Whisper vivos (tope 12) + umbral RSS
+  robusto 150 MB. Re-ejecutado COMPLETO: STRESS_ALL_OK — A (ráfaga 23s/21s/23s sin
+  degradación), THREADS_OK (delta 1), MEM_OK (objetos 8, deltas 49.8 MB), B (cancelación a
+  mitad + rearranque inmediato: 2ª completó 15 chunks en 27s, puerta anti-congestión
+  reabierta, sin deadlock), C (3 cancelaciones rápidas + motor sigue sirviendo).
+- Uso real: exe onefile "AudioClass COMPLETA v9.1.exe" --selftest-transcribe
+  prueba_voz_es.wav (139s) → exit=0, 71s total (incluye descompresión onefile), texto real
+  en español, progreso 100% (5/5 chunks).
+- Micrófono: AHORA FUNCIONA. diag_mic: SNR 142.5x, 43.1% tramas con voz, 10.6% ceros
+  (antes 77-100% = silencio digital). Dispositivo: "Varios micrófonos (Realtek)". Captura
+  real guardada en AudioClass_Recordings (5s → 3s tras VAD, sin clipping). Transcrita en
+  2.5s (faster, 1 chunk); texto vacío correcto (solo ambiente, sin alucinar) y sin falso
+  positivo de silencio (silence=None).
+
+## 🎨 Mejora de UI: paleta cómoda + medidor de sonido + layout adaptativo (2026-08-08)
+
+- Paletas rediseñadas (cómodas para los ojos): oscuro pasa del navy saturado
+  #0A1F44/#12264E a pizarra suave #171D26/#1E2632 con dorado cálido #D9B64C y
+  rojo/verde/ámbar apagados; claro usa gris cálido #F4F6F8 con dorado oscuro
+  #A87F1E de buen contraste. Sin rojos neón ni azul saturado.
+- Nuevo tema CTk custom (assets/audioclass_theme.json) basado en gold: elimina el
+  azul por defecto de CTk (#1F6AA5) que se filtraba en option menus/sliders y el
+  fondo gris del root (antes el vacío inferior quedaba NEGRO).
+- Ventana adaptativa: antes fijaba 1450x1050 y en pantallas <= 1050px el editor
+  de transcripción quedaba recortado fuera de vista con un vacío negro abajo.
+  Ahora se ajusta a la pantalla (máx 1450x1050, margen de barra de tareas) y en
+  pantallas < 950px entra en modo compacto (oculta el banner "Siguiente paso" y
+  el subtítulo de Modo Fácil, encoge waveform y editor).
+- Fila Gemini flexa (weight) y el resto conserva su tamaño: la transcripción
+  NUNCA colapsa ni se sale de pantalla (fix del gutter que pedía 24 líneas).
+- Cronómetro de grabación ahora visible junto a "● GRABANDO" en la zona de
+  controles (antes solo en el pie, que puede quedar cortado en pantallas pequeñas).
+- Medidor de sonido VERIFICADO en vivo durante grabación real: barra 0.0→0.164
+  reaccionando al micro, dB en vivo (-50), aviso "⚡ Bajo", mini-histórico
+  llenándose (10 lecturas), visible en pantalla. 
+- Hovers literales que no seguían la paleta -> claves C[...] (siguen al tema).
+- Regresión: PY_OK, SMOKE_OK, UI_V91 TODO OK, GRABAR_PRUEBA TODO OK, toggle de
+  tema claro/oscuro OK. Capturas: dark #171D26/#D9B64C, light #F4F6F8/#A87F1E,
+  vacío negro 64% -> 5-10% (solo texto).
+- Escala azul-gris-blanco-negro: acento AZUL #3B82F6 (oscuro) / #2563EB (claro),
+  fondos pizarra #0F172A/#1E293B (oscuro) y #F1F5F9/#FFFFFF (claro), ROJO
+  reservado a GRABACIÓN (botón grabar, REC, detener, errores #E5484D/#DC2626).
+  0 px dorados en capturas. Cian #22D3EE para éxito, ámbar para avisos.
+- Botón de grabar ahora ROJO (C["mic"]) con pulso rojo #F87171.
+- Ventana cabalga por completo en pantallas pequeñas: h = sh-70 (descuenta barra
+  de tareas + título), centrada; antes el borde inferior quedaba FUERA de
+  pantalla (captura negra). Verificado: 1366x698 en (8,46), 0% negro en todas
+  las bandas, pie (footer) visible, transcripción 5 líneas + scroll.
+- Tema CTk actualizado a la escala azul (assets/audioclass_theme.json).
+- Regresión: PY_OK, SMOKE_OK.
+- Recompilado el exe onefile con la escala azul (2 builds): el primero reveló que
+  el spec NO empaquetaba assets/audioclass_theme.json (el exe habría usado el tema
+  'gold' de respaldo en los widgets CTk por defecto). Añadido a ambos specs y
+  recompilado. Verificado en el CArchive: assets/audioclass_theme.json presente.
+- Validación --selftest-transcribe del exe nuevo: exit=0, 73s para 139s de audio,
+  texto real en español, progreso 100% (5/5 chunks).
+- Entregables actualizados: AudioClass COMPLETA v9.1.exe (599.740.452 B, 20:48),
+  AudioClass_v9.1_COMPLETA.zip.
+
+## 🎨 WCAG AA + exe recompilado (2026-08-08 21:10)
+
+- **Contraste WCAG AA**: paleta azul auditada y corregida — todas las combinaciones texto/fondo ≥4.5:1 (texto normal) y ≥3:1 (UI). Acento dark `#60A5FA`, borde `#64748B`, rojo grabación `#F07171` (dark) / `#DC2626` (light). Helper `_btn_fg` elige texto blanco o negro por luminancia por botón.
+- **Tema CTk actualizado** (`assets/audioclass_theme.json`) con los valores WCAG.
+- **Exe recompilado** (build 3) con los fixes de contraste + tema JSON empaquetado. Validado: `--selftest-transcribe tts_clase.wav` → **exit=0, 47s** (139s de audio), texto real en español, progreso 100% (5/5 chunks).
+- **Zip actualizado**: `AudioClass_v9.1_COMPLETA.zip` contiene el exe nuevo (599.742.039 bytes, 21:06).
+- **Regresión**: PY_OK · SMOKE_OK · UI_V91 OK. App relanzada (PID 15964) con la paleta corregida.
+- **Nota**: el selftest requiere el argumento del audio (`--selftest-transcribe audio.wav [salida] [progreso]`); sin él termina con exit=1 por IndexError (esperado).
+
+## 🔤 Letras negras en tema claro (2026-08-08 21:40)
+
+- **Tema claro: texto `#000000` (negro puro)** en paleta, tema CTk (labels, entries, checkboxes, switches, radio, option/combo, textbox, dropdown) y `_btn_text_color`.
+- **`_btn_text_color` reescrito**: elige negro o blanco por el que da MAYOR contraste (antes umbral fijo elegía mal en azules medios: `#0F172A` sobre `#2563EB` = 3.45:1 < 4.5). Ahora: botones azules → texto blanco (5.17:1 claro / 8.26:1 oscuro), botones claros → negro (17:1).
+- **Matriz final**: claro texto/bg 19.17:1, texto/card 21:1; oscuro 14.5:1 / 11.9:1. Todos los botones ≥5.17:1. WCAG AA ✓.
+- **Verificado**: JSON válido (19 widgets), CTk carga `#000000` en claro y `#FFFFFF` en botones, widgets tk vivos con `fg=#000000` (12). SMOKE_OK · UI_V91 OK · PY_OK.
+- App relanzada (PID 1236) con el cambio. **Nota**: el exe sigue con la versión anterior (recompilar = ~8-20 min).
+
+## 📦 Exe recompilado con letras negras + fix contraste (2026-08-08 22:20)
+
+- **Build onefile** (PyInstaller 6.21.0, ~9 min) con el código de letras negras (`#000000` en claro) y `_btn_text_color` que maximiza contraste.
+- **Nota de proceso**: el build salió a `dist/` (no pasé `--distpath dist_onefile`); copiado manual a `dist_onefile/` y a la raíz.
+- **Verificado en el CArchive**: `assets\audioclass_theme.json` presente (entrada 9375581) junto con modelos CT2 y faster_whisper.
+- **Validado**: `--selftest-transcribe tts_clase.wav` → **exit=0, 82s** (139s de audio), texto real en español, progreso 100% (5/5 chunks).
+- **Zip actualizado**: `AudioClass_v9.1_COMPLETA.zip` (597.381.300 bytes) con el exe nuevo (599.775.732 bytes, 22:14).
+
+## 🎨 Unificación de colores de texto en dark (2026-08-08 22:45)
+
+**Auditoría**: 80 widgets de texto en dark → 38 fuera de paleta. Corregidos:
+- **Botones sin fg_color** (Transcribir, Configuración, PDF/DOCX, etc.): usaban el azul por defecto de CTk con texto gray60 en disabled (contraste ~2:1). Ahora default `C["button"]`, texto por contraste y disabled `C["muted"]` (7:1).
+- **Historial del sidebar**: `#FFFFFF` fijo → `text_color=C["text"]` y registrado para re-tematizar (con restauración de selección en `_apply_palette`).
+- **Nombre de la app** en header: `#FFFFFF` literal → `C["text"]`.
+- **Toasts**: hex literales fijos → paleta dark/light (ok/err/warn) con contraste.
+- **Pulso de grabación**: `#F87171` literal → `C["err"]`.
+- **Pills de pasos del wizard**: texto `C["bg"]` → `C["header"]` (mismo valor en dark, con contraste en light).
+- **Tema CTk**: CTkFrame default gray → card de paleta; text_color_disabled gray → muted.
+- **Quedan 10 widgets "fuera"**: son el texto CALCULADO de contraste de `_btn_text_color` (negro sobre azul acento 8.3:1, blanco sobre gris botón 10.4:1, negro sobre rojo 7.3:1) — intencional WCAG, no literales.
+- Regresión: PY_OK · SMOKE_OK · UI_V91 OK. App relanzada.
+
+## 🧪 Test de contraste WCAG AA automático (2026-08-08 23:15)
+
+- **Nuevo `test_wcag_contrast.py`** + **`wcag_check.py`** (módulo reutilizable): instancia la app, camina los widgets (tk + CTk con resolución de 'transparent' por padres y pares [light,dark]), y FALLA si algún texto baja de 4.5:1 o UI de 3:1 en dark/light. Los disabled quedan exentos (WCAG 1.4.3).
+- **Integrado en `test_ui_smoke.py`**: tras el toggle de tema, valida contraste en ambos temas y sale con error si hay violación.
+- **Violaciones reales encontradas y corregidas**:
+  - Header en claro: labels con `text` (#000) sobre header oscuro (1.44:1) → nuevo color `head_text` (claro en ambos temas) con `theme_key` forzado (en dark `head_text`==`text`, `_palette_key` mapeaba mal).
+  - `_chmode` sobrescribía `lconn` con `muted` → `head_text`.
+  - CTkSegmentedButton (modo Local/Cloud): texto único para segmentos activo/inactivo → imposible WCAG en ambos → reemplazado por radiobuttons (texto propio por opción, re-tematizados).
+  - Tema JSON: CTkButton dark texto blanco sobre acento (2.54:1) → `#0F172A` (7.02:1); segmented `#0F172A` en dark; CTkRadioButton claves `border_width_checked/unchecked` añadidas.
+  - Pills futuras del wizard: `muted` (4.04:1) → `text`.
+- **Resultado: 0 violaciones en dark y light** (87 pares evaluados por tema, 22 disabled exentos). Regresión: SMOKE_OK · UI_V91 OK · WCAG OK. App relanzada.
+
+## 🪟 Contraste WCAG en diálogos secundarios (2026-08-08 23:40)
+
+- `wcag_check.collect_all_pairs()` recoge pares del root + todos los CTkToplevel (config, mic, guía).
+- `test_wcag_contrast.py` ahora abre cada diálogo y lo valida en dark y light:
+  - **Config**: 147 pares/tema. 2 violaciones del CTkSegmentedButton del modelo Gemini ('pro'/'flash') → reemplazado por radiobuttons (texto por opción, re-tematizados). 0 violaciones.
+  - **Mic**: 103 pares/tema, 0 violaciones.
+  - **Guía**: 91 pares/tema, 0 violaciones.
+- Regresión: PY_OK · SMOKE_OK · UI_V91 OK · WCAG OK (main + 3 diálogos, dark y light). App relanzada.
+
+## ✅ Contraste WCAG verificado en el exe empaquetado (2026-08-08 23:15)
+
+- **Recompilado** el exe onefile (22:48) con todos los fixes de contraste. `run_wcag_on_exe.py` valida el CÓDIGO EMPAQUETADO:
+  1. Extrae `audioclass_v91` (bytecode marshal) del CArchive y verifica las marcas de los fixes: head_text, theme_key, RadioButton (Local/Cloud + Flash/Pro) → 4/4 OK.
+  2. Extrae `assets/audioclass_theme.json` del exe → **idéntico al fuente** (radio border_width_unchecked, button text_color_disabled, segmented dark, frame card).
+  3. **Ejecuta la validación de contraste sobre el módulo del exe**: dark 0, light 0, config dark 0, config light 0 violaciones (87-149 pares, 22 disabled exentos).
+- **RESULTADO: TODO OK — los fixes de contraste sobreviven al empaquetado.**
+- Selftest del exe nuevo: exit=0, 77s, texto real, 100% (5/5 chunks). Zip actualizado.
+
+## 🎛️ Micrófono: pre-check p90 + medidor en vivo, optimizador integrado y validación en el pipeline (2026-08-09)
+
+### 1. Pre-check de nivel ANTES de grabar (evita clases grabadas en silencio)
+- `_startrec` lanza `_mic_probe_worker` (~1.5 s en hilo, UI sigue respondiendo): mide el **p90 del RMS** con la misma métrica calibrada de `optimizar_mic.py` (SILENCIO < 0.005 · DÉBIL < 0.03 · voz real ≥ 0.03; umbral de aviso `MIC_PROBE_P90_MIN = 0.01`).
+- `_mic_probe_done` (vía la cola `_poll`): si p90 < umbral abre el diálogo de advertencia; si no, graba directo. El cuerpo original de arranque quedó en `_begin_recording`. Idempotencia cubierta con `_mic_probe_pending` (doble clic durante la sonda).
+- Nunca bloquea: si el stream falla (None) se graba igual (el flujo real ya reporta errores de dispositivo).
+
+### 2. Diálogo de advertencia "🎤 Micrófono muy bajo" (p90 + medidor en vivo)
+- Muestra **p90 medido + dB**, barra de nivel **en vivo** (`_mic_live_probe_worker`, RMS por bloque ~100 ms vía la cola), **"Mejor p90" running max** (ventana ~3 s, meta 0.03 / -30 dB, no baja aunque la voz baje) y **mini-gráfico de tendencia de ~10 s** (`_draw_mic_warn_trend`: barras por ventana de 0.5 s con línea punteada de la meta; arranca con el p90 del pre-check como punto de partida).
+- Botones: **🎙️ Continuar grabando** (arranca `_begin_recording`), **Cancelar** (restaura UI) y **⚡ Abrir optimizador (corregir nivel ahora)** → cierra la advertencia y lanza el optimizador con "Aplicar optimización" directamente (`_mic_warn_open_opt` → `_open_mic_opt()` + `_mic_opt_start(True)`), sin cancelar el flujo.
+
+### 3. Optimizador de micrófono INTEGRADO en la app (sin salir de la ventana)
+- Botón "🎛️ Optimizar micrófono" en el pie de página → diálogo con log del tema, medidor en vivo y dos acciones: **🔍 Diagnosticar** (dispositivo por defecto, nivel %, mute, permiso de privacidad, todos los mics, prueba de 4 s con piso/p90/peak/veredicto) y **⚡ Aplicar optimización** (nivel 100 % + desmute + boost del nodo hasta +30 dB con fallback seguro si el driver no lo expone; prueba antes/después con resumen xN).
+- `optimizar_mic.py` refactorizado: se extrajo **`measure_signal(dur, on_level=None)`** (sin prints; callback por bloque de 100 ms para el medidor en vivo); el CLI `test_signal` quedó como wrapper. Acceso CoreAudio con **ctypes puro** (comtypes 1.4.16 estaba roto para interfaces custom en este entorno).
+- Empaguetado: el módulo `optimizar_mic` viaja en el PYZ del exe (verificado: las 7 funciones presentes).
+
+### 4. Validación (todo verde)
+- **`test_mic_probe_warning.py`** (35 checks): diálogo abre con nivel débil, graba directo con OK/None, Continuar/Cancelar, live worker (alto/bajo/stream roto), running max, tendencia (ventanas 0.5 s, cap 20 barras).
+- **`test_mic_opt_integration.py`** (27 checks): `measure_signal` con stream fake, flujo del worker de diagnóstico y de aplicar con módulo `optimizar_mic` fake.
+- **`test_wcag_contrast.py`** extendido a los diálogos nuevos: opt 150 pares, **micwarn 154 pares**, 0 violaciones en dark y light (más config/mic/guía/wizard).
+- **`test_mic_warn_on_exe.py`** (19 checks): EJECUTA el bytecode empaquetado del exe y verifica el flujo completo — fuerza p90 0.003 → abre diálogo → voz fuerte → barra verde (#22D3EE) + "Meta alcanzada" + tendencia dibujada → la voz baja y el running max no cae → Continuar arranca la grabación real (GRABANDO + botón Detener) → nivel OK graba directo sin diálogo.
+- **Pipeline**: `desplegar_produccion.sh` ahora ejecuta `test_mic_warn_on_exe.py` en la fase [5] (validación del exe) tras cada build; timeouts por fase (tests Tk flaky: el smoke cancelaba el toast a mitad de animación — ahora se cancela la animación antes del chequeo WCAG).
+
+### 5. Estado final de entregables (2026-08-09)
+- **`AudioClass COMPLETA v9.1.exe`** — 599.804.130 bytes (build 14:51 con pre-check + diálogo p90/medidor/Mejor p90/tendencia + optimizador + botón Abrir optimizador).
+- **`AudioClass_v9.1_COMPLETA.zip`** — 597.412.736 bytes, SHA-256 del exe == entregable raíz (verificado en cada despliegue).
+- Despliegue completo: **21 OK · 0 fallos** · selftest exit=0 en 57 s para 139 s de audio (0.41×) · WCAG empaquetado TODO OK · marcas del diálogo/tendencia verificadas dentro del binario.
+
+## 🚀 Preparación de lanzamiento (2026-08-09): default base, onedir, firma, Colab y validación 2.ª máquina
+
+### 1. ✅ Default del modelo local → `base`
+- `DEFAULT_CONFIG["local_model"] = "base"` (+ fallbacks de config/UI y `LocalWhisperEngine(model_name="base")`). Respaldo del benchmark reproducible: WER base 15.7 % vs tiny 30.0 %; CT2 base ya va empaquetado y `_resolve_model` lo resuelve offline.
+- El **selftest del exe ahora usa el modelo por defecto de la config** (antes forzaba tiny): el despliegue valida así el modelo real que recibe el usuario. Verificado en el bytecode del exe: `local_model default: base`.
+
+### 2. ✅ Build onedir (carpeta, arranque rápido) como alternativa
+- Nueva opción **`--with-onedir`** en `desplegar_produccion.sh`: compila `AudioClass_v91.spec` → `dist/AudioClass/` (exe 52 MB), corre su selftest (exit=0 en **41 s**, texto + 100 %) y genera **`AudioClass_v9.1_ONEDIR.zip`** (601 MB, carpeta completa + LEEME.txt). Arranque casi instantáneo vs 30-60 s del onefile. El onefile sigue siendo el entregable principal.
+
+### 3. ✅ Firma de código: documentado (FIRMAR.md)
+- La firma real requiere un **certificado OV/EV de pago** (DigiCert/Sectigo/GlobalSign ~200-400 USD/año); un self-signed NO elimina SmartScreen (peor: editor desconocido).
+- **`FIRMAR.md`**: pasos `signtool sign /fd SHA256 /tr timestamp /td SHA256 /sha1 …` + verificación, y nota de firmar tras cada build ANTES del zip.
+- Mientras no haya certificado ya está cubierto: **LEEME.txt dentro del zip** (Más información → Ejecutar de todos modos; Propiedades → Desbloquear) y sección SmartScreen en `CHECKLIST_INSTALACION.md` (con nota de NO desactivar SmartScreen).
+
+### 4. ✅ Servidor Colab endurecido (`audioclass_colab_server_v91.py`)
+- **API key**: ya no hay clave fija trivial `"audioclass"`. Se lee de la env `COLAB_API_KEY` (≥16 caracteres, no trivial — se rechaza y regenera si no cumple) o se **genera una aleatoria fuerte** (`secrets.token_urlsafe(24)`) que el arranque imprime para copiarla a la app. `verify_key` usa `hmac.compare_digest` (tiempo constante).
+- **ngrok**: `ngrok.connect(8000)` con try/except y mensaje claro (falta authtoken → servidor local `http://localhost:8000`).
+- Lógica de la clave validada: aleatoria ≥16, trivial rechazada, env fuerte aceptada. py_compile OK.
+
+### 5. ✅ Validación en segunda máquina: script turnkey
+- **`validar_segunda_maquina.py`**: mide el mic (p90 → OK/DÉBIL/SILENCIO), graba ~12 s de voz real con auto-detección, ejecuta `--selftest-transcribe` del exe y comprueba exit=0, texto no vacío ni alucinado, progreso 100 % y tiempo ≤ 2× la duración. `--quick` solo mide el mic. Probado localmente (mic midió p90 0.0497 → OK).
+- Paso final pendiente (requiere una máquina con mic sano y una persona hablando): correrlo allí y confirmar el flujo advertencia → acercarse → verde → Continuar → transcripción.
+
+### 📦 Entregables actualizados (build 16:20-16:29)
+- `AudioClass COMPLETA v9.1.exe` — 599.805.837 bytes (default base + gate Google Docs + todo lo anterior).
+- `AudioClass_v9.1_COMPLETA.zip` — 597.414.895 bytes (exe + LEEME.txt).
+- `AudioClass_v9.1_ONEDIR.zip` — 601.467.543 bytes (carpeta onedir + LEEME.txt).
+- Despliegue con `--with-onedir`: **26 OK · 0 fallos** · selftest onefile 63 s / onedir 41 s para 139 s de audio.
