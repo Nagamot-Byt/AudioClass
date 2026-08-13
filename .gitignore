@@ -30,6 +30,13 @@ Second Version/
 "AudioClass (1).spec"
 "AudioClass (2).spec"
 
+# ── Secrets por variables de entorno (red de seguridad: la app guarda las
+# claves cifradas con DPAPI en audioclass_config.json, no en .env, pero si
+# alguien introduce un .env, que JAMAS se suba al repo) ──
+.env
+.env.*
+!.env.example
+
 # ── Artefactos y temporales ──
 *.log
 *_smoke_out.txt

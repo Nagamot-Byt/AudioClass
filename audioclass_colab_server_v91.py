@@ -140,6 +140,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Headers de seguridad básicos en TODAS las respuestas (endurecimiento web):
+#   X-Content-Type-Options: nosniff          -> no adivinar el tipo MIME
+#   X-Frame-Options: DENY                    -> no incrustar en iframes (clickjacking)
+#   Referrer-Policy: strict-origin-when-cross-origin -> no filtrar la URL origen
+#   Content-Security-Policy: default-src 'none'      -> API JSON pura, sin HTML/JS
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    )
+    return resp
+
 def verify_key(key: str):
     # Comparacion en tiempo constante (evita medir la longitud con timing).
     if not hmac.compare_digest(str(key or ""), API_KEY):

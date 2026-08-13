@@ -48,8 +48,14 @@ class HTTPException(Exception):
 class _FastAPI:
     def __init__(self, *a, **k):
         self.handlers = {}
+        self.middleware_fn = None
     def add_middleware(self, *a, **k):
         pass
+    def middleware(self, mtype):
+        def deco(fn):
+            self.middleware_fn = fn
+            return fn
+        return deco
     def _route(self, method, path):
         def deco(fn):
             self.handlers[(method, path)] = fn
@@ -165,6 +171,25 @@ finally:
 src = (SPEC).read_text(encoding="utf-8")
 check("ninguna URL generada con &key=", "&key=" not in src,
       "aun se genera una URL con la clave")
+
+# ── 6. Headers de seguridad en TODAS las respuestas ───────────────────────────
+class FakeResponse:
+    def __init__(self):
+        self.headers = {}
+
+async def _call_next(_req):
+    return FakeResponse()
+
+async def _check_headers():
+    resp = await mod.app.middleware_fn(FakeRequest(), _call_next)
+    for h, v in (("X-Content-Type-Options", "nosniff"),
+                 ("X-Frame-Options", "DENY"),
+                 ("Referrer-Policy", "strict-origin-when-cross-origin"),
+                 ("Content-Security-Policy",
+                  "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")):
+        check(f"header {h}", resp.headers.get(h) == v, f"{resp.headers.get(h)!r}")
+
+run(_check_headers())
 
 # ── Limpieza ──────────────────────────────────────────────────────────────────
 outside.unlink(missing_ok=True)

@@ -228,11 +228,14 @@ Investigación de las principales causas de litigio contra software generado con
 | `audioclass_v91.py` | Diálogo de Configuración: sección "🔒 Privacidad" con checkbox de consentimiento | 12.7 |
 | `audioclass_v91.py` | Disclaimers en exportaciones PDF/DOCX/GDocs y en archivos de adaptación | 12.2, 12.5 |
 | `audioclass_colab_server_v91.py` | Anti path-traversal en `/download`; key por header `X-API-Key`; URLs sin clave; rate-limit 30/min; tope de subida 200 MB; `pip install` bajo `__main__`; disclaimer en PDF generado | 12.8 |
+| `audioclass_colab_server_v91.py` | **Headers de seguridad en todas las respuestas** (middleware): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy: default-src 'none'` | 12.8 |
+| `.gitignore` | `.env*` ignorado como red de seguridad (la app guarda las claves cifradas con DPAPI en `audioclass_config.json`, mejor que `.env` para escritorio) | 12.7, 12.8 |
+| `.github/workflows/release.yml` (nuevo) | Post-producción automática: tag `v*` → compila onefile+onedir en CI, selftests + WCAG empaquetados, zips con documentos legales y GitHub Release (rollback por tags) | 12.8 |
 | `TERCEROS_Y_LICENCIAS.md` (nuevo) | Atribución de todas las dependencias (MIT/BSD/Apache/LGPL-dinámico) | 12.4 |
 | `LICENCIA.txt` (nuevo) | Licencia explícita de la app (MIT, plantilla) | 12.4 |
-| `test_colab_server_security.py` (nuevo) | 7 tests del endurecimiento (path traversal, header, rate-limit, tope, URLs sin clave) | 12.8 |
+| `test_colab_server_security.py` | 11 tests del endurecimiento (path traversal, header, rate-limit, tope, URLs sin clave, **4 headers de seguridad**) | 12.8 |
 
-**Validación:** `test_colab_server_security.py` **7/7** · `test_privacy_consent.py` **9/9** (incluye el gate de grabación) · `test_wcag_contrast` TODO OK (nuevos widgets pasan contraste) · `ADAPT_ENGINES_ALL_OK` · `EXPORT_OK` · `SMOKE_OK` · `py_compile` OK.
+**Validación:** `test_colab_server_security.py` **11/11** · `test_privacy_consent.py` **9/9** (incluye el gate de grabación) · `test_wcag_contrast` TODO OK (nuevos widgets pasan contraste) · `ADAPT_ENGINES_ALL_OK` · `EXPORT_OK` · `SMOKE_OK` · `py_compile` OK.
 
 ## 14. Pendiente (P1/P2, recomendado)
 

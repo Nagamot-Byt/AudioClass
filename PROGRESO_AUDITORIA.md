@@ -510,3 +510,45 @@ FUNCIONAL, STRESS, E2E, EXPORT, UI_SMOKE, UI_V91, BENCH (base 15.7% < tiny 30.0%
 - `AudioClass_v9.1_COMPLETA.zip` — 597.414.895 bytes (exe + LEEME.txt).
 - `AudioClass_v9.1_ONEDIR.zip` — 601.467.543 bytes (carpeta onedir + LEEME.txt).
 - Despliegue con `--with-onedir`: **26 OK · 0 fallos** · selftest onefile 63 s / onedir 41 s para 139 s de audio.
+
+---
+
+## 🎨 Checklist "vibe profesional" aplicado a escritorio (13 agosto 2026)
+
+Checklist genérica (Tailwind/.env/Vercel, pensada para web) mapeada y aplicada a
+la app de escritorio:
+
+### 1. Diseño profesional → unificación del sistema de diseño
+- **Unificación tipográfica completa** (`audioclass_v91.py`): el asistente de
+  primer arranque, Configuración, guía, prueba/optimizador de micrófono y VU
+  meter usaban `"Segoe UI"` hardcodeado (125 usos) mientras la UI principal ya
+  usaba los tokens del sistema. Ahora todo usa `self.FH` (serif para títulos,
+  31 usos) y `self.FB` (sans para cuerpo/controles, 117 usos). Botones y pills
+  quedan en sans a propósito (la guía reserva la serif para encabezados).
+- Validado: `test_ui_v91` TODO OK, `test_ui_smoke` SMOKE_OK, WCAG TODO OK,
+  `test_privacy_consent` 9/9 (el asistente toca el código tipografiado).
+
+### 2. Seguridad básica → ya superada + headers de seguridad
+- **Secrets**: la app NO usa `.env` porque es mejor: las API keys van cifradas
+  con DPAPI ligadas al usuario de Windows (`_encrypt_secret`). Añadido `.env*`
+  a `.gitignore` como red de seguridad por si alguien introduce uno.
+- **Sanitización de entradas**: ya hecha (anti path-traversal, `compare_digest`,
+  rate-limit, tope de subida 200 MB).
+- **Headers de seguridad** (lo que faltaba del checklist): middleware en el
+  servidor Colab que añade a TODAS las respuestas `X-Content-Type-Options:
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy:
+  strict-origin-when-cross-origin` y `Content-Security-Policy: default-src
+  'none'`. Test ampliado a **11/11** (`test_colab_server_security.py`).
+
+### 3. Post-producción → GitHub Actions Release (equivalente desktop de Vercel/Render)
+- **`.github/workflows/release.yml`** (nuevo): al pushear un tag `v*` compila en
+  un runner Windows los DOS ejecutables (onefile + onedir) reutilizando
+  `desplegar_produccion.sh --with-onedir --skip-benchmark` (descarga antes los
+  modelos whisper/CT2 que exige el preflight), corre selftests + WCAG
+  empaquetados, sube artifacts y crea un **GitHub Release** con los zips y los
+  documentos legales. Rollback = desplegar un tag anterior. Disparo manual
+  incluido (build + artifacts sin release).
+
+**Archivos tocados:** `audioclass_v91.py`, `audioclass_colab_server_v91.py`,
+`test_colab_server_security.py`, `.gitignore`, `.github/workflows/release.yml`
+(nuevo), `GUIA_DE_ESTILO.md`, `REVISION_CYBERSECURIDAD.md`.

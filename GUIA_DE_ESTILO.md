@@ -42,6 +42,13 @@ dorado `#D4AF37` sobre azul marino ≈ 7:1; `#B8860B` sobre blanco ≈ 4.6:1).
 Las fuentes DejaVu empaquetadas (`assets/DejaVuSans.ttf` y `-Bold`) se registran con
 `ctk.FontManager.load_font` para acentos y glifos unicode en el .exe.
 
+> **Unificación (13 ago 2026):** la jerarquía tipográfica se aplica en TODA la
+> interfaz — asistente de primer arranque, diálogo de Configuración, guía,
+> prueba/optimizador de micrófono y VU meter usan ahora los tokens del sistema
+> (`self.FH` para títulos serif, `self.FB` para cuerpo/controles sans). Ya no
+> hay fuentes hardcodeadas sueltas; `_btn`, `_lbl` y `_entry` resuelven el
+> default desde el mismo sistema de diseño.
+
 ## 3. Espaciado (cuadrícula de 8 px)
 
 Margen exterior de tarjetas: **22 px** · padding interno de tarjetas: **18 px** · gutter entre

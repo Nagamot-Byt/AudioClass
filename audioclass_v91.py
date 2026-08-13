@@ -579,14 +579,14 @@ class App(ctk.CTk if CTK else ctk.Tk):
                 if key:
                     self._themeable.append(("label", w, key))
             return w
-        w = ctk.Label(p, text=txt, font=kw.get("font", ("Segoe UI", 11)), bg=C["card"], fg=C["text"])
+        w = ctk.Label(p, text=txt, font=kw.get("font", (self.FB, 11)), bg=C["card"], fg=C["text"])
         self._themeable.append(("label", w, self._palette_key(C["text"])))
         return w
 
     def _entry(self, p, **kw):
         if CTK:
             return ctk.CTkEntry(p, **kw)
-        return ctk.Entry(p, font=kw.get("font", ("Segoe UI", 11)), bg=C["card"], fg=C["text"], insertbackground=C["text"])
+        return ctk.Entry(p, font=kw.get("font", (self.FB, 11)), bg=C["card"], fg=C["text"], insertbackground=C["text"])
 
     def _palette_key(self, value, forced=None):
         """Convierte un color a su CLAVE de paleta activa (primera coincidencia).
@@ -635,9 +635,9 @@ class App(ctk.CTk if CTK else ctk.Tk):
         bar = self._frame(_wparent, fg_color=C["card"], border_width=1, border_color=C["border"])
         bar.grid(row=1, column=0, sticky="ew")
         self._lbl(bar, "No te preocupes: todo esto se puede cambiar después en Configuración.",
-                  font=("Segoe UI", 11), text_color=C["muted"]).pack(side="left", padx=(24, 12), pady=14)
+                  font=(self.FB, 11), text_color=C["muted"]).pack(side="left", padx=(24, 12), pady=14)
         self._btn(bar, "🚀 Comenzar a usar AudioClass", self._finish_wizard,
-                  width=320, height=48, font=("Segoe UI", 16, "bold"),
+                  width=320, height=48, font=(self.FB, 16, "bold"),
                   fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="right", padx=(12, 24), pady=10)
 
         # Cuerpo DESPLAZABLE (CTK: CTkScrollableFrame; fallback tk: Canvas+Scrollbar)
@@ -668,25 +668,25 @@ class App(ctk.CTk if CTK else ctk.Tk):
         body.grid_columnconfigure(0, weight=1)
 
         self._lbl(body, "🎓 ¡Bienvenido a AudioClass!",
-                  font=("Segoe UI", 30, "bold"), text_color=C["accent"]).pack(pady=(34, 8))
+                  font=(self.FH, 30, "bold"), text_color=C["accent"]).pack(pady=(34, 8))
         self._lbl(body, "Configuración rápida — 2 minutos y listo",
-                  font=("Segoe UI", 14), text_color=C["muted"]).pack(pady=(0, 22))
+                  font=(self.FB, 14), text_color=C["muted"]).pack(pady=(0, 22))
 
         f0 = self._frame(body, fg_color=C["card"])
         f0.pack(fill="x", padx=100, pady=10)
         self._lbl(f0, "1. ¿Cómo quieres empezar?",
-                  font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+                  font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self._lbl(f0, "La vista simple oculta las opciones avanzadas y muestra solo lo esencial.",
-                  font=("Segoe UI", 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
+                  font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
 
         self.wiz_level = ctk.StringVar(value="nuevo")
         if CTK:
             ctk.CTkRadioButton(f0, text="🧭 Soy nuevo — vista simple (recomendado)",
                                variable=self.wiz_level, value="nuevo",
-                               font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
+                               font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
             ctk.CTkRadioButton(f0, text="⚙️ Soy avanzado — quiero ver todas las opciones",
                                variable=self.wiz_level, value="avanzado",
-                               font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
+                               font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
         else:
             ctk.Radiobutton(f0, text="Soy nuevo - vista simple (recomendado)",
                            variable=self.wiz_level, value="nuevo",
@@ -698,16 +698,16 @@ class App(ctk.CTk if CTK else ctk.Tk):
         f1 = self._frame(body, fg_color=C["card"])
         f1.pack(fill="x", padx=100, pady=10)
         self._lbl(f1, "2. ¿Dónde vas a grabar tus clases?", 
-                  font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+                  font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self._lbl(f1, "Elige el que mejor se parezca a tu sala. AudioClass ajusta el audio solo.",
-                  font=("Segoe UI", 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
+                  font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
 
         self.wiz_profile = ctk.StringVar(value="Clase Universitaria")
         for name, info in AudioPipeline.PROFILES.items():
             if CTK:
                 ctk.CTkRadioButton(f1, text=f"{name} — {info['desc']}", 
                                    variable=self.wiz_profile, value=name,
-                                   font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
+                                   font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
             else:
                 ctk.Radiobutton(f1, text=f"{name} — {info['desc']}", 
                                variable=self.wiz_profile, value=name,
@@ -716,10 +716,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
         f2 = self._frame(body, fg_color=C["card"])
         f2.pack(fill="x", padx=100, pady=10)
         self._lbl(f2, "3. ¿Tienes una API Key de IA? (opcional, pero recomendada)",
-                  font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+                  font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self._lbl(f2, "Sirve para analizar tus clases con IA (resúmenes, guías, exámenes). Gemini es gratis: aistudio.google.com/app/apikey. También puedes usar OpenAI (GPT): añade su clave luego en Configuración.",
-                  font=("Segoe UI", 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
-        self.wiz_gemini = self._entry(f2, width=500, font=("Segoe UI", 12), placeholder_text="Pega aquí tu API Key de Gemini (puedes dejarlo vacío y añadirla luego)...")
+                  font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
+        self.wiz_gemini = self._entry(f2, width=500, font=(self.FB, 12), placeholder_text="Pega aquí tu API Key de Gemini (puedes dejarlo vacío y añadirla luego)...")
         self.wiz_gemini.pack(anchor="w", padx=20, pady=(0, 15))
         try:
             # Pulsar Enter en el campo de la API Key tambien continua
@@ -730,15 +730,15 @@ class App(ctk.CTk if CTK else ctk.Tk):
         f3 = self._frame(body, fg_color=C["card"])
         f3.pack(fill="x", padx=100, pady=10)
         self._lbl(f3, "4. ¿Cómo quieres transcribir?",
-                  font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+                  font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self.wiz_mode = ctk.StringVar(value="local")
         if CTK:
             ctk.CTkRadioButton(f3, text="🖥️ En mi computadora (rápido y sin internet)", 
                                variable=self.wiz_mode, value="local",
-                               font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
+                               font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
             ctk.CTkRadioButton(f3, text="☁️ En Google Colab (mayor precisión, necesita internet)", 
                                variable=self.wiz_mode, value="cloud",
-                               font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
+                               font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
         else:
             ctk.Radiobutton(f3, text="En mi computadora", variable=self.wiz_mode, value="local",
                            bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=5)
@@ -748,7 +748,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         f4 = self._frame(body, fg_color=C["card"])
         f4.pack(fill="x", padx=100, pady=10)
         self._lbl(f4, "5. Privacidad y consentimiento",
-                  font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+                  font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self._lbl(f4, "🔒 Tus grabaciones y transcripciones se procesan en TU equipo y se guardan en tu carpeta. "
                       "Si activas el análisis con IA (Gemini u OpenAI), el TEXTO de la transcripción se envía "
                       "a los servidores de Google u OpenAI (que lo retienen temporalmente: Gemini hasta 55 días, "
@@ -757,14 +757,14 @@ class App(ctk.CTk if CTK else ctk.Tk):
                       "obtener su consentimiento cuando la ley lo exija. El contenido generado por IA es "
                       "informativo y puede contener errores: no lo uses como consejo médico, legal o profesional "
                       "ni como acta oficial.",
-                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=760, justify="left").pack(anchor="w", padx=20, pady=(0, 8))
+                  font=(self.FB, 11), text_color=C["muted"], wraplength=760, justify="left").pack(anchor="w", padx=20, pady=(0, 8))
         self.wiz_priv_ack = ctk.BooleanVar(value=False)
         self.wiz_ia_consent = ctk.BooleanVar(value=False)
         if CTK:
             ctk.CTkCheckBox(f4, text="✅ He leído y acepto el aviso de privacidad",
-                            variable=self.wiz_priv_ack, font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
+                            variable=self.wiz_priv_ack, font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
             ctk.CTkCheckBox(f4, text="🤖 Permito el análisis con IA (el texto de mis transcripciones se enviará a Gemini/OpenAI — puedo desactivarlo en Configuración)",
-                            variable=self.wiz_ia_consent, font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
+                            variable=self.wiz_ia_consent, font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
         else:
             ctk.Checkbutton(f4, text="He leido y acepto el aviso de privacidad",
                             variable=self.wiz_priv_ack, bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=4)
@@ -1023,7 +1023,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         vu.pack(side="left", padx=(0, 14), pady=12)
         vu_row1 = self._frame(vu, fg_color="transparent")
         vu_row1.pack(side="top", fill="x")
-        self._lbl(vu_row1, "🎚", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6))
+        self._lbl(vu_row1, "🎚", font=(self.FB, 12)).pack(side="left", padx=(0, 6))
         if CTK:
             self.vu_bar = ctk.CTkProgressBar(vu_row1, width=170, height=10, corner_radius=5,
                                              fg_color=C["button"], progress_color=C["accent"])
@@ -1033,11 +1033,11 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self.vu_bar = ttk.Progressbar(vu_row1, mode="determinate", length=150, maximum=100)
             self.vu_bar['value'] = 0
         self.vu_bar.pack(side="left", padx=(0, 8))
-        self.vu_lbl = self._lbl(vu_row1, "-∞ dB", font=("Segoe UI", 10), text_color=C["muted"])
+        self.vu_lbl = self._lbl(vu_row1, "-∞ dB", font=(self.FB, 10), text_color=C["muted"])
         self.vu_lbl.pack(side="left")
         # Aviso de "audio sin voz" (estatica) mientras se graba: aparece cuando
         # el nivel es constante sin variacion (ruido de fondo / micro danado)
-        self.vu_warn = self._lbl(vu_row1, "", font=("Segoe UI", 10), text_color=C["warn"])
+        self.vu_warn = self._lbl(vu_row1, "", font=(self.FB, 10), text_color=C["warn"])
         self.vu_warn.pack(side="left", padx=(8, 0))
 
         # Fila 2: historico visual de los ultimos 10 s (125 lecturas de 80 ms)
@@ -1047,7 +1047,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.vu_hist = tk.Canvas(vu_row2, width=160, height=24, bg=C["card"],
                                  highlightthickness=1, highlightbackground=C["border"])
         self.vu_hist.pack(side="left", padx=(0, 6))
-        self._lbl(vu_row2, "Sens:", font=("Segoe UI", 9), text_color=C["muted"]).pack(side="left", padx=(0, 4))
+        self._lbl(vu_row2, "Sens:", font=(self.FB, 9), text_color=C["muted"]).pack(side="left", padx=(0, 4))
         if CTK:
             self.vu_sens_slider = ctk.CTkSlider(vu_row2, from_=0.05, to=0.60,
                                                 number_of_steps=11, command=self._vu_sens_changed,
@@ -1058,12 +1058,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
                                             command=self._vu_sens_changed, length=110)
         self.vu_sens_slider.set(self.vu_sens)
         self.vu_sens_slider.pack(side="left", padx=(0, 6))
-        self.vu_sens_val = self._lbl(vu_row2, f"{self.vu_sens:.2f}", font=("Segoe UI", 9), text_color=C["muted"])
+        self.vu_sens_val = self._lbl(vu_row2, f"{self.vu_sens:.2f}", font=(self.FB, 9), text_color=C["muted"])
         self.vu_sens_val.pack(side="left")
 
         # El estado se muestra fuera del frame de configuracion para que siga
         # visible en Modo Guiado (que oculta Perfil/Motor/Modelo)
-        self.lstatus = self._lbl(ct, "Listo para grabar", font=("Segoe UI", 12), text_color=C["muted"])
+        self.lstatus = self._lbl(ct, "Listo para grabar", font=(self.FB, 12), text_color=C["muted"])
         self.lstatus.pack(side="right", padx=(20, 18), pady=10)
 
         cfg = self._frame(mn, fg_color=C["card"])
@@ -1076,20 +1076,20 @@ class App(ctk.CTk if CTK else ctk.Tk):
         cfg_sum = self._frame(mn, fg_color=C["card"])
         cfg_sum.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 4))
         self.cfg_sum_frame = cfg_sum
-        self.lcfg_sum = self._lbl(cfg_sum, "", font=("Segoe UI", 11), text_color=C["muted"])
+        self.lcfg_sum = self._lbl(cfg_sum, "", font=(self.FB, 11), text_color=C["muted"])
         self.lcfg_sum.pack(anchor="w", padx=18, pady=3)
 
-        self._lbl(cfg, "Perfil:", font=("Segoe UI", 12)).pack(side="left", padx=(18, 6), pady=12)
+        self._lbl(cfg, "Perfil:", font=(self.FB, 12)).pack(side="left", padx=(18, 6), pady=12)
         self.profile_var = ctk.StringVar(value=self.config.get("audio_profile", "Clase Universitaria"))
         if CTK:
             self.cmb_profile = ctk.CTkOptionMenu(cfg, values=list(AudioPipeline.PROFILES.keys()),
                                                   variable=self.profile_var, width=180,
-                                                  command=self._chprofile, font=("Segoe UI", 11))
+                                                  command=self._chprofile, font=(self.FB, 11))
         else:
             self.cmb_profile = ctk.OptionMenu(cfg, self.profile_var, *AudioPipeline.PROFILES.keys(), command=self._chprofile)
         self.cmb_profile.pack(side="left", padx=(0, 20), pady=12)
 
-        self._lbl(cfg, "Motor:", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6), pady=12)
+        self._lbl(cfg, "Motor:", font=(self.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
         self.mode_var = ctk.StringVar(value=self.config.get("transcription_mode", "local"))
         if CTK:
             # Radiobuttons en vez de segmented: CTkSegmentedButton aplica UN
@@ -1099,7 +1099,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             # tienen texto propio por opcion y cumplen WCAG en ambos estados.
             for val, lbl in (("local", "Local"), ("cloud", "Cloud")):
                 rb = ctk.CTkRadioButton(cfg, text=lbl, variable=self.mode_var, value=val,
-                                        command=self._chmode, font=("Segoe UI", 11),
+                                        command=self._chmode, font=(self.FB, 11),
                                         text_color=C["text"])
                 rb.pack(side="left", padx=(0, 14), pady=12)
                 # Registrar para re-tematizar el texto al cambiar claro/oscuro
@@ -1107,37 +1107,37 @@ class App(ctk.CTk if CTK else ctk.Tk):
         else:
             ctk.OptionMenu(cfg, self.mode_var, "local", "cloud", command=self._chmode).pack(side="left", padx=(0, 20), pady=12)
 
-        self._lbl(cfg, "Modelo:", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6), pady=12)
+        self._lbl(cfg, "Modelo:", font=(self.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
         self.model_var = ctk.StringVar(value=self.config.get("local_model", "base"))
         if CTK:
             self.cmb_model = ctk.CTkOptionMenu(cfg, values=["tiny", "base", "small"], 
                                                 variable=self.model_var, width=90,
-                                                command=self._chlocalmodel, font=("Segoe UI", 11))
+                                                command=self._chlocalmodel, font=(self.FB, 11))
         else:
             self.cmb_model = ctk.OptionMenu(cfg, self.model_var, "tiny", "base", "small", command=self._chlocalmodel)
         self.cmb_model.pack(side="left", padx=(0, 20), pady=12)
 
         # Idioma de whisper: "auto" detecta el idioma del audio (para
         # grabaciones en otro idioma o TTS); un codigo ISO lo fuerza.
-        self._lbl(cfg, "Idioma:", font=("Segoe UI", 12)).pack(side="left", padx=(0, 6), pady=12)
+        self._lbl(cfg, "Idioma:", font=(self.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
         self.lang_var = ctk.StringVar(value=self.config.get("whisper_language", "auto"))
         _langs = ["auto", "es", "en", "pt", "fr", "de", "it"]
         if CTK:
             self.cmb_lang = ctk.CTkOptionMenu(cfg, values=_langs, variable=self.lang_var,
-                                              width=82, command=self._chlang, font=("Segoe UI", 11))
+                                              width=82, command=self._chlang, font=(self.FB, 11))
         else:
             self.cmb_lang = ctk.OptionMenu(cfg, self.lang_var, *_langs, command=self._chlang)
         self.cmb_lang.pack(side="left", padx=(0, 20), pady=12)
 
         self.fast_var = ctk.BooleanVar(value=False)
         if CTK:
-            ctk.CTkSwitch(cfg, text="Rapido", variable=self.fast_var, font=("Segoe UI", 11)).pack(side="left", padx=(0, 15), pady=12)
+            ctk.CTkSwitch(cfg, text="Rapido", variable=self.fast_var, font=(self.FB, 11)).pack(side="left", padx=(0, 15), pady=12)
         else:
             ctk.Checkbutton(cfg, text="Rapido", variable=self.fast_var, bg=C["card"], fg=C["text"]).pack(side="left", padx=(0, 15), pady=12)
 
         self.vad_var = ctk.BooleanVar(value=True)
         if CTK:
-            ctk.CTkSwitch(cfg, text="VAD", variable=self.vad_var, font=("Segoe UI", 11),
+            ctk.CTkSwitch(cfg, text="VAD", variable=self.vad_var, font=(self.FB, 11),
                           progress_color=C["ok"]).pack(side="left", padx=(0, 15), pady=12)
         else:
             ctk.Checkbutton(cfg, text="VAD", variable=self.vad_var, bg=C["card"], fg=C["text"]).pack(side="left", padx=(0, 15), pady=12)
@@ -1147,7 +1147,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         pr = self._frame(mn, fg_color=C["card"])
         pr.grid(row=4, column=0, sticky="ew", padx=22, pady=(0, 10))
-        self.lprog = self._lbl(pr, "", font=("Segoe UI", 11), text_color=C["muted"])
+        self.lprog = self._lbl(pr, "", font=(self.FB, 11), text_color=C["muted"])
         self.lprog.pack(anchor="w", padx=18, pady=(12, 4))
         if CTK:
             self.pbar = ctk.CTkProgressBar(pr, height=12, corner_radius=6,
@@ -1188,12 +1188,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         ah = self._frame(adapt, fg_color="transparent")
         ah.grid(row=0, column=0, sticky="ew", padx=18, pady=(12, 6))
-        self._lbl(ah, "Adaptacion Inteligente", font=("Segoe UI", 14, "bold"), text_color=C["gemini"]).pack(side="left")
-        self.ladapt = self._lbl(ah, "Sin API Key", font=("Segoe UI", 11), text_color=C["warn"])
+        self._lbl(ah, "Adaptacion Inteligente", font=(self.FH, 14, "bold"), text_color=C["gemini"]).pack(side="left")
+        self.ladapt = self._lbl(ah, "Sin API Key", font=(self.FB, 11), text_color=C["warn"])
         self.ladapt.pack(side="right")
 
         self._lbl(adapt, "Selecciona que quieres generar a partir de la transcripcion:",
-                   font=("Segoe UI", 11), text_color=C["muted"]).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 8))
+                   font=(self.FB, 11), text_color=C["muted"]).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 8))
 
         btn_frame = self._frame(adapt, fg_color="transparent")
         btn_frame.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 10))
@@ -1212,7 +1212,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             if idx > 0:  # la primera plantilla (Analisis Academico Profundo) es la esencial
                 self.adapt_extra.append(b)
 
-        self.adapt_info = self._lbl(adapt, "", font=("Segoe UI", 10), text_color=C["muted"])
+        self.adapt_info = self._lbl(adapt, "", font=(self.FB, 10), text_color=C["muted"])
         self.adapt_info.grid(row=3, column=0, sticky="w", padx=18, pady=(0, 4))
 
         if CTK:
@@ -1285,12 +1285,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self._lbl(ft, "Espacio ▶  ·  Ctrl+R grabar  ·  Ctrl+S guardar  ·  Ctrl+E exportar  ·  F1 ayuda",
                   font=(self.FB, 10), text_color=C["muted"]).pack(side="right", padx=(0, 18))
         self._btn(ftl, "📂 Abrir carpeta", self._open_output_dir, width=130, height=28,
-                  font=("Segoe UI", 10)).pack(side="left", padx=(12, 0))
+                  font=(self.FB, 10)).pack(side="left", padx=(12, 0))
         self._btn(ftl, "🎤 Probar micrófono", self._test_mic, width=170, height=28,
-                  font=("Segoe UI", 10), fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="left", padx=(8, 0))
+                  font=(self.FB, 10), fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="left", padx=(8, 0))
         self._btn(ftl, "🎛️ Optimizar micrófono", self._open_mic_opt, width=195, height=28,
-                  font=("Segoe UI", 10), fg_color=C["ok"], hover_color=C["ok"]).pack(side="left", padx=(8, 0))
-        self.ltime = self._lbl(ft, "", font=("Segoe UI", 10), text_color=C["muted"])
+                  font=(self.FB, 10), fg_color=C["ok"], hover_color=C["ok"]).pack(side="left", padx=(8, 0))
+        self.ltime = self._lbl(ft, "", font=(self.FB, 10), text_color=C["muted"])
         self.ltime.pack(side="right")
 
         self._loadhist()
@@ -1633,12 +1633,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self._toast_btn = None
         if CTK:
             lbl = ctk.CTkLabel(self.steps_frame, text="✓ " + msg,
-                               font=("Segoe UI", 12, "bold"),
+                               font=(self.FH, 12, "bold"),
                                text_color=pill_fg, fg_color=pill_bg,
                                corner_radius=10, padx=12, pady=3)
         else:
             lbl = ctk.Label(self.steps_frame, text="✓ " + msg,
-                            font=("Segoe UI", 12, "bold"),
+                            font=(self.FH, 12, "bold"),
                             bg=pill_bg, fg=pill_fg, padx=12, pady=3)
         lbl.pack(side="left", padx=(42, 0))  # comienza desplazado a la derecha
         self._toast_lbl = lbl
@@ -1668,12 +1668,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
             if CTK:
                 rb = ctk.CTkButton(self.steps_frame, text="Reintentar", command=_do_retry,
                                    width=84, height=26, corner_radius=8,
-                                   font=("Segoe UI", 10, "bold"),
+                                   font=(self.FH, 10, "bold"),
                                    fg_color=pill_fg, text_color=pill_bg,
                                    hover_color=pulse_col)
             else:
                 rb = ctk.Button(self.steps_frame, text="Reintentar", command=_do_retry,
-                                bg=pill_fg, fg=pill_bg, font=("Segoe UI", 10, "bold"))
+                                bg=pill_fg, fg=pill_bg, font=(self.FB, 10, "bold"))
             rb.pack(side="left", padx=(6, 0))
             self._toast_btn = rb
 
@@ -1759,10 +1759,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
         # del indicador para saltar entre secciones mientras esta abierta.
 
         if CTK:
-            box = ctk.CTkTextbox(top, font=("Segoe UI", 12), wrap="word", corner_radius=8,
+            box = ctk.CTkTextbox(top, font=(self.FB, 12), wrap="word", corner_radius=8,
                                  fg_color=C["bg"], text_color=C["text"])
         else:
-            box = scrolledtext.ScrolledText(top, wrap=ctk.WORD, font=("Segoe UI", 12), bg=C["bg"], fg=C["text"])
+            box = scrolledtext.ScrolledText(top, wrap=ctk.WORD, font=(self.FB, 12), bg=C["bg"], fg=C["text"])
         box.pack(fill="both", expand=True, padx=18, pady=(18, 8))
 
         guia = """¿CÓMO USAR AUDIOCLASS? (sin saber de computadoras)
@@ -1846,7 +1846,7 @@ CONSEJOS:
         self._guide_total = guia.count("\n") + 1
         try:
             box.tag_config("sec", background=C["card"], foreground=C["ok"],
-                           font=("Segoe UI", 12, "bold"))
+                           font=(self.FH, 12, "bold"))
         except Exception:
             pass
         box.configure(state="disabled")
@@ -2143,32 +2143,32 @@ CONSEJOS:
         self.mic_test_top = top
         self._mic_busy = False
 
-        self._lbl(top, "🎤 Prueba rapida de microfono", font=("Segoe UI", 18, "bold"),
+        self._lbl(top, "🎤 Prueba rapida de microfono", font=(self.FH, 18, "bold"),
                   text_color=C["accent"]).pack(pady=(18, 4))
         self._lbl(top, "Pulsa el boton, espera 2 segundos y habla durante ~6 segundos.",
-                  font=("Segoe UI", 12), text_color=C["muted"]).pack(pady=(0, 12))
+                  font=(self.FB, 12), text_color=C["muted"]).pack(pady=(0, 12))
 
         lvl_row = self._frame(top, fg_color="transparent")
         lvl_row.pack(fill="x", padx=30, pady=(0, 4))
-        self._lbl(lvl_row, "Nivel:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        self._lbl(lvl_row, "Nivel:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
         if CTK:
             self.mic_lvl_bar = ctk.CTkProgressBar(lvl_row, height=14, corner_radius=7,
                                                   progress_color=C["muted"])
         else:
             self.mic_lvl_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
         self.mic_lvl_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.mic_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=("Segoe UI", 10), text_color=C["muted"])
+        self.mic_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=(self.FB, 10), text_color=C["muted"])
         self.mic_lvl_lbl.pack(side="left")
 
-        self.mic_state = self._lbl(top, "", font=("Segoe UI", 12), text_color=C["warn"])
+        self.mic_state = self._lbl(top, "", font=(self.FB, 12), text_color=C["warn"])
         self.mic_state.pack(pady=(8, 4))
 
-        self.mic_result = self._lbl(top, "", font=("Segoe UI", 11), text_color=C["text"],
+        self.mic_result = self._lbl(top, "", font=(self.FB, 11), text_color=C["text"],
                                     anchor="w", wraplength=540)
         self.mic_result.pack(padx=30, pady=(4, 10))
 
         self.btn_mic_test = self._btn(top, "🎙️ Comenzar prueba (8 s)", self._mic_test_start,
-                                      width=280, height=44, font=("Segoe UI", 14, "bold"),                                       fg_color=C["err"], hover_color=C["err"])
+                                      width=280, height=44, font=(self.FB, 14, "bold"),                                       fg_color=C["err"], hover_color=C["err"])
         self.btn_mic_test.pack(pady=(4, 8))
         self._btn(top, "Cerrar", top.destroy, width=140, height=36).pack(pady=(0, 14))
 
@@ -2288,25 +2288,25 @@ CONSEJOS:
         top.grab_set()
         self.mic_opt_top = top
 
-        self._lbl(top, "🎛️ Optimizador de micrófono", font=("Segoe UI", 18, "bold"),
+        self._lbl(top, "🎛️ Optimizador de micrófono", font=(self.FH, 18, "bold"),
                   text_color=C["accent"]).pack(pady=(16, 4))
         self._lbl(top, "Diagnostica el nivel de entrada y corrige las grabaciones en silencio. "
                        "Habla en voz alta durante cada prueba de 4 segundos.",
-                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=620).pack(pady=(0, 10))
+                  font=(self.FB, 11), text_color=C["muted"], wraplength=620).pack(pady=(0, 10))
 
         lvl_row = self._frame(top, fg_color="transparent")
         lvl_row.pack(fill="x", padx=30, pady=(0, 4))
-        self._lbl(lvl_row, "Nivel:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        self._lbl(lvl_row, "Nivel:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
         if CTK:
             self.mic_opt_lvl_bar = ctk.CTkProgressBar(lvl_row, height=14, corner_radius=7,
                                                       progress_color=C["muted"])
         else:
             self.mic_opt_lvl_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
         self.mic_opt_lvl_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.mic_opt_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=("Segoe UI", 10), text_color=C["muted"])
+        self.mic_opt_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=(self.FB, 10), text_color=C["muted"])
         self.mic_opt_lvl_lbl.pack(side="left")
 
-        self.mic_opt_state_lbl = self._lbl(top, "", font=("Segoe UI", 12), text_color=C["warn"])
+        self.mic_opt_state_lbl = self._lbl(top, "", font=(self.FB, 12), text_color=C["warn"])
         self.mic_opt_state_lbl.pack(pady=(6, 4))
 
         if CTK:
@@ -2324,11 +2324,11 @@ CONSEJOS:
         btns = self._frame(top, fg_color="transparent")
         btns.pack(fill="x", padx=30, pady=(0, 14))
         self.btn_mic_opt_diag = self._btn(btns, "🔍 Diagnosticar", lambda: self._mic_opt_start(False),
-                                          width=200, height=40, font=("Segoe UI", 12, "bold"),
+                                          width=200, height=40, font=(self.FB, 12, "bold"),
                                           fg_color=C["accent"], hover_color=C["accent_hover"])
         self.btn_mic_opt_diag.pack(side="left", padx=(0, 8))
         self.btn_mic_opt_apply = self._btn(btns, "⚡ Aplicar optimización", lambda: self._mic_opt_start(True),
-                                           width=225, height=40, font=("Segoe UI", 12, "bold"),
+                                           width=225, height=40, font=(self.FB, 12, "bold"),
                                            fg_color=C["ok"], hover_color=C["ok"])
         self.btn_mic_opt_apply.pack(side="left", padx=(0, 8))
         self._btn(btns, "Cerrar", top.destroy, width=100, height=36).pack(side="left")
@@ -2461,24 +2461,24 @@ CONSEJOS:
 
         f1 = self._frame(top, fg_color=C["card"])
         f1.pack(fill="x", padx=20, pady=10)
-        self._lbl(f1, "🤖 Proveedor de IA para el análisis", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f1, "🤖 Proveedor de IA para el análisis", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f1, "Elige con qué servicio analizar tus clases (resúmenes, guías, exámenes):",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
         adapt_provider = ctk.StringVar(value=self.config.get("adapt_provider", "gemini"))
         prov_row = self._frame(f1, fg_color="transparent")
         prov_row.pack(anchor="w", padx=15, pady=(0, 8))
         for val, lbl in (("gemini", "✨ Gemini (Google)"), ("openai", "🤖 OpenAI (GPT)")):
             rb = ctk.CTkRadioButton(prov_row, text=lbl, variable=adapt_provider, value=val,
-                                    font=("Segoe UI", 11), text_color=C["text"])
+                                    font=(self.FB, 11), text_color=C["text"])
             rb.pack(side="left", padx=(0, 25))
             self._themeable.append(("label", rb, "text"))
 
         # ── Sección Gemini ──
         f1g = self._frame(f1, fg_color="transparent")
         f1g.pack(fill="x", padx=15, pady=(0, 8))
-        self._lbl(f1g, "API Key de Google AI Studio (Gemini)", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(4, 2))
-        self._lbl(f1g, "Consiguela gratis en: aistudio.google.com/app/apikey", font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
-        gemini_entry = self._entry(f1g, width=500, font=("Segoe UI", 11))
+        self._lbl(f1g, "API Key de Google AI Studio (Gemini)", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(f1g, "Consiguela gratis en: aistudio.google.com/app/apikey", font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+        gemini_entry = self._entry(f1g, width=500, font=(self.FB, 11))
         gemini_entry.pack(anchor="w", pady=(0, 4))
         gemini_entry.insert(0, self.config.get("gemini_api_key", ""))
 
@@ -2490,17 +2490,17 @@ CONSEJOS:
             # cumple contraste en ambos estados (activo=acento / inactivo=gris).
             for val, lbl in (("flash", "Flash"), ("pro", "Pro")):
                 rb = ctk.CTkRadioButton(gmod_row, text=lbl, variable=gemini_model, value=val,
-                                        font=("Segoe UI", 11), text_color=C["text"])
+                                        font=(self.FB, 11), text_color=C["text"])
                 rb.pack(side="left", padx=(0, 20))
                 self._themeable.append(("label", rb, "text"))
         else:
             ctk.OptionMenu(f1g, gemini_model, "flash", "pro").pack(anchor="w", padx=15, pady=(0, 12))
         self._lbl(f1g, "flash = rapido y economico (Gemini 2.0 Flash) | pro = maxima calidad (Gemini 2.5 Pro)",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
 
         test_row = self._frame(f1g, fg_color="transparent")
         test_row.pack(fill="x", pady=(0, 4))
-        self.gemini_test_lbl = self._lbl(test_row, "", font=("Segoe UI", 10), text_color=C["muted"])
+        self.gemini_test_lbl = self._lbl(test_row, "", font=(self.FB, 10), text_color=C["muted"])
         self.gemini_test_lbl.pack(side="left", padx=(0, 10))
         self.btn_test_gemini = self._btn(test_row, "Probar Conexión",
                                          lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"),
@@ -2510,10 +2510,10 @@ CONSEJOS:
         # ── Sección OpenAI ──
         f1o = self._frame(f1, fg_color="transparent")
         f1o.pack(fill="x", padx=15, pady=(0, 8))
-        self._lbl(f1o, "API Key de OpenAI (GPT)", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(f1o, "API Key de OpenAI (GPT)", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
         self._lbl(f1o, "Consiguela en: platform.openai.com/api-keys (tiene plan gratuito inicial)",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
-        openai_entry = self._entry(f1o, width=500, font=("Segoe UI", 11))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+        openai_entry = self._entry(f1o, width=500, font=(self.FB, 11))
         openai_entry.pack(anchor="w", pady=(0, 4))
         openai_entry.insert(0, self.config.get("openai_api_key", ""))
 
@@ -2522,15 +2522,15 @@ CONSEJOS:
         omod_row.pack(anchor="w", pady=(0, 4))
         for val, lbl in (("mini", "GPT-4o mini"), ("gpt4o", "GPT-4o")):
             rb = ctk.CTkRadioButton(omod_row, text=lbl, variable=openai_model, value=val,
-                                    font=("Segoe UI", 11), text_color=C["text"])
+                                    font=(self.FB, 11), text_color=C["text"])
             rb.pack(side="left", padx=(0, 20))
             self._themeable.append(("label", rb, "text"))
         self._lbl(f1o, "mini = rapido y economico | GPT-4o = maxima calidad",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
 
         otest_row = self._frame(f1o, fg_color="transparent")
         otest_row.pack(fill="x", pady=(0, 4))
-        self.openai_test_lbl = self._lbl(otest_row, "", font=("Segoe UI", 10), text_color=C["muted"])
+        self.openai_test_lbl = self._lbl(otest_row, "", font=(self.FB, 10), text_color=C["muted"])
         self.openai_test_lbl.pack(side="left", padx=(0, 10))
         self.btn_test_openai = self._btn(otest_row, "Probar Conexión",
                                          lambda: self._test_adapt(openai_entry, openai_model, "openai"),
@@ -2546,61 +2546,61 @@ CONSEJOS:
 
         f2 = self._frame(top, fg_color=C["card"])
         f2.pack(fill="x", padx=20, pady=10)
-        self._lbl(f2, "Google Colab (Cloud GPU)", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(f2, "URL de ngrok desde tu servidor de Colab:", font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        colab_entry = self._entry(f2, width=500, font=("Segoe UI", 11))
+        self._lbl(f2, "Google Colab (Cloud GPU)", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f2, "URL de ngrok desde tu servidor de Colab:", font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
+        colab_entry = self._entry(f2, width=500, font=(self.FB, 11))
         colab_entry.pack(anchor="w", padx=15, pady=(0, 8))
         colab_entry.insert(0, self.config.get("colab_url", ""))
 
-        colab_key = self._entry(f2, width=200, font=("Segoe UI", 11))
+        colab_key = self._entry(f2, width=200, font=(self.FB, 11))
         colab_key.pack(anchor="w", padx=15, pady=(0, 12))
         colab_key.insert(0, self.config.get("colab_key", "audioclass"))
 
         f0 = self._frame(top, fg_color=C["card"])
         f0.pack(fill="x", padx=20, pady=10)
-        self._lbl(f0, "🎤 Prueba rapida de microfono", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f0, "🎤 Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f0, "Graba 8 segundos y comprueba que tu microfono capta bien tu voz.",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
         self._btn(f0, "🎙️ Abrir prueba de microfono", self._test_mic, width=240, height=36,
                   fg_color=C["err"], hover_color=C["err"]).pack(anchor="w", padx=15, pady=(0, 12))
 
         f3 = self._frame(top, fg_color=C["card"])
         f3.pack(fill="x", padx=20, pady=10)
-        self._lbl(f3, "Estado de Conexiones", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        self._lbl(f3, "Estado de Conexiones", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
 
         status_frame = self._frame(f3, fg_color="transparent")
         status_frame.pack(fill="x", padx=15, pady=(0, 12))
 
-        self._lbl(status_frame, "Modelo Local:", font=("Segoe UI", 11)).pack(side="left")
+        self._lbl(status_frame, "Modelo Local:", font=(self.FB, 11)).pack(side="left")
         self._lbl(status_frame, "Listo" if self.local_engine.ready else "Cargando...", 
-                  font=("Segoe UI", 11), text_color=C["ok"] if self.local_engine.ready else C["warn"]).pack(side="left", padx=(5, 20))
+                  font=(self.FB, 11), text_color=C["ok"] if self.local_engine.ready else C["warn"]).pack(side="left", padx=(5, 20))
 
-        self._lbl(status_frame, "Colab:", font=("Segoe UI", 11)).pack(side="left")
+        self._lbl(status_frame, "Colab:", font=(self.FB, 11)).pack(side="left")
         has_url = bool(self.config.get("colab_url"))
         self._lbl(status_frame, "Configurado" if has_url else "Sin URL", 
-                  font=("Segoe UI", 11), text_color=C["ok"] if has_url else C["err"]).pack(side="left", padx=(5, 20))
+                  font=(self.FB, 11), text_color=C["ok"] if has_url else C["err"]).pack(side="left", padx=(5, 20))
 
-        self._lbl(status_frame, "Gemini:", font=("Segoe UI", 11)).pack(side="left")
+        self._lbl(status_frame, "Gemini:", font=(self.FB, 11)).pack(side="left")
         has_key = bool(self.config.get("gemini_api_key"))
         self._lbl(status_frame, "Configurado" if has_key else "Sin Key", 
-                  font=("Segoe UI", 11), text_color=C["ok"] if has_key else C["err"]).pack(side="left", padx=5)
+                  font=(self.FB, 11), text_color=C["ok"] if has_key else C["err"]).pack(side="left", padx=5)
 
-        self._lbl(status_frame, "OpenAI:", font=("Segoe UI", 11)).pack(side="left")
+        self._lbl(status_frame, "OpenAI:", font=(self.FB, 11)).pack(side="left")
         has_oai = bool(self.config.get("openai_api_key"))
         self._lbl(status_frame, "Configurado" if has_oai else "Sin Key", 
-                  font=("Segoe UI", 11), text_color=C["ok"] if has_oai else C["err"]).pack(side="left", padx=5)
+                  font=(self.FB, 11), text_color=C["ok"] if has_oai else C["err"]).pack(side="left", padx=5)
 
         f4 = self._frame(top, fg_color=C["card"])
         f4.pack(fill="x", padx=20, pady=10)
-        self._lbl(f4, "Google Docs (exportar transcripciones)", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f4, "Google Docs (exportar transcripciones)", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f4, "1. Crea credenciales OAuth en console.cloud.google.com (tipo 'App de escritorio') y habilita la Docs API",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 2))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 2))
         self._lbl(f4, "2. Descarga el client_secret.json y seleccionalo:",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 6))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 6))
 
         gdoc_row = self._frame(f4, fg_color="transparent")
         gdoc_row.pack(fill="x", padx=15, pady=(0, 8))
-        gdoc_entry = self._entry(gdoc_row, width=380, font=("Segoe UI", 10))
+        gdoc_entry = self._entry(gdoc_row, width=380, font=(self.FB, 10))
         gdoc_entry.pack(side="left", padx=(0, 6))
         gdoc_entry.insert(0, self.config.get("google_creds_path", ""))
 
@@ -2617,7 +2617,7 @@ CONSEJOS:
                                            width=150, height=30, fg_color=C["ok"])
         self.btn_gdoc_connect.pack(side="left")
 
-        self.gdoc_lbl = self._lbl(f4, "", font=("Segoe UI", 10))
+        self.gdoc_lbl = self._lbl(f4, "", font=(self.FB, 10))
         self.gdoc_lbl.pack(anchor="w", padx=15, pady=(0, 12))
 
         # Estado inicial de Google Docs (sin abrir navegador ni refrescar token en el hilo principal)
@@ -2639,13 +2639,13 @@ CONSEJOS:
         # ── Privacidad / consentimiento de IA ──
         fp = self._frame(f1, fg_color="transparent")
         fp.pack(fill="x", padx=15, pady=(8, 4))
-        self._lbl(fp, "🔒 Privacidad", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(fp, "🔒 Privacidad", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
         self._lbl(fp, "Las transcripciones se procesan en tu equipo. El análisis con IA envía el texto a Gemini/OpenAI (retención temporal del proveedor). El contenido generado por IA puede contener errores y no es consejo médico/legal ni acta oficial.",
-                  font=("Segoe UI", 10), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 4))
+                  font=(self.FB, 10), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 4))
         ia_consent_var = ctk.BooleanVar(value=bool(self.config.get("ia_consent", False)))
         if CTK:
             ctk.CTkCheckBox(fp, text="Permito el análisis con IA (envío de mis transcripciones a Gemini/OpenAI)",
-                            variable=ia_consent_var, font=("Segoe UI", 11), fg_color=C["accent"]).pack(anchor="w", pady=(0, 10))
+                            variable=ia_consent_var, font=(self.FB, 11), fg_color=C["accent"]).pack(anchor="w", pady=(0, 10))
         else:
             ctk.Checkbutton(fp, text="Permito el analisis con IA (envio a Gemini/OpenAI)", variable=ia_consent_var,
                             bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", pady=(0, 10))
@@ -2699,7 +2699,7 @@ CONSEJOS:
             b._path = path
             self._themeable.append(("btn", b, "button"))
         else:
-            b = ctk.Button(self.hist_frame, text=name, anchor="w", font=("Segoe UI", 11),
+            b = ctk.Button(self.hist_frame, text=name, anchor="w", font=(self.FB, 11),
                             bg=C["card"], fg=C["text"], command=lambda p=path: self._selhist(p))
             b.pack(fill="x", pady=(0, 4))
             b._path = path
@@ -2906,18 +2906,18 @@ CONSEJOS:
         top.grab_set()
         self.mic_warn_top = top
 
-        self._lbl(top, "🎤 Micrófono muy bajo", font=("Segoe UI", 17, "bold"),
+        self._lbl(top, "🎤 Micrófono muy bajo", font=(self.FH, 17, "bold"),
                   text_color=C["err"]).pack(pady=(16, 4))
         db = 20 * np.log10(max(level, 1e-6))
         self._lbl(top, f"Nivel medido: p90 = {level:.4f}  ({db:+.0f} dB) — por debajo del umbral de voz.",
-                  font=("Segoe UI", 11), text_color=C["text"]).pack(pady=(0, 4))
+                  font=(self.FB, 11), text_color=C["text"]).pack(pady=(0, 4))
         self._lbl(top, "Acércate al micrófono y habla: el medidor se actualiza en vivo.\n"
                        "La grabación puede salir casi en silencio si el nivel no sube.",
-                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=520).pack(pady=(0, 10))
+                  font=(self.FB, 11), text_color=C["muted"], wraplength=520).pack(pady=(0, 10))
 
         lvl_row = self._frame(top, fg_color="transparent")
         lvl_row.pack(fill="x", padx=36, pady=(0, 6))
-        self._lbl(lvl_row, "Ahora:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        self._lbl(lvl_row, "Ahora:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
         if CTK:
             self.mic_warn_bar = ctk.CTkProgressBar(lvl_row, width=300, height=16, corner_radius=8,
                                                    fg_color=C["button"], progress_color=C["muted"])
@@ -2926,43 +2926,43 @@ CONSEJOS:
             self.mic_warn_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
             self.mic_warn_bar['value'] = min(100, level * 1000)
         self.mic_warn_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.mic_warn_lbl = self._lbl(lvl_row, f"{db:+.0f} dB", font=("Segoe UI", 11), text_color=C["warn"])
+        self.mic_warn_lbl = self._lbl(lvl_row, f"{db:+.0f} dB", font=(self.FB, 11), text_color=C["warn"])
         self.mic_warn_lbl.pack(side="left")
 
         best_row = self._frame(top, fg_color="transparent")
         best_row.pack(fill="x", padx=36, pady=(0, 4))
-        self._lbl(best_row, "Mejor p90:", font=("Segoe UI", 11)).pack(side="left", padx=(0, 8))
+        self._lbl(best_row, "Mejor p90:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
         self.mic_warn_best_lbl = self._lbl(best_row, f"{level:.4f} ({db:+.0f} dB)  meta 0.03 (-30 dB)",
-                                           font=("Segoe UI", 11, "bold"), text_color=C["warn"])
+                                           font=(self.FH, 11, "bold"), text_color=C["warn"])
         self.mic_warn_best_lbl.pack(side="left")
 
         # Mini-grafico de tendencia: la evolucion del p90 al acercarse al
         # microfono, con la linea punteada de la meta (0.03 / -30 dB).
         trend_row = self._frame(top, fg_color="transparent")
         trend_row.pack(fill="x", padx=36, pady=(2, 2))
-        self._lbl(trend_row, "Tendencia p90 (10 s):", font=("Segoe UI", 9),
+        self._lbl(trend_row, "Tendencia p90 (10 s):", font=(self.FB, 9),
                   text_color=C["muted"]).pack(side="left", padx=(0, 8))
         self.mic_warn_trend = tk.Canvas(trend_row, width=380, height=40, bg=C["card"],
                                         highlightthickness=1, highlightbackground=C["border"])
         self.mic_warn_trend.pack(side="left", fill="x", expand=True)
 
         self._lbl(top, "Meta: que la barra suba a verde (voz ≥ -30 dB / p90 ≥ 0.03).",
-                  font=("Segoe UI", 10), text_color=C["muted"]).pack(pady=(0, 10))
+                  font=(self.FB, 10), text_color=C["muted"]).pack(pady=(0, 10))
 
         btns = self._frame(top, fg_color="transparent")
         btns.pack(pady=(0, 6))
         self._btn(btns, "🎙️ Continuar grabando", lambda: self._mic_warn_decide(True),
-                  width=230, height=42, font=("Segoe UI", 12, "bold"),
+                  width=230, height=42, font=(self.FB, 12, "bold"),
                   fg_color=C["err"], hover_color=C["err"]).pack(side="left", padx=(0, 10))
         self._btn(btns, "Cancelar", lambda: self._mic_warn_decide(False),
-                  width=120, height=42, font=("Segoe UI", 12, "bold")).pack(side="left")
+                  width=120, height=42, font=(self.FB, 12, "bold")).pack(side="left")
         # Ruta de correccion sin cancelar: abre el optimizador y aplica la
         # optimizacion (nivel 100% + desmute + boost) directamente.
         opt_row = self._frame(top, fg_color="transparent")
         opt_row.pack(pady=(0, 14))
         self._btn(opt_row, "⚡ Abrir optimizador (corregir nivel ahora)",
                   lambda: self._mic_warn_open_opt(),
-                  width=340, height=40, font=("Segoe UI", 12, "bold"),
+                  width=340, height=40, font=(self.FH, 12, "bold"),
                   fg_color=C["ok"], hover_color=C["ok"]).pack()
         top.protocol("WM_DELETE_WINDOW", lambda: self._mic_warn_decide(False))
 
@@ -3815,19 +3815,19 @@ CONSEJOS:
             pass
         f = self._frame(top, fg_color=C["card"])
         f.pack(fill="both", expand=True, padx=20, pady=20)
-        self._lbl(f, "🔒 Aviso de privacidad", font=("Segoe UI", 16, "bold"), text_color=C["accent"]).pack(anchor="w", pady=(0, 8))
+        self._lbl(f, "🔒 Aviso de privacidad", font=(self.FH, 16, "bold"), text_color=C["accent"]).pack(anchor="w", pady=(0, 8))
         self._lbl(f, "Tus grabaciones y transcripciones se procesan en TU equipo. Sin embargo, el análisis con IA "
                       "(Gemini u OpenAI) ENVÍA el texto de la transcripción a los servidores de Google u OpenAI "
                       "(que lo retienen temporalmente: Gemini hasta 55 días; OpenAI no lo usa para entrenar) "
                       "para generar resúmenes, guías y exámenes.",
-                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
+                  font=(self.FB, 11), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
         self._lbl(f, "Puedes seguir usando AudioClass sin IA (transcripción local) y cambiar esta decisión "
                       "en Configuración en cualquier momento.",
-                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 12))
+                  font=(self.FB, 11), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 12))
         consent = ctk.BooleanVar(value=False)
         if CTK:
             ctk.CTkCheckBox(f, text="Acepto: permito enviar el texto de mis transcripciones a Gemini/OpenAI para análisis con IA",
-                            variable=consent, font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", pady=(0, 14))
+                            variable=consent, font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", pady=(0, 14))
         else:
             ctk.Checkbutton(f, text="Acepto: permito enviar el texto a Gemini/OpenAI para analisis con IA",
                             variable=consent, bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", pady=(0, 14))

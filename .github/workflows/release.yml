@@ -1,0 +1,93 @@
+name: Release (exe + zips)
+
+# #11 — Post-producción automática (el equivalente desktop de "push → deploy").
+# Al pushear un tag v* (p. ej. `git tag v9.1 && git push --tags`) este workflow:
+#   1. Compila los DOS ejecutables (onefile + onedir) con PyInstaller en un
+#      runner Windows, igual que desplegar_produccion.sh local.
+#   2. Corre los selftests reales (--selftest-transcribe) y el WCAG empaquetado.
+#   3. Genera los zips con los documentos legales dentro (EULA, privacidad, ...).
+#   4. Crea un GitHub Release con todo adjunto → rollback = desplegar un tag
+#      anterior (los releases son inmutables y versionados por tag).
+# Disparo manual (workflow_dispatch): compila y valida sin crear release; los
+# entregables quedan como artifacts del run.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compilar y publicar AudioClass ${{ github.ref_name }}
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias (incl. PyInstaller + faster-whisper)
+        shell: bash
+        run: |
+          pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
+            requests customtkinter openai-whisper huggingface_hub
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet faster-whisper pyinstaller
+
+      - name: Modelos whisper y CT2 (los que exige el preflight del despliegue)
+        shell: bash
+        run: |
+          # openai-whisper .pt (base + tiny) a la cache y models/tiny.pt al repo
+          python - <<'EOF'
+          import os, shutil, whisper
+          for name in ("tiny", "base"):
+              whisper.load_model(name)
+          os.makedirs("models", exist_ok=True)
+          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
+          print("WHISPER_PT_READY")
+          EOF
+          # faster-whisper CT2 (model.bin + tokenizer) en el layout del bundle
+          python - <<'EOF'
+          from huggingface_hub import snapshot_download
+          for name in ("tiny", "base"):
+              snapshot_download(f"Systran/faster-whisper-{name}",
+                                local_dir=f"models_ct2/{name}")
+          print("CT2_READY")
+          EOF
+          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
+
+      - name: Despliegue completo (onefile + onedir + selftests + WCAG + zips)
+        shell: bash
+        run: bash desplegar_produccion.sh --with-onedir --skip-benchmark
+        env:
+          PYTHONUTF8: "1"
+
+      - name: Subir entregables como artifacts (siempre)
+        uses: actions/upload-artifact@v4
+        with:
+          name: audioclass-entregables
+          path: |
+            AudioClass_v9.1_COMPLETA.zip
+            AudioClass_v9.1_ONEDIR.zip
+            EULA.txt
+            AVISO_DE_PRIVACIDAD.txt
+            TERCEROS_Y_LICENCIAS.md
+          if-no-files-found: error
+
+      - name: Crear GitHub Release (solo en tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            AudioClass_v9.1_COMPLETA.zip AudioClass_v9.1_ONEDIR.zip \
+            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md \
+            --title "AudioClass ${{ github.ref_name }}" \
+            --notes "Build automático desde el tag ${{ github.ref_name }}.
+          - Onefile + onedir con selftest y WCAG validados
+          - Soporte Gemini y OpenAI (selector de proveedor)
+          - Privacidad, consentimiento y seguridad endurecidas
+          - Documentos legales (EULA, privacidad, terceros) dentro de los zips"
