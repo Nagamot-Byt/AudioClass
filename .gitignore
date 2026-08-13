@@ -7,9 +7,17 @@ build/
 build_onefile/
 dist_onefile/
 
+# ── Modelos de whisper (se descargan en CI, se empaquetan en el exe) ──
+models/
+models_ct2/
+
 # ── Audios y bases de datos locales ──
 demo_audio/
 *.wav
+# Excepciones: fixtures de VOZ REAL para los tests (estrés, streaming,
+# benchmark) y el CI. Sin ellos, un clone limpio no puede correr esos tests.
+!prueba_voz_es.wav
+!tts_clase.wav
 .freebuff/
 *.db
 *.db-shm
@@ -31,4 +39,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# Configs temporales de los validadores (se regeneran al ejecutar) y
+# salidas de tests/benchmark
 _smoke_config.json
+_micwarn_exe_config.json
+_wcag_config.json
+_wcag_exe_config.json
+benchmark_results.json

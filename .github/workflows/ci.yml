@@ -1,0 +1,126 @@
+name: CI
+
+# #10 — Regresión automática ampliada (2026-08): compila todos los .py y
+# ejecuta la suite de tests del núcleo. Además de los 3 tests originales
+# (motor paralelo, exportación, estrés) corre: mejoras v10 (silencio digital,
+# streaming y faster-whisper), idioma 'auto', watchdog anti-cuelgue y
+# benchmark de modelos (mediana WER base vs tiny). Se ejecuta en cada push
+# y PR, y manualmente con workflow_dispatch.
+#
+# Modelos y fixtures (NO versionados en git):
+#   * models/tiny.pt (75 MB) y los .pt de base no se versionan: el paso
+#     "Descargar modelos" los baja a la caché de openai-whisper (~/.cache/whisper)
+#     y copia tiny.pt a models/ para los tests que lo cargan del repo.
+#   * Los tests con VOZ REAL (estrés, streaming de v10, benchmark) necesitan
+#     prueba_voz_es.wav / tts_clase.wav y gen_clase_tts.py (el guion de
+#     referencia del WER). Versiona esos fixtures (git add -f, ~4 MB) o esos
+#     tests fallarán/saltarán con mensaje claro en el CI.
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compile:
+    name: Compilar todos los .py
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: py_compile (sintaxis de todos los fuentes)
+        run: |
+          python -m py_compile audioclass_v91.py audioclass_core.py \
+            audioclass_colab_server_v91.py grabar_prueba.py \
+            bench_models.py optimizar_mic.py \
+            test_*.py && echo COMPILE_OK
+      - name: Import básico del núcleo (sin GUI)
+        run: |
+          python -c "import audioclass_core as c; print('CORE_IMPORT_OK', c.SAMPLE_RATE, c.OUTPUT_DIR)"
+
+  tests:
+    name: Motor + exportación + mejoras (faster-whisper)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias mínimas
+        run: |
+          # torch (CPU) desde el indice de PyTorch; el resto desde PyPI.
+          # (--extra-index-url para que numpy/scipy/etc. no se busquen en el
+          # indice de torch, donde no existen.)
+          pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
+            requests customtkinter
+          pip install --quiet openai-whisper
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          # faster-whisper (CTranslate2 int8): el backend que el motor
+          # auto-elige en desarrollo; lo ejercitan test_mejoras_v10 y
+          # test_benchmark_models (en CI descargan sus modelos CT2 de HF).
+          pip install --quiet faster-whisper
+      - name: Preflight (GUI + faster_whisper importables)
+        run: |
+          python - <<'EOF'
+          import sys
+          missing = []
+          for m in ("tkinter", "customtkinter", "matplotlib", "pypdf", "faster_whisper"):
+              try:
+                  __import__(m)
+              except Exception as e:
+                  missing.append(f"{m}: {e!r}")
+          if missing:
+              print("PREFLIGHT_FAIL")
+              print(*missing, sep="\n")
+              sys.exit(1)
+          print("PREFLIGHT_OK")
+          EOF
+      - name: Descargar modelos whisper (tiny/base) a cache y models/tiny.pt
+        run: |
+          # openai-whisper descarga los .pt a ~/.cache/whisper la primera vez.
+          # test_parallel_transcribe y test_stress cargan models/tiny.pt del
+          # repo, asi que se copia desde la cache (sin versionar 75 MB). base.pt
+          # alimenta la deteccion de modelos de test_benchmark_models.
+          python - <<'EOF'
+          import os, shutil, whisper
+          for name in ("tiny", "base"):
+              whisper.load_model(name)
+          os.makedirs("models", exist_ok=True)
+          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
+          print("MODELS_READY")
+          EOF
+      - name: Fixtures de voz (prueba_voz_es.wav / tts_clase.wav)
+        run: |
+          # Los tests con voz real usan estos nombres; si solo hay uno de los
+          # dos (ambos son el mismo TTS de referencia) se usa como respaldo.
+          if [ -f tts_clase.wav ] && [ ! -f prueba_voz_es.wav ]; then cp tts_clase.wav prueba_voz_es.wav; fi
+          if [ -f prueba_voz_es.wav ] && [ ! -f tts_clase.wav ]; then cp prueba_voz_es.wav tts_clase.wav; fi
+          ls -la prueba_voz_es.wav tts_clase.wav 2>/dev/null \
+            || echo "AVISO: sin fixture de voz en el repo: test_stress fallara y el benchmark saltara"
+      - name: Test motor paralelo (voz real -> chunks -> 100%)
+        run: |
+          python -u test_parallel_transcribe.py 2>&1 | tail -5
+      - name: Test exportación DOCX/PDF (sin GUI completa)
+        run: |
+          # Instancia App() -> necesita un display: xvfb (ya viene en las
+          # imagenes de ubuntu-latest; si faltara se instala con apt).
+          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
+          xvfb-run -a python -u test_export_docx_pdf.py 2>&1 | tail -4
+      - name: Test estrés (ráfaga + cancelación + hilos)
+        run: |
+          python -u test_stress_transcripcion.py 2>&1 | tail -8
+      - name: Test mejoras v10 (silencio + streaming + faster-whisper)
+        run: |
+          python -u test_mejoras_v10.py 2>&1 | tail -6
+      - name: Test idioma 'auto' (whisper falso)
+        run: |
+          python -u test_lang_auto.py 2>&1 | tail -4
+      - name: Test watchdog anti-cuelgue por chunk
+        run: |
+          python -u test_watchdog.py 2>&1 | tail -4
+      - name: Benchmark modelos (mediana WER base vs tiny)
+        run: |
+          python -u test_benchmark_models.py 2>&1 | tail -6
