@@ -1,0 +1,39 @@
+LICENCIA DE AudioClass v9.1
+============================
+
+Copyright (c) 2026 Daniel Pérez
+
+Sin una licencia explícita, nadie sabe qué puede hacer con el software y el
+autor queda expuesto a reclamaciones por derechos no claros. Esta licencia
+MIT establece los términos de uso.
+
+Se concede por la presente, de forma gratuita, a cualquier persona que obtenga
+una copia de este software y de los archivos de documentación asociados (el
+"Software"), el derecho a utilizar, copiar, modificar, fusionar, publicar,
+distribuir, sublicenciar y/o vender copias del Software, y a permitir a las
+personas a las que se les proporcione el Software que lo hagan, con las
+siguientes condiciones:
+
+El aviso de copyright anterior y este aviso de permiso se incluirán en todas
+las copias o partes sustanciales del Software.
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O
+IMPLÍCITA, INCLUYENDO PERO NO LIMITADA A LAS GARANTÍAS DE COMERCIABILIDAD,
+IDONEIDAD PARA UN FIN PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO LOS AUTORES
+O TITULARES DEL COPYRIGHT SERÁN RESPONSABLES DE NINGUNA RECLAMACIÓN, DAÑO U
+OTRA RESPONSABILIDAD, YA SEA EN UNA ACCIÓN DE CONTRATO, AGRAVIO O CUALQUIER
+OTRA CAUSA, DERIVADA DE, FUERA DE O EN CONEXIÓN CON EL SOFTWARE O SU USO U
+OTRAS OPERACIONES EN EL SOFTWARE.
+----------------------------------------------------------------------------
+
+NOTAS DE USO
+------------
+1. Esta licencia MIT cubre el CÓDIGO de AudioClass (archivos .py, .spec, etc.).
+   Los modelos de IA empaquetados (whisper, CT2) tienen sus propias licencias
+   (ver TERCEROS_Y_LICENCIAS.md) — son permisivas y no afectan a esta licencia.
+2. Si se distribuye el exe o el zip, incluir también:
+     - TERCEROS_Y_LICENCIAS.md (atribución requerida por MIT/BSD/Apache)
+     - AVISO_DE_PRIVACIDAD / EULA (documentos legales de uso final)
+3. La MIT es la opción recomendada para esta app (permisiva y simple). Si se
+   quiere proteger el uso comercial, consultar con un abogado otras opciones
+   (Apache-2.0 con patentes, o licencia propietaria).

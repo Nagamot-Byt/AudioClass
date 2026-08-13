@@ -1,0 +1,94 @@
+CONTRATO DE LICENCIA DE USUARIO FINAL (EULA) — AudioClass v9.1
+===============================================================
+
+Al instalar, copiar o utilizar AudioClass ("el Software"), aceptas los
+siguientes términos. Si no los aceptas, no instales ni uses el Software.
+
+> ⚠️ Documento de apoyo. Revisa su adaptación con asesoría legal según tu
+> jurisdicción antes de usarlo como contrato oficial de distribución.
+
+───────────────────────────────────────────────────────────────────────────────
+1. LICENCIA DE USO
+───────────────────────────────────────────────────────────────────────────────
+Se te concede una licencia no exclusiva, intransferible y limitada para usar el
+Software en tus equipos, con fines personales, educativos o profesionales, de
+acuerdo con la licencia MIT incluida (LICENCIA.txt) y los términos de este
+contrato.
+
+───────────────────────────────────────────────────────────────────────────────
+2. USO LEGAL — RESPONSABILIDAD DEL USUARIO
+───────────────────────────────────────────────────────────────────────────────
+Eres el RESPONSABLE del tratamiento de los datos que grabas y procesas con el
+Software. Te obligas a:
+- Informar a las personas que grabas de que la sesión se está grabando y
+  obtener su consentimiento cuando la ley lo exija (estados de consentimiento
+  de todos los participantes, ámbito laboral, menores).
+- No usar el Software para actividades ilícitas ni para vulnerar derechos de
+  terceros.
+- Cumplir la normativa aplicable de protección de datos (GDPR/LOPDGDD, LGPD,
+  CCPA, FERPA, COPPA) en tu uso concreto.
+
+───────────────────────────────────────────────────────────────────────────────
+3. EXACTITUD DEL CONTENIDO — SIN GARANTÍA
+───────────────────────────────────────────────────────────────────────────────
+Las transcripciones y los análisis generados son AUTOMÁTICOS y pueden contener
+errores u omisiones. No constituyen acta oficial, asesoría profesional (médica,
+legal, financiera) ni evidencia certificada. El usuario debe verificar los
+datos importantes. El desarrollador no garantiza la exactitud del contenido
+generado.
+
+───────────────────────────────────────────────────────────────────────────────
+4. IA DE TERCEROS
+───────────────────────────────────────────────────────────────────────────────
+El análisis con IA (Gemini u OpenAI) es opcional y se activa SOLO con tu
+consentimiento explícito. Al activarlo, el texto de las transcripciones se
+envía a los servidores de Google u OpenAI y queda sujeto a los términos y
+políticas de privacidad de dichos proveedores. No subas información sensible o
+confidencial si no aceptas ese envío.
+
+───────────────────────────────────────────────────────────────────────────────
+5. SIN GARANTÍA DE DISPONIBILIDAD
+───────────────────────────────────────────────────────────────────────────────
+El Software se entrega "TAL CUAL", sin garantía de funcionamiento ininterrumpido
+ni libre de errores. El usuario es responsable de respaldar sus grabaciones y
+datos.
+
+───────────────────────────────────────────────────────────────────────────────
+6. LIMITACIÓN DE RESPONSABILIDAD
+───────────────────────────────────────────────────────────────────────────────
+En la máxima medida permitida por la ley, el desarrollador no será responsable
+de daños directos, indirectos, incidentales, especiales o consecuentes
+(incluida la pérdida de datos o de beneficios) derivados del uso o la
+imposibilidad de uso del Software. La responsabilidad total acumulada no
+excederá el importe pagado por el Software (o 10 EUR si no se pagó).
+
+───────────────────────────────────────────────────────────────────────────────
+7. PROPIEDAD INTELECTUAL
+───────────────────────────────────────────────────────────────────────────────
+El Software y su código son propiedad de su autor, Daniel Pérez, licenciado
+bajo MIT (LICENCIA.txt). Las bibliotecas de terceros empaquetadas conservan sus
+propias licencias (ver TERCEROS_Y_LICENCIAS.md). Los modelos de IA (whisper,
+CT2) se distribuyen bajo sus propios términos.
+
+───────────────────────────────────────────────────────────────────────────────
+8. ACCESIBILIDAD
+───────────────────────────────────────────────────────────────────────────────
+El Software cumple contraste WCAG 2.1 AA. Cualquier defecto de accesibilidad se
+atenderá a través del canal de soporte del desarrollador.
+
+───────────────────────────────────────────────────────────────────────────────
+9. TERMINACIÓN
+───────────────────────────────────────────────────────────────────────────────
+Esta licencia termina automáticamente si incumples cualquiera de sus términos.
+Al terminar, deberás dejar de usar y eliminar todas las copias del Software.
+
+───────────────────────────────────────────────────────────────────────────────
+10. LEY APLICABLE
+───────────────────────────────────────────────────────────────────────────────
+Este contrato se rige por la ley aplicable en la jurisdicción del desarrollador,
+sin perjuicio de las normas imperativas de protección de datos de tu
+jurisdicción. Si alguna cláusula fuera inválida, las restantes permanecerán en
+vigor.
+
+───────────────────────────────────────────────────────────────────────────────
+CONTACTO DEL DESARROLLADOR: [canal de soporte / correo oficial].

@@ -1,0 +1,111 @@
+AVISO DE PRIVACIDAD — AudioClass v9.1
+======================================
+
+Fecha: 12 agosto 2026
+
+Este aviso explica cómo AudioClass trata los datos de las personas que lo usan.
+AudioClass es una aplicación de escritorio para grabar, transcribir y analizar
+clases o reuniones. La transcripción se realiza en TU propio equipo; el
+análisis con Inteligencia Artificial (IA) es opcional.
+
+> ⚠️ Documento de apoyo. No sustituye asesoría legal. Revisa su adaptación a tu
+> jurisdicción (GDPR/LOPDGDD, LGPD, CCPA, FERPA, COPPA, leyes de grabación)
+> antes de usarlo como política oficial.
+
+───────────────────────────────────────────────────────────────────────────────
+1. RESPONSABLE DEL TRATAMIENTO
+───────────────────────────────────────────────────────────────────────────────
+Tú (la persona que instala y usa AudioClass) actúas como responsable del
+tratamiento de los datos que grabas y procesas con la aplicación. El
+desarrollador de AudioClass proporciona la herramienta, no gestiona ni
+almacena tus grabaciones en sus servidores.
+
+───────────────────────────────────────────────────────────────────────────────
+2. DATOS QUE SE TRATAN
+───────────────────────────────────────────────────────────────────────────────
+- Grabaciones de audio (clases, reuniones) → se guardan en la carpeta
+  "AudioClass_Recordings" de tu equipo.
+- Transcripciones generadas por la aplicación (texto).
+- Configuración de la aplicación, incluida tu API Key de IA (Gemini u OpenAI)
+  y la clave del servidor Colab, que se guardan CIFRADAS en tu equipo
+  (cifrado DPAPI de Windows, ligado a tu usuario).
+- Registros (logs) de errores, sin contenido de las grabaciones.
+
+───────────────────────────────────────────────────────────────────────────────
+3. FINALIDADES Y BASE LEGAL
+───────────────────────────────────────────────────────────────────────────────
+- Transcripción local y organización de tus clases/reuniones: interés legítimo
+  del responsable del tratamiento y/o consentimiento.
+- Análisis con IA (resúmenes, guías, exámenes): SOLO con tu consentimiento
+  explícito (opt-in). Sin tu consentimiento, ninguna transcripción se envía a
+  servidores de IA.
+
+───────────────────────────────────────────────────────────────────────────────
+4. PROCESAMIENTO LOCAL FRENTE A ENVÍO A TERCEROS
+───────────────────────────────────────────────────────────────────────────────
+- Por defecto, las grabaciones y transcripciones se procesan EN TU EQUIPO y no
+  salen de él.
+- Si ACTIVAS el análisis con IA, el TEXTO de la transcripción se envía a los
+  servidores de:
+    · Google (Gemini) — retiene los textos temporalmente (hasta 55 días para
+      detección de abusos; no los usa para entrenar modelos por la API).
+    · OpenAI (GPT) — no utiliza los datos de la API para entrenar modelos
+      desde marzo de 2023.
+- Si configuras el servidor Colab opcional, el audio se envía a tu propia
+  sesión de Colab (infraestructura de Google) que tú despliegas.
+
+───────────────────────────────────────────────────────────────────────────────
+5. TRANSFERENCIAS INTERNACIONALES
+───────────────────────────────────────────────────────────────────────────────
+El envío opcional a Gemini/OpenAI implica transferencias a servidores en EE. UU.
+bajo las cláusulas contractuales y políticas de privacidad de dichos
+proveedores. Si no aceptas este envío, no uses el análisis con IA.
+
+───────────────────────────────────────────────────────────────────────────────
+6. GRABACIÓN DE TERCEROS (IMPORTANTE)
+───────────────────────────────────────────────────────────────────────────────
+Si grabas a otras personas, debes INFORMARLES de que la sesión se está grabando
+y obtener su consentimiento cuando la ley lo exija. En varios estados de EE. UU.
+(California, Florida, Illinois, Maryland, Massachusetts, Míchigan, Montana,
+Nevada, Nuevo Hampshire, Oregón, Pensilvania, Vermont, Washington, D.C.) y en
+ámbitos laborales, se exige el consentimiento de TODOS los participantes.
+AudioClass muestra un aviso de grabación y un indicador "GRABANDO" durante la
+grabación; el responsable del tratamiento es quien debe cumplir estas normas.
+
+───────────────────────────────────────────────────────────────────────────────
+7. MENORES
+───────────────────────────────────────────────────────────────────────────────
+AudioClass no está dirigida a menores de 13 años. Si se usa para grabar aulas,
+el centro educativo o el responsable debe gestionar el consentimiento parental
+conforme a FERPA/COPPA u otras normas aplicables, y se recomienda desactivar el
+análisis con IA para estos usos.
+
+───────────────────────────────────────────────────────────────────────────────
+8. RETENCIÓN Y BORRADO
+───────────────────────────────────────────────────────────────────────────────
+- Las grabaciones y transcripciones se conservan hasta que TÚ las borres.
+- Los logs se mantienen por tiempo limitado.
+- Puedes borrar tus grabaciones y tu configuración en cualquier momento desde
+  la aplicación o eliminando la carpeta "AudioClass_Recordings".
+
+───────────────────────────────────────────────────────────────────────────────
+9. SEGURIDAD
+───────────────────────────────────────────────────────────────────────────────
+- Claves de API cifradas en tu equipo (DPAPI).
+- Transcripción local sin conexión (por defecto).
+- No se recopilan datos de uso ni telemetría.
+- Contraste WCAG 2.1 AA validado en cada versión.
+
+───────────────────────────────────────────────────────────────────────────────
+10. TUS DERECHOS
+───────────────────────────────────────────────────────────────────────────────
+Según tu jurisdicción (GDPR/LGPD/CCPA), puedes ejercer los derechos de acceso,
+rectificación, supresión, limitación, portabilidad y oposición sobre los datos
+que TÚ mismo tratas con la aplicación. Para solicitudes relacionadas con el
+software, contacta con el desarrollador por el canal oficial de soporte.
+
+───────────────────────────────────────────────────────────────────────────────
+11. CONTACTO
+───────────────────────────────────────────────────────────────────────────────
+Para cualquier duda sobre este aviso: [canal de soporte / correo del
+desarrollador].

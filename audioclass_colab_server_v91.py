@@ -11,6 +11,10 @@ Instrucciones:
 2. Ejecuta esta celda completa
 3. Copia la URL de ngrok que aparece
 4. Pegala en AudioClass Desktop → Configuracion → URL Colab
+5. Copia la API Key que imprime y pegala en Configuracion → Clave Colab
+   (la clave se lee de la variable de entorno COLAB_API_KEY; si no existe,
+   se genera una ALEATORIA fuerte en cada arranque — ya no hay clave fija
+   trivial).
 
 Endpoints:
   POST /transcribe      → Audio → texto
@@ -19,19 +23,16 @@ Endpoints:
   GET  /status          → Estado del servidor
 """
 
-import subprocess, sys, os, json, warnings, tempfile
+import subprocess, sys, os, json, warnings, tempfile, secrets, hmac
 from datetime import datetime, timedelta
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
-for pkg in ["fastapi", "uvicorn", "pyngrok", "python-multipart", "fpdf2", "openai-whisper", "torch", "numpy", "scipy"]:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", pkg])
-
 import numpy as np
 import torch
 import whisper
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -40,7 +41,28 @@ from scipy.io import wavfile
 from scipy import signal
 from fpdf import FPDF
 
-API_KEY = "audioclass"
+# ─── Seguridad: API key ───────────────────────────────────────────────────────
+# Ya NO hay clave fija trivial ('audioclass'): un servidor publico con clave
+# adivinable dejaria que cualquiera transcribiera gratis. La clave se lee de
+# la variable de entorno COLAB_API_KEY (>= 16 caracteres y no trivial) o se
+# genera una ALEATORIA fuerte que el arranque imprime para copiarla a la app.
+_TRIVIAL_KEYS = {"audioclass", "admin", "password", "1234", "test",
+                  "audioclass123", "clave", "api_key", "secret"}
+
+
+def _resolve_api_key():
+    k = os.environ.get("COLAB_API_KEY", "").strip()
+    if k:
+        if len(k) < 16 or k.lower() in _TRIVIAL_KEYS:
+            print(f"⚠️  COLAB_API_KEY rechazada ('{k}') — necesita >= 16 caracteres "
+                  "y no ser trivial. Se generara una aleatoria.")
+            k = ""
+    if not k:
+        k = secrets.token_urlsafe(24)
+    return k
+
+
+API_KEY = _resolve_api_key()
 NGROK_TOKEN = ""                # ← PEGA AQUI TU TOKEN DE NGROK
 MODEL_NAME = "large-v3"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -119,8 +141,62 @@ app.add_middleware(
 )
 
 def verify_key(key: str):
-    if key != API_KEY:
+    # Comparacion en tiempo constante (evita medir la longitud con timing).
+    if not hmac.compare_digest(str(key or ""), API_KEY):
         raise HTTPException(status_code=403, detail="API key invalida")
+
+async def get_key(request: Request) -> str:
+    """Lee la clave con prioridad: header X-API-Key (recomendado, NO filtra a
+    logs/historial), luego query string y luego form (compatibilidad con
+    clientes antiguos)."""
+    k = request.headers.get("X-API-Key")
+    if k:
+        return k
+    q = request.query_params.get("key")
+    if q:
+        return q
+    try:
+        form = await request.form()
+        fk = form.get("key")
+        if fk:
+            return fk
+    except Exception:
+        pass
+    return ""
+
+# Rate limit simple en memoria por clave: un tunel publico con la key no debe
+# permitir abuso (coste de Colab, almacenamiento, fuerza bruta).
+_RATE_WINDOW = 60.0   # segundos
+_RATE_MAX = 30        # peticiones por ventana por clave
+_rate_hits = {}
+
+def _check_rate(key: str):
+    now = datetime.now().timestamp()
+    hits = [t for t in _rate_hits.get(key, []) if now - t < _RATE_WINDOW]
+    if len(hits) >= _RATE_MAX:
+        raise HTTPException(status_code=429, detail="Demasiadas peticiones. Espera un momento.")
+    hits.append(now)
+    _rate_hits[key] = hits
+
+MAX_UPLOAD_MB = 200
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+async def _save_upload(file: UploadFile) -> str:
+    """Guarda la subida en TEMP_DIR con tope de tamano (evita llenar el disco
+    del servidor con un archivo enorme)."""
+    suffix = Path(file.filename).suffix or ".wav"
+    tmp = TEMP_DIR / f"upload_{datetime.now().strftime('%H%M%S%f')}{suffix}"
+    size = 0
+    with open(tmp, "wb") as f:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                f.close()
+                tmp.unlink(missing_ok=True)
+                raise HTTPException(status_code=413,
+                                    detail=f"Archivo demasiado grande (maximo {MAX_UPLOAD_MB} MB)")
+            f.write(chunk)
+    return str(tmp)
 
 def preprocess_for_whisper(path: str) -> str:
     sr, data = wavfile.read(path)
@@ -146,23 +222,40 @@ def preprocess_for_whisper(path: str) -> str:
     wavfile.write(out_path, 16000, (data * 32767).astype(np.int16))
     return out_path
 
-def transcribe_audio(path: str, timestamps: bool = False):
+def transcribe_audio(path: str, timestamps: bool = False, language: str = "es"):
     proc_path = preprocess_for_whisper(path)
+
+    # Idioma: "auto" deja que whisper detecte el idioma del audio solo
+    # (language=None + sin initial_prompt en espanol, que sesgaria la salida);
+    # cualquier otro valor es un codigo ISO (es, en, pt, ...) que se fuerza.
+    lang = (language or "es").strip().lower()
+    if lang == "auto":
+        lang_kw = {"language": None, "initial_prompt": None}
+    else:
+        lang_kw = {
+            "language": lang,
+            "initial_prompt": (
+                "Esta es una transcripcion de una clase universitaria o conferencia academica en espanol. "
+                "El orador principal es el docente o conferencista. "
+                "Ignora murmullos de fondo, interrupciones breves y preguntas sin respuesta del docente. "
+                "Preserva datos duros: numeros, fechas, dosis, nomenclaturas tecnicas y definiciones literales exactas. "
+                "Transcribe fielmente solo lo dicho por el orador principal."
+                if lang == "es" else
+                "This is a transcription of a university lecture or academic conference. "
+                "The main speaker is the lecturer or presenter. "
+                "Ignore background murmurs, brief interruptions and unanswered questions. "
+                "Preserve hard facts: numbers, dates, dosages, technical terms and literal definitions. "
+                "Transcribe faithfully only what the main speaker said."
+            ),
+        }
 
     result = model.transcribe(
         proc_path,
-        language="es",
         task="transcribe",
         fp16=(DEVICE == "cuda"),
         verbose=False,
         condition_on_previous_text=True,
-        initial_prompt=(
-            "Esta es una transcripcion de una clase universitaria o conferencia academica en espanol. "
-            "El orador principal es el docente o conferencista. "
-            "Ignora murmullos de fondo, interrupciones breves y preguntas sin respuesta del docente. "
-            "Preserva datos duros: numeros, fechas, dosis, nomenclaturas tecnicas y definiciones literales exactas. "
-            "Transcribe fielmente solo lo dicho por el orador principal."
-        )
+        **lang_kw
     )
 
     text = result.get("text", "").strip()
@@ -205,6 +298,7 @@ def generate_pdf(text: str, title: str = "Transcripcion", timestamps_data=None) 
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 8, f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align="C")
     pdf.cell(0, 8, f"Modelo: Whisper {MODEL_NAME} ({DEVICE.upper()})", ln=True, align="C")
+    pdf.cell(0, 8, "Transcripcion automatica - puede contener errores. No constituye acta oficial.", ln=True, align="C")
     pdf.ln(5)
     pdf.set_draw_color(14, 165, 233)
     pdf.set_line_width(0.8)
@@ -245,16 +339,15 @@ def status():
     }
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...), key: str = Form(...)):
+async def transcribe(request: Request, file: UploadFile = File(...),
+                     language: str = Form("es")):
+    key = await get_key(request)
     verify_key(key)
-    suffix = Path(file.filename).suffix or ".wav"
-    tmp = TEMP_DIR / f"upload_{datetime.now().strftime('%H%M%S%f')}{suffix}"
-
-    with open(tmp, "wb") as f:
-        f.write(await file.read())
+    _check_rate(key)
+    tmp = await _save_upload(file)
 
     try:
-        result = transcribe_audio(str(tmp), timestamps=False)
+        result = transcribe_audio(str(tmp), timestamps=False, language=language)
         result["filename"] = file.filename
         result["processed_at"] = datetime.now().isoformat()
         HISTORY.append({"type": "transcription", "filename": file.filename, "text": result["text"], "model": MODEL_NAME, "time": datetime.now().isoformat()})
@@ -265,16 +358,15 @@ async def transcribe(file: UploadFile = File(...), key: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/transcribe_ts")
-async def transcribe_ts(file: UploadFile = File(...), key: str = Form(...)):
+async def transcribe_ts(request: Request, file: UploadFile = File(...),
+                        language: str = Form("es")):
+    key = await get_key(request)
     verify_key(key)
-    suffix = Path(file.filename).suffix or ".wav"
-    tmp = TEMP_DIR / f"upload_{datetime.now().strftime('%H%M%S%f')}{suffix}"
-
-    with open(tmp, "wb") as f:
-        f.write(await file.read())
+    _check_rate(key)
+    tmp = await _save_upload(file)
 
     try:
-        result = transcribe_audio(str(tmp), timestamps=True)
+        result = transcribe_audio(str(tmp), timestamps=True, language=language)
         result["filename"] = file.filename
         result["processed_at"] = datetime.now().isoformat()
         HISTORY.append({"type": "transcription_ts", "filename": file.filename, "text": result["text"], "segments": result.get("segments", []), "model": MODEL_NAME, "time": datetime.now().isoformat()})
@@ -285,8 +377,10 @@ async def transcribe_ts(file: UploadFile = File(...), key: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/compile")
-async def compile_transcriptions(key: str = Form(...), title: str = Form("Compilacion de Clases"), mode: str = Form("full")):
+async def compile_transcriptions(request: Request, title: str = Form("Compilacion de Clases"), mode: str = Form("full")):
+    key = await get_key(request)
     verify_key(key)
+    _check_rate(key)
     if not HISTORY:
         raise HTTPException(status_code=400, detail="No hay transcripciones en el historial")
 
@@ -309,27 +403,38 @@ async def compile_transcriptions(key: str = Form(...), title: str = Form("Compil
         "status": "compiled",
         "title": title,
         "classes_count": len(compiled),
-        "txt_url": f"/download?file={Path(txt_path).name}&key={key}",
-        "pdf_url": f"/download?file={Path(pdf_path).name}&key={key}",
+        # La clave NUNCA va en la URL (se filtra a logs de ngrok/historial):
+        # /download la exige via header X-API-Key (o query/form si el cliente
+        # la anade explicitamente).
+        "txt_url": f"/download?file={Path(txt_path).name}",
+        "pdf_url": f"/download?file={Path(pdf_path).name}",
         "preview": full_text[:2000] + "..." if len(full_text) > 2000 else full_text
     })
 
 @app.get("/download")
-def download(file: str, key: str):
+async def download(request: Request, file: str):
+    key = await get_key(request)
     verify_key(key)
-    fpath = TEMP_DIR / file
-    if not fpath.exists():
+    _check_rate(key)
+    # Anti path-traversal: el archivo debe quedar DENTRO de TEMP_DIR.
+    base = TEMP_DIR.resolve()
+    fpath = (TEMP_DIR / file).resolve()
+    if not fpath.is_relative_to(base) or not fpath.exists() or not fpath.is_file():
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    return FileResponse(str(fpath), filename=file)
+    return FileResponse(str(fpath), filename=fpath.name)
 
 @app.get("/history")
-def get_history(key: str):
+async def get_history(request: Request):
+    key = await get_key(request)
     verify_key(key)
+    _check_rate(key)
     return JSONResponse({"history": HISTORY})
 
 @app.post("/clear")
-def clear_history(key: str):
+async def clear_history(request: Request):
+    key = await get_key(request)
     verify_key(key)
+    _check_rate(key)
     HISTORY.clear()
     for f in TEMP_DIR.glob("*"):
         try: f.unlink()
@@ -337,14 +442,25 @@ def clear_history(key: str):
     return JSONResponse({"status": "cleared"})
 
 if __name__ == "__main__":
-    if NGROK_TOKEN:
-        ngrok.set_auth_token(NGROK_TOKEN)
+    # Dependencias SOLO al ejecutar como script (no al importar como modulo).
+    for pkg in ["fastapi", "uvicorn", "pyngrok", "python-multipart", "fpdf2", "openai-whisper", "torch", "numpy", "scipy"]:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", pkg])
+    try:
+        if NGROK_TOKEN:
+            ngrok.set_auth_token(NGROK_TOKEN)
+        else:
+            print("⚠️  NGROK_TOKEN vacio: ngrok necesita un authtoken (gratis en ngrok.com).")
+        public_url = ngrok.connect(8000).public_url
+    except Exception as e:
+        print("❌ No se pudo abrir el tunel de ngrok:", e)
+        print("   Crea un authtoken gratuito en ngrok.com y pegalo en NGROK_TOKEN,")
+        print("   o usa el servidor solo en local: http://localhost:8000")
+        public_url = "http://localhost:8000"
 
-    public_url = ngrok.connect(8000).public_url
     print("\n" + "="*60)
     print(f"SERVIDOR AUDIOCLASS CLOUD v9.1 ACTIVO")
     print(f"URL: {public_url}")
-    print(f"API Key: {API_KEY}")
+    print(f"API Key: {API_KEY}   ← copiala a AudioClass → Configuracion → Clave Colab")
     print(f"Modelo: {MODEL_NAME} | Dispositivo: {DEVICE.upper()}")
     print("="*60 + "\n")
 

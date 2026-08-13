@@ -233,7 +233,12 @@ DEFAULT_CONFIG = {
     "adaptacion_default": "Análisis Académico Profundo",
     "theme": "dark",
     "vu_sensitivity": 0.25,
-    "first_run": True
+    "first_run": True,
+    # Privacidad: el analisis con IA ENVIA el texto de la transcripcion a
+    # servidores de Google/OpenAI. Sin consentimiento explicito (ia_consent),
+    # la app pide permiso antes del primer uso y nunca envia nada.
+    "ia_consent": False,
+    "rec_consent_ack": False
 }
 
 # ─── CIFRADO DE SECRETOS (DPAPI en Windows) ──────────────────────────────────
@@ -731,7 +736,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             ctk.CTkRadioButton(f3, text="🖥️ En mi computadora (rápido y sin internet)", 
                                variable=self.wiz_mode, value="local",
                                font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
-            ctk.CTkRadioButton(f3, text="☁️ En Google Colab (máxima precisión, necesita internet)", 
+            ctk.CTkRadioButton(f3, text="☁️ En Google Colab (mayor precisión, necesita internet)", 
                                variable=self.wiz_mode, value="cloud",
                                font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
         else:
@@ -739,6 +744,32 @@ class App(ctk.CTk if CTK else ctk.Tk):
                            bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=5)
             ctk.Radiobutton(f3, text="En Google Colab", variable=self.wiz_mode, value="cloud",
                            bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=5)
+
+        f4 = self._frame(body, fg_color=C["card"])
+        f4.pack(fill="x", padx=100, pady=10)
+        self._lbl(f4, "5. Privacidad y consentimiento",
+                  font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+        self._lbl(f4, "🔒 Tus grabaciones y transcripciones se procesan en TU equipo y se guardan en tu carpeta. "
+                      "Si activas el análisis con IA (Gemini u OpenAI), el TEXTO de la transcripción se envía "
+                      "a los servidores de Google u OpenAI (que lo retienen temporalmente: Gemini hasta 55 días, "
+                      "OpenAI sin usarlo para entrenar) para generar resúmenes, guías y exámenes. "
+                      "Al grabar a otras personas, debes informarles de que la sesión se está grabando y "
+                      "obtener su consentimiento cuando la ley lo exija. El contenido generado por IA es "
+                      "informativo y puede contener errores: no lo uses como consejo médico, legal o profesional "
+                      "ni como acta oficial.",
+                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=760, justify="left").pack(anchor="w", padx=20, pady=(0, 8))
+        self.wiz_priv_ack = ctk.BooleanVar(value=False)
+        self.wiz_ia_consent = ctk.BooleanVar(value=False)
+        if CTK:
+            ctk.CTkCheckBox(f4, text="✅ He leído y acepto el aviso de privacidad",
+                            variable=self.wiz_priv_ack, font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
+            ctk.CTkCheckBox(f4, text="🤖 Permito el análisis con IA (el texto de mis transcripciones se enviará a Gemini/OpenAI — puedo desactivarlo en Configuración)",
+                            variable=self.wiz_ia_consent, font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
+        else:
+            ctk.Checkbutton(f4, text="He leido y acepto el aviso de privacidad",
+                            variable=self.wiz_priv_ack, bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=4)
+            ctk.Checkbutton(f4, text="Permito el analisis con IA (envio a Gemini/OpenAI)",
+                            variable=self.wiz_ia_consent, bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=4)
 
         # (El boton "Comenzar" y la nota estan en la barra fija inferior)
 
@@ -748,6 +779,13 @@ class App(ctk.CTk if CTK else ctk.Tk):
         if getattr(self, "_wiz_finishing", False):
             return
         self._wiz_finishing = True
+        if not self.wiz_priv_ack.get():
+            self._wiz_finishing = False
+            self._msg("warning", "Aviso de privacidad",
+                      "Para continuar, marca la casilla: He leído y acepto el aviso de privacidad.")
+            return
+        self.config["ia_consent"] = bool(self.wiz_ia_consent.get())
+        self.config["rec_consent_ack"] = True
         self.config["audio_profile"] = self.wiz_profile.get()
         self.config["transcription_mode"] = self.wiz_mode.get()
         # 'nuevo' = Modo Guiado (vista simple); 'avanzado' = todo visible
@@ -2047,7 +2085,8 @@ CONSEJOS:
         except Exception:
             pass
 
-        content = self.last_text
+        content = ("Transcripción automática — puede contener errores. No constituye acta oficial.\n\n"
+                   + self.last_text)
         kind = "Transcripcion"
         if adapt_text:
             if self._ask("Exportar a Google Docs",
@@ -2597,6 +2636,20 @@ CONSEJOS:
             except Exception:
                 pass
 
+        # ── Privacidad / consentimiento de IA ──
+        fp = self._frame(f1, fg_color="transparent")
+        fp.pack(fill="x", padx=15, pady=(8, 4))
+        self._lbl(fp, "🔒 Privacidad", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(fp, "Las transcripciones se procesan en tu equipo. El análisis con IA envía el texto a Gemini/OpenAI (retención temporal del proveedor). El contenido generado por IA puede contener errores y no es consejo médico/legal ni acta oficial.",
+                  font=("Segoe UI", 10), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 4))
+        ia_consent_var = ctk.BooleanVar(value=bool(self.config.get("ia_consent", False)))
+        if CTK:
+            ctk.CTkCheckBox(fp, text="Permito el análisis con IA (envío de mis transcripciones a Gemini/OpenAI)",
+                            variable=ia_consent_var, font=("Segoe UI", 11), fg_color=C["accent"]).pack(anchor="w", pady=(0, 10))
+        else:
+            ctk.Checkbutton(fp, text="Permito el analisis con IA (envio a Gemini/OpenAI)", variable=ia_consent_var,
+                            bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", pady=(0, 10))
+
         def save():
             self.config["adapt_provider"] = adapt_provider.get()
             self.config["gemini_api_key"] = gemini_entry.get().strip()
@@ -2606,6 +2659,7 @@ CONSEJOS:
             self.config["colab_url"] = colab_entry.get().strip()
             self.config["colab_key"] = colab_key.get().strip()
             self.config["google_creds_path"] = gdoc_entry.get().strip()
+            self.config["ia_consent"] = bool(ia_consent_var.get())
             save_config(self.config)
 
             self.adapt_engine = self._build_adapt_engine()
@@ -3063,10 +3117,32 @@ CONSEJOS:
             except Exception:
                 pass
 
+    def _prompt_rec_consent(self):
+        """Aviso de grabacion (una vez): el usuario debe informar a los demas
+        participantes de que se esta grabando (requisito en estados all-party
+        y en el ambito laboral). Devuelve True si se acepta grabar."""
+        return self._ask(
+            "🔴 Aviso de grabación",
+            "AudioClass grabará el audio de esta sesión.\n\n"
+            "Si hay otras personas, debes informarles de que la sesión se está grabando "
+            "y obtener su consentimiento cuando la ley lo exija (en particular en estados "
+            "de consentimiento de todos los participantes y en entornos laborales).\n\n"
+            "¿Quieres comenzar la grabación?")
+
     def _begin_recording(self):
         """Arranca la grabacion real (invocada por _mic_probe_done tras el
         pre-check de nivel de entrada). Contiene el cuerpo original de
         _startrec a partir de self.recording = True."""
+        # V1 Grabar sin consentimiento: aviso obligatorio la primera vez.
+        if not self.config.get("rec_consent_ack", False):
+            if not self._prompt_rec_consent():
+                try:
+                    self.lstatus.configure(text="Listo", text_color=C["ok"])
+                except Exception:
+                    pass
+                return
+            self.config["rec_consent_ack"] = True
+            save_config(self.config)
         self.recording = True
         self.stop_ev.clear()
         self._stop_done = False
@@ -3727,11 +3803,65 @@ CONSEJOS:
             template = self.easy_template.get()
             self.after(500, lambda: self._adapt(template))
 
+    def _prompt_ia_consent(self, callback):
+        """Dialogo de consentimiento de privacidad: el analisis con IA ENVIA el
+        texto de la transcripcion a servidores de Google/OpenAI. Se pide una vez
+        y queda guardado en la config (revocable en Configuracion)."""
+        top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
+        top.title("🔒 Privacidad y análisis con IA")
+        try:
+            top.attributes("-topmost", True)
+        except Exception:
+            pass
+        f = self._frame(top, fg_color=C["card"])
+        f.pack(fill="both", expand=True, padx=20, pady=20)
+        self._lbl(f, "🔒 Aviso de privacidad", font=("Segoe UI", 16, "bold"), text_color=C["accent"]).pack(anchor="w", pady=(0, 8))
+        self._lbl(f, "Tus grabaciones y transcripciones se procesan en TU equipo. Sin embargo, el análisis con IA "
+                      "(Gemini u OpenAI) ENVÍA el texto de la transcripción a los servidores de Google u OpenAI "
+                      "(que lo retienen temporalmente: Gemini hasta 55 días; OpenAI no lo usa para entrenar) "
+                      "para generar resúmenes, guías y exámenes.",
+                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
+        self._lbl(f, "Puedes seguir usando AudioClass sin IA (transcripción local) y cambiar esta decisión "
+                      "en Configuración en cualquier momento.",
+                  font=("Segoe UI", 11), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 12))
+        consent = ctk.BooleanVar(value=False)
+        if CTK:
+            ctk.CTkCheckBox(f, text="Acepto: permito enviar el texto de mis transcripciones a Gemini/OpenAI para análisis con IA",
+                            variable=consent, font=("Segoe UI", 12), fg_color=C["accent"]).pack(anchor="w", pady=(0, 14))
+        else:
+            ctk.Checkbutton(f, text="Acepto: permito enviar el texto a Gemini/OpenAI para analisis con IA",
+                            variable=consent, bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", pady=(0, 14))
+
+        def go():
+            if not consent.get():
+                self._msg("warning", "Consentimiento requerido",
+                          "Marca la casilla para aceptar el envío a la IA, o cancela para seguir sin análisis con IA.")
+                return
+            self.config["ia_consent"] = True
+            save_config(self.config)
+            top.destroy()
+            callback()
+
+        row = self._frame(f, fg_color="transparent")
+        row.pack(fill="x")
+        self._btn(row, "Cancelar (sin IA)", top.destroy, width=170, height=36,
+                  fg_color=C.get("warn", "#F59E0B")).pack(side="left", padx=(0, 10))
+        self._btn(row, "Aceptar y continuar", go, width=210, height=36, fg_color=C["accent"]).pack(side="right")
+        top.transient(self)
+        top.grab_set()
+
     def _adapt(self, template_name):
         if not self.last_text:
             self._msg("warning", "Sin transcripcion", "Primero transcribe un audio.")
             return
 
+        # Consentimiento de privacidad: sin ia_consent no se envia nada a IA.
+        if not self.config.get("ia_consent", False):
+            self._prompt_ia_consent(lambda: self._run_adapt(template_name))
+            return
+        self._run_adapt(template_name)
+
+    def _run_adapt(self, template_name):
         prov = self.config.get("adapt_provider", "gemini")
         if prov == "openai":
             key = self.config.get("openai_api_key", "")
@@ -3786,6 +3916,7 @@ CONSEJOS:
                 f.write(f"{icon} {template_name}\n")
                 f.write(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Motor: {result.get('provider', self.adapt_engine.PROVIDER)} {result.get('model', '?')}\n")
+                f.write("Contenido generado por IA — puede contener errores. Verifica los datos importantes.\n")
                 f.write("="*60 + "\n\n")
                 f.write(adapted)
 
@@ -3810,7 +3941,7 @@ CONSEJOS:
     def _set_adapt_text(self, text, title, icon):
         self.adapt_txt.configure(state="normal")
         self.adapt_txt.delete("1.0", "end")
-        self.adapt_txt.insert("end", f"{icon} {title}\n{'='*55}\n\n{text}\n")
+        self.adapt_txt.insert("end", f"{icon} {title}\n{'='*55}\nTexto generado automáticamente — puede contener errores. Verifica los datos importantes.\n\n{text}\n")
         self.adapt_txt.see("end")
         self.adapt_txt.configure(state="disabled")
         self.bsave_adapt.configure(state="normal")
@@ -3995,6 +4126,7 @@ CONSEJOS:
             pdf.set_text_color(80, 80, 80)
             pdf.cell(0, 6, f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
             pdf.cell(0, 6, f"Modelo: {model}", ln=True)
+            pdf.cell(0, 6, "Transcripción automática — puede contener errores. No constituye acta oficial.", ln=True)
             pdf.ln(4)
             # Insignia 'Revisado por IA'
             self._pdf_badge(pdf, fam, tit_style, full_unicode)
@@ -4144,6 +4276,7 @@ CONSEJOS:
             paras.append(self._docx_p(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Modelo: {model}", color="808080", size=20))
             # Insignia 'Revisado por IA' (verde, texto blanco, centrada)
             paras.append(self._docx_p("✓ Revisado por IA", bold=True, color="FFFFFF", shading="10B981", size=22, center=True))
+            paras.append(self._docx_p("Transcripción automática — puede contener errores. No constituye acta oficial.", color="808080", size=17))
             paras.append(self._docx_p(""))
 
             # Informe academico de Gemini (si el usuario lo pidio)
