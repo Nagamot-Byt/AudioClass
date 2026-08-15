@@ -26,7 +26,7 @@ data = (rng.standard_normal(SR * DUR) * 0.02).astype(np.float32)
 wavfile.write(tmp, SR, data)
 
 import whisper
-eng = ac.LocalWhisperEngine("tiny")
+eng = ac.LocalWhisperEngine("tiny", backend="openai")
 eng.model = whisper.load_model("models/tiny.pt")
 eng.ready = True
 eng.model_name = "tiny"

@@ -63,6 +63,42 @@ app._theme()
 for _ in range(4):
     app.update()
 
+# Los toasts se animan (pulso + desvanecido con colores intermedios que NO
+# cumplen WCAG por diseno: se funden hacia el fondo). Si el chequeo muestrea
+# un toast a mitad de animacion, falla de forma no determinista (flaky).
+# Cancelar la animacion y destruir el label antes de medir contraste.
+if getattr(app, "_toast_after", None) is not None:
+    try:
+        app.after_cancel(app._toast_after)
+    except Exception:
+        pass
+    app._toast_after = None
+for _attr in ("_toast_lbl", "_toast_btn"):
+    _w = getattr(app, _attr, None)
+    if _w is not None:
+        try:
+            _w.destroy()
+        except Exception:
+            pass
+        setattr(app, _attr, None)
+
+# ── Contraste WCAG AA: ningun texto/boton puede bajar de 4.5:1 (3:1 UI) ────
+import wcag_check as wc
+for _dark in (True, False):
+    app.dark = _dark
+    app._apply_palette()
+    for _ in range(4):
+        app.update()
+    appearance = "dark" if _dark else "light"
+    pairs = wc.collect_pairs(app, appearance)
+    viol, _info = wc.check_pairs(pairs)
+    if viol:
+        for r, fg, bg, cls, txt, st in viol[:12]:
+            print(f"CONTRASTE {appearance}: {r:.2f}:1 {cls} fg={fg} bg={bg} '{txt}'")
+        print("SMOKE_OK -> FALLA: contraste WCAG AA")
+        app.destroy()
+        sys.exit(1)
+
 # Estado de conexion en el header
 app._chmode("local")
 app._chmode("cloud")
@@ -72,6 +108,14 @@ if hasattr(app, "lbadge"):
     app.lbadge.pack(side="right", padx=(0, 14))
     app.update()
     app.lbadge.pack_forget()
+
+# Boton Google Docs: desactivado con etiqueta clara si el componente falta
+_gdoc_txt = app.bdocs.cget("text")
+_ok_gdoc = ("no disponible" in _gdoc_txt) if not ac._gdocs_importable() else ("Google Docs" in _gdoc_txt)
+if not _ok_gdoc:
+    print(f"SMOKE_OK -> FALLA: etiqueta Google Docs inesperada: {_gdoc_txt}")
+    app.destroy()
+    sys.exit(1)
 
 app.update()
 app.destroy()

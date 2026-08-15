@@ -72,7 +72,7 @@ def main():
     print("[3/4] Procesado guardado (int16)")
 
     import whisper
-    eng = ac.LocalWhisperEngine("tiny")
+    eng = ac.LocalWhisperEngine("tiny", backend="openai")
     eng.model = whisper.load_model(os.path.join(base, "models", "tiny.pt"))
     eng.ready = True
     eng.model_name = "tiny"
