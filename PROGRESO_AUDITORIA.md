@@ -552,3 +552,30 @@ la app de escritorio:
 **Archivos tocados:** `audioclass_v91.py`, `audioclass_colab_server_v91.py`,
 `test_colab_server_security.py`, `.gitignore`, `.github/workflows/release.yml`
 (nuevo), `GUIA_DE_ESTILO.md`, `REVISION_CYBERSECURIDAD.md`.
+
+### 4. Verificación visual de la tipografía (capturas en pantalla)
+- **Commit `a0b4ed0`** — "Diseño y seguridad web: tipografía unificada en la UI,
+  headers de seguridad en el servidor Colab y workflow de release
+  automatizado" (8 archivos: `audioclass_v91.py`, `audioclass_colab_server_v91.py`,
+  `test_colab_server_security.py`, `.gitignore`, `.github/workflows/release.yml`,
+  `GUIA_DE_ESTILO.md`, `REVISION_CYBERSECURIDAD.md`, `PROGRESO_AUDITORIA.md`).
+- **Exes recompilados con la tipografía** (13 agosto, 10:34→10:54): onefile
+  `AudioClass COMPLETA v9.1.exe` (10:44) y onedir `dist/AudioClass/AudioClass.exe`
+  (10:49), **26 OK · 0 fallos · 0 advertencias** con selftests reales (57 s / 31 s
+  para 139 s de audio, exit=0, 100%).
+- **Verificación de bytecode de ambos exes**: el literal `"Segoe UI"` ya NO está
+  en la interfaz empaquetada (solo queda en `_resolve_fonts` como fallback
+  correcto) → la versión distribuida lleva la tipografía unificada.
+- **Capturas**: `_captura_asistente.png` (del **exe real** vía PrintWindow,
+  1044x759) con el título serif de 30 px medido en píxeles (glifo ~25 px, banda
+  accent y 70-95) + `_captura_asistente_privacidad.png` (sección de
+  consentimiento), `_captura_principal.png` y `_captura_config.png` (harness —
+  mismo código/fuentes que el exe, render idéntico).
+- **Galería en Preview**: `_capturas_vista.html` (imágenes incrustadas en base64,
+  238 KB) registrada en la pestaña Preview de la sesión para revisión humana.
+- **Nota del entorno**: el exe no recibe clics sintéticos en el sandbox de
+  Freebuff (ventana en superficie lógica 1366x768 vs framebuffer físico
+  inestable 1024/1366; `GetWindowThreadProcessId` devuelve pid=0). Por eso las
+  3 vistas restantes se capturaron con el harness y se investigó la solución
+  para el E2E empaquetado — ver `INVESTIGACION_E2E_EXE.md` (modo headless
+  propuesto `--e2e-ui`, pendiente de implementar).

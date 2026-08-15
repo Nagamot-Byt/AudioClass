@@ -1,75 +1,47 @@
-🎙️ AUDIOCLASS v9.1 — GRABADOR ACADÉMICO PROFESIONAL
-=====================================================
+═══════════════════════════════════════════════════════════════════
+  AudioClass v9.1 — LÉEME (primera ejecución)
+═══════════════════════════════════════════════════════════════════
 
-¿QUÉ ES?
-AudioClass graba tus clases con el micrófono, convierte la voz del
-profesor en texto (transcripción, SIN internet) y luego usa
-inteligencia artificial (Gemini) para convertir ese texto en
-apuntes: resumen, tesis, ideas clave, guía de estudio, exámenes…
+1) AVISO DE SEGURIDAD DE WINDOWS (SmartScreen)
+───────────────────────────────────────────────────────────────────
+El programa NO está firmado digitalmente (no tiene certificado de
+pago), así que Windows muestra "Windows protegió tu PC" la primera
+vez. Es un aviso estándar para programas sin firma — el archivo es
+legítimo y fue generado en esta máquina.
 
--------------------------------------------------------------
-✅ PASO 1 — INSTALAR (solo una vez, 1 clic)
--------------------------------------------------------------
-1. Descomprime el .zip completo en una carpeta.
-2. Haz DOBLE CLIC en  "Instalar AudioClass.bat".
-3. El instalador copia el programa y crea el acceso directo
-   "AudioClass" en tu escritorio.
-4. Haz doble clic en ese acceso directo para abrir la app.
+Cómo abrirlo (Windows 10 y 11):
+  • En el aviso azul "Windows protegió tu PC":
+      1. Pulsa el enlace "Más información".
+      2. Pulsa el botón "Ejecutar de todos modos".
+  • Si descargaste el ZIP desde internet y el exe no abre:
+      1. Clic derecho sobre "AudioClass COMPLETA v9.1.exe".
+      2. "Propiedades".
+      3. Marca "Desbloquear" (junto a Seguridad) si aparece.
+      4. "Aceptar" y vuelve a abrir el programa.
 
-No necesitas Python, ni terminal, ni instalar nada más.
+2) PRIMERA APERTURA (es normal que tarde)
+───────────────────────────────────────────────────────────────────
+La primera vez el programa descomprime la IA Whisper en segundo
+plano: espera 30-60 segundos (a veces más según el equipo) hasta
+que se abra la ventana. No lo cierres durante ese tiempo.
+Las siguientes aperturas son más rápidas.
 
--------------------------------------------------------------
-✅ PASO 2 — PRIMER USO (contesta 4 preguntas, 2 minutos)
--------------------------------------------------------------
-1. ¿Cómo quieres empezar?  → "Soy nuevo" (recomendado)
-2. ¿Dónde grabarás?        → elige tu sala (Clase Universitaria…)
-3. ¿API Key de Gemini?     → opcional: pégala si la tienes
-   (gratis en https://aistudio.google.com/app/apikey)
-4. ¿Cómo transcribir?      → "En mi computadora" (sin internet)
+3) MICRÓFONO (si grabas en silencio)
+───────────────────────────────────────────────────────────────────
+  • Antes de grabar, la app comprueba el nivel del micrófono y te
+    avisa si está muy bajo, con un medidor en vivo y un botón
+    "⚡ Abrir optimizador" para corregirlo (nivel al 100% + boost).
+  • Si sigues con poco nivel: Configuración > Sistema > Sonido >
+    Entrada, sube el volumen del micrófono al 100 y activa el
+    "Aumento de señal" (Mic Boost) si está disponible.
 
-Pulsa  🚀 Comenzar a usar AudioClass.
+4) DÓNDE SE GUARDA TODO
+───────────────────────────────────────────────────────────────────
+  • Grabaciones y transcripciones:
+        %USERPROFILE%\AudioClass_Recordings
+  • Nota: la exportación a "Google Docs" no está incluida en esta
+    versión (el botón aparece desactivado). Usa PDF o DOCX.
 
-A partir de ahí, la app te dice SIEMPRE cuál es el siguiente paso
-en el recuadro azul de arriba.
-
--------------------------------------------------------------
-✅ PASO 3 — GRABAR UNA CLASE
--------------------------------------------------------------
-1. Pulsa el botón rojo  🎙️ GRABAR MI CLASE.
-2. Mantén silencio los primeros segundos (la app aprende el ruido).
-3. Habla con normalidad… o deja que la clase suene.
-4. Al terminar pulsa  🛑 DETENER.
-
--------------------------------------------------------------
-✅ PASO 4 — TRANSCRIBIR Y ANALIZAR
--------------------------------------------------------------
-1. Pulsa  📝 TRANSCRIBIR  (el texto aparece en pantalla).
-2. Pulsa  🎓 ANÁLISIS ACADÉMICO PROFUNDO  para los apuntes.
-   (Necesita tu API Key de Gemini, gratis, puesta en Configuración).
-3. Guarda con  📄 GUARDAR PDF  o  🌐 GOOGLE DOCS.
-
-MODO FÁCIL: activa el interruptor verde arriba y, al detener la
-grabación, la app hace TODO sola (procesa → transcribe → analiza).
-
--------------------------------------------------------------
-📁 ¿DÓNDE ESTÁN MIS ARCHIVOS?
--------------------------------------------------------------
-Todo se guarda solo en:  tu carpeta "AudioClass_Recordings"
-(Documentos o Usuario). Ahí verás:
-  clase_20260731_143022_raw.wav         (audio original)
-  clase_20260731_143022_mejorado.wav    (audio limpio)
-  clase_20260731_143022_transcripcion.txt
-  clase_20260731_143022_Análisis_Académico_Profundo.txt
-
--------------------------------------------------------------
-⚠️ NOTAS IMPORTANTES
--------------------------------------------------------------
-• La primera apertura tarda 30-60 segundos (descomprime la IA).
-  Es normal; no cierres la ventana durante ese tiempo.
-• El programa ocupa ~500 MB en disco (lleva la IA dentro).
-• Para desinstalar: doble clic en "Desinstalar AudioClass.bat"
-  (tus grabaciones NO se borran).
-• Para transcripción de máxima precisión (large-v3) se necesita
-  el servidor de Google Colab: configura su URL en Configuración.
-
-¡A estudiar! 🎓
+═══════════════════════════════════════════════════════════════════
+  Si algo falla: revisa %USERPROFILE%\AudioClass_Recordings\logs\
+═══════════════════════════════════════════════════════════════════
