@@ -3,6 +3,9 @@ numpy>=1.24.0
 scipy>=1.10.0
 sounddevice>=0.4.6
 openai-whisper>=20231117
+# faster-whisper (CTranslate2 int8, ~2-5x mas rapido en CPU) se usa en modo
+# DESARROLLO (backend auto). El exe compilado fuerza openai (empaqueta .pt).
+faster-whisper>=1.0.0
 torch>=2.0.0
 noisereduce>=3.0.0
 matplotlib>=3.7.0
