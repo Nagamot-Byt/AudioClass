@@ -17,15 +17,16 @@
 #
 #  Fases:
 #    [0] Preflight        python + pyinstaller + assets + specs
-#    [1] Tests del fuente py_compile, smoke, UI_V91, WCAG (wizard incluido)
+#    [1] Tests del fuente suite ÚNICA run_ci_suite.py (13 tests: UI, privacidad,
+#                        WCAG, Colab, motor, exportación, E2E, estrés, v10,
+#                        lang_auto, watchdog, benchmark) — la misma que el CI
 #    [2] Build onefile    PyInstaller AudioClass_v91_onefile.spec → dist_onefile/
 #    [3] Entregables      copia a "AudioClass COMPLETA v9.1.exe" + regenera el zip
 #    [4] Exe: selftest    --selftest-transcribe tts_clase.wav (texto real, 100%)
 #    [4b] Exe: E2E UI     --e2e-ui wizard|config|widgets (flujos reales de la interfaz, headless)
 #    [5] Exe: WCAG + diálogo micrófono débil  run_wcag_on_exe.py + test_mic_warn_on_exe.py
 #                        (contraste y diálogo de advertencia sobre el código empaquetado)
-#    [6] Benchmark        test_benchmark_models.py (base > tiny)  [--skip-benchmark]
-#    [7] Integridad zip   SHA-256 del exe dentro del zip == entregable raíz
+#    [6] Integridad zip   SHA-256 del exe dentro del zip == entregable raíz
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -161,13 +162,28 @@ done
 AUDIO_DUR=$("$PY" -c "from scipy.io import wavfile; sr,d=wavfile.read(r'$AUDIO_TEST'); print(f'{len(d)/sr:.0f}')" 2>/dev/null || echo '?')
 log "  Audio de prueba: $AUDIO_TEST (${AUDIO_DUR}s)"
 
-# ── [1] TESTS DEL FUENTE ─────────────────────────────────────────────────────
-step "[1] Tests del código fuente"
-if "$PY" -m py_compile audioclass_v91.py audioclass_core.py 2>/dev/null; then ok "py_compile (PY_OK)"; else fail "py_compile"; fi
-run_tests test_ui_smoke "SMOKE_OK"
-run_tests test_ui_v91 "UI_V91 OK|TODO OK"
-run_tests test_wcag_contrast "RESULTADO: TODO OK"
-run_tests test_export_docx_pdf "EXPORT_OK"
+# ── [1] TESTS DEL FUENTE (suite ÚNICA compartida con el CI) ──────────────────
+# run_ci_suite.py es la ÚNICA fuente de verdad de la suite: los 13 tests
+# (UI smoke/v91, WCAG, privacidad, seguridad Colab, motor paralelo,
+# exportación, E2E de UI, estrés, v10, lang_auto, watchdog y benchmark).
+# ci.yml la consume igual → CI y despliegue no pueden divergir.
+# Los tests GUI se envuelven con xvfb-run SOLO en Linux sin DISPLAY;
+# en Windows el display es nativo y no hace falta.
+step "[1] Tests del código fuente (run_ci_suite.py)"
+if "$PY" -m py_compile audioclass_v91.py audioclass_core.py run_ci_suite.py 2>/dev/null; then ok "py_compile (PY_OK)"; else fail "py_compile"; fi
+SUITE_ARGS=()
+[ "$DO_BENCHMARK" = 0 ] && SUITE_ARGS+=(--skip-benchmark)
+T0=$(date +%s)
+run_limited 1500 "$PY" -u run_ci_suite.py "${SUITE_ARGS[@]}"
+RC=$?
+T1=$(date +%s)
+out=$(cat /tmp/_deploy_out.txt 2>/dev/null); rm -f /tmp/_deploy_out.txt
+if [ "$RC" -eq 0 ] && printf '%s' "$out" | grep -q "CI_SUITE_OK"; then
+    ok "suite del fuente en $((T1 - T0))s ($(printf '%s' "$out" | grep -oE 'CI_SUITE_OK \([^)]*\)' | head -1 | tr -d '\r'))"
+else
+    fail "suite del fuente (rc=$RC)"
+    printf '%s\n' "$out" | grep -E "FAIL|Error|Traceback" | sed 's/^/      /' | tail -10 | tee -a "$LOG"
+fi
 
 if [ "$FAIL" -gt 0 ]; then
     log ""
@@ -357,13 +373,7 @@ if [ "$DO_FULL_VALIDATION" = 1 ] && [ -f "$EXE_SRC" ]; then
     run_tests test_mic_warn_on_exe "MIC_WARN_ON_EXE_OK"
 fi
 
-# ── [6] BENCHMARK DE MODELOS ─────────────────────────────────────────────────
-if [ "$DO_BENCHMARK" = 1 ]; then
-    step "[6] Benchmark de modelos (base > tiny) — puede tardar varios minutos"
-    run_tests test_benchmark_models "BENCH_MODELS_OK"
-fi
-
-# ── [7] INTEGRIDAD DEL ZIP ───────────────────────────────────────────────────
+# ── [6] INTEGRIDAD DEL ZIP ───────────────────────────────────────────────────
 step "[7] Integridad: exe del zip == entregable raíz"
 "$PY" -c "
 import zipfile, hashlib

@@ -1,10 +1,12 @@
 name: CI
 
 # #10 — Regresión automática ampliada (2026-08): compila todos los .py y
-# ejecuta la suite de tests del núcleo. Además de los 3 tests originales
-# (motor paralelo, exportación, estrés) corre: mejoras v10 (silencio digital,
-# streaming y faster-whisper), idioma 'auto', watchdog anti-cuelgue y
-# benchmark de modelos (mediana WER base vs tiny). Se ejecuta en cada push
+# ejecuta la suite de tests del núcleo mediante run_ci_suite.py, la ÚNICA
+# fuente de verdad de la lista (13 tests: UI smoke/v91, WCAG, privacidad,
+# seguridad del servidor Colab, motor paralelo, exportación DOCX/PDF, E2E de
+# UI headless, estrés, mejoras v10, idioma 'auto', watchdog y benchmark de
+# modelos). desplegar_produccion.sh fase [1] consume EXACTAMENTE la misma
+# suite, así que CI y despliegue no pueden divergir. Se ejecuta en cada push
 # y PR, y manualmente con workflow_dispatch.
 #
 # Modelos y fixtures (NO versionados en git):
@@ -35,14 +37,14 @@ jobs:
         run: |
           python -m py_compile audioclass_v91.py audioclass_core.py \
             audioclass_colab_server_v91.py grabar_prueba.py \
-            bench_models.py optimizar_mic.py \
+            bench_models.py optimizar_mic.py run_ci_suite.py \
             test_*.py && echo COMPILE_OK
       - name: Import básico del núcleo (sin GUI)
         run: |
           python -c "import audioclass_core as c; print('CORE_IMPORT_OK', c.SAMPLE_RATE, c.OUTPUT_DIR)"
 
   tests:
-    name: Motor + exportación + mejoras (faster-whisper)
+    name: Suite completa de tests del fuente (run_ci_suite.py)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,36 +102,17 @@ jobs:
           if [ -f prueba_voz_es.wav ] && [ ! -f tts_clase.wav ]; then cp prueba_voz_es.wav tts_clase.wav; fi
           ls -la prueba_voz_es.wav tts_clase.wav 2>/dev/null \
             || echo "AVISO: sin fixture de voz en el repo: test_stress fallara y el benchmark saltara"
-      - name: Test motor paralelo (voz real -> chunks -> 100%)
+      - name: Suite completa de tests del fuente (run_ci_suite.py)
         run: |
-          python -u test_parallel_transcribe.py 2>&1 | tail -5
-      - name: Test exportación DOCX/PDF (sin GUI completa)
-        run: |
-          # Instancia App() -> necesita un display: xvfb (ya viene en las
-          # imagenes de ubuntu-latest; si faltara se instala con apt).
-          # NOTA: el pipeline | tail enmascaraba el exit code y el paso
-          # "pasaba" aunque el test fallara (EXPORT_FAIL). Se captura la
-          # salida y se exige EXPLICITAMENTE el patrón EXPORT_OK.
+          # ÚNICA fuente de verdad de la suite: los 13 tests (UI/privacidad/
+          # WCAG/Colab + motor + exportación + estrés + v10 + watchdog +
+          # benchmark) los define run_ci_suite.py y los corre igual el CI y
+          # desplegar_produccion.sh fase [1]. Los tests GUI se envuelven con
+          # xvfb-run automáticamente (Linux sin DISPLAY).
+          # NOTA: se captura la salida y se exige EXPLÍCITAMENTE CI_SUITE_OK
+          # (el pipeline | tail enmascara el exit code: bug histórico del
+          # paso de exportación, que "pasaba" aunque el test fallara).
           command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
-          out=$(xvfb-run -a python -u test_export_docx_pdf.py 2>&1)
-          echo "$out" | tail -4
-          echo "$out" | grep -q EXPORT_OK
-      - name: Test E2E de UI headless (asistente + config + widgets)
-        run: |
-          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
-          xvfb-run -a python -u test_e2e_ui.py 2>&1 | tail -8
-      - name: Test estrés (ráfaga + cancelación + hilos)
-        run: |
-          python -u test_stress_transcripcion.py 2>&1 | tail -8
-      - name: Test mejoras v10 (silencio + streaming + faster-whisper)
-        run: |
-          python -u test_mejoras_v10.py 2>&1 | tail -6
-      - name: Test idioma 'auto' (whisper falso)
-        run: |
-          python -u test_lang_auto.py 2>&1 | tail -4
-      - name: Test watchdog anti-cuelgue por chunk
-        run: |
-          python -u test_watchdog.py 2>&1 | tail -4
-      - name: Benchmark modelos (mediana WER base vs tiny)
-        run: |
-          python -u test_benchmark_models.py 2>&1 | tail -6
+          out=$(python -u run_ci_suite.py 2>&1)
+          echo "$out"
+          echo "$out" | grep -q CI_SUITE_OK

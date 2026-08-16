@@ -578,4 +578,45 @@ la app de escritorio:
   inestable 1024/1366; `GetWindowThreadProcessId` devuelve pid=0). Por eso las
   3 vistas restantes se capturaron con el harness y se investigó la solución
   para el E2E empaquetado — ver `INVESTIGACION_E2E_EXE.md` (modo headless
-  propuesto `--e2e-ui`, pendiente de implementar).
+  propuesto `--e2e-ui`, ya **IMPLEMENTADO** y validado en los exes — ver abajo).
+
+## 🧪 Validación completa en clone limpio de master (15 agosto 2026)
+
+Se clonó el repo a una carpeta temporal (HEAD **`e4be953`**, working tree
+limpio, sin `models/` ni exes — como un clone real de GitHub), se replicó el
+paso de modelos del CI (copiar `tiny.pt` a `models/`; cachés whisper/CT2
+compartidas de la máquina) y se ejecutó la **suite completa de 14 tests** más el
+job de compilación:
+
+| Job / test | Resultado en el clone |
+|---|---|
+| py_compile (todos los .py) | `COMPILE_OK` |
+| Import núcleo + faster-whisper | `CORE_IMPORT_OK` / `FASTER_WHISPER_OK` |
+| `test_privacy_consent` | `PRIVACY_SMOKE: 9 OK, 0 fallos` |
+| `test_wcag_contrast` | `RESULTADO: TODO OK` (dark + light, WCAG AA) |
+| `test_colab_server_security` | `COLAB_SERVER_SECURITY: 11 OK, 0 fallos` |
+| `test_ui_smoke` | `SMOKE_OK` |
+| `test_ui_v91` | `RESULTADO: TODO OK` |
+| `test_parallel_transcribe` | `ALL_OK` |
+| `test_lang_auto` | `LANG_AUTO_ALL_OK` |
+| `test_watchdog` | `WATCHDOG_ALL_OK` |
+| `test_export_docx_pdf` | `EXPORT_OK` |
+| `test_mejoras_v10` | `MEJORAS_V10_OK` (faster tiny) |
+| `test_stress_transcripcion` | `STRESS_ALL_OK` |
+| `test_e2e_ui` | `E2E_UI_OK` (wizard 17 + config 14 + widgets 13) |
+| `test_benchmark_models` | `BENCH_MODELS_OK` (base 15.7% vs tiny 30.0% WER) |
+
+Notas:
+- **14/14 en verde**, clone eliminado después de la validación.
+- La validación **amplió la cobertura anterior** del clone con los 3 tests de
+  privacidad / WCAG / seguridad del servidor Colab. Poco después esos 3 quedaron
+  **integrados en la suite unificada** `run_ci_suite.py` (única fuente de
+  verdad de los 13 tests, consumida por `ci.yml` y por la fase [1] de
+  `desplegar_produccion.sh`), así que CI y despliegue validan exactamente los
+  mismos tests.
+- Contexto del commit validado: **`e4be953`** — "E2E de UI headless (`--e2e-ui`)
+  y CI hermético": modo `--e2e-ui` (wizard/config/widgets) en `audioclass_v91.py`,
+  `test_e2e_ui.py` integrado en `ci.yml` con xvfb, fase `[4b]` de
+  `desplegar_produccion.sh` que valida los exes recién compilados, y fix de
+  `test_export_docx_pdf` (config aislada con `first_run=False` + `ci.yml` exige
+  `EXPORT_OK` en vez de enmascararlo con `| tail`).
