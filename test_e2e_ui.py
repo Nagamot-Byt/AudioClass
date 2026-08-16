@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""E2E de UI headless: corre los 3 escenarios (wizard, config, widgets) con
-el MISMO modo --e2e-ui que validan los exes en produccion. Es el ancla de
-regresion para el flujo real de la interfaz sin depender de entrada sintetica:
-cada escenario instancia la app completa, ejercita widgets y callbacks, y
-reporta por archivo + exit code (PASS/FAIL)."""
+"""E2E de UI headless: corre los 4 escenarios (wizard, config, widgets, mic)
+con el MISMO modo --e2e-ui que validan los exes en produccion. Es el ancla
+de regresion para el flujo real de la interfaz sin depender de entrada
+sintetica: cada escenario instancia la app completa, ejercita widgets y
+callbacks, y reporta por archivo + exit code (PASS/FAIL)."""
 import os, sys, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCENARIOS = ("wizard", "config", "widgets")
+SCENARIOS = ("wizard", "config", "widgets", "mic")
 
 def main():
     ok_all = True

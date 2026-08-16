@@ -60,7 +60,7 @@ class FakeStream:
 
 def _fake_measure(level):
     """measure_signal fake: entrega bloques constantes y llama on_level."""
-    def f(dur=4.0, on_level=None):
+    def f(dur=4.0, on_level=None, device=None):
         SR = 16000
         n = int(dur * SR)
         x = np.full(n, level, np.float32)
@@ -82,9 +82,12 @@ def _fake_om(levels):
     m.get_mic_state = lambda d: (100, False)
     m.privacy_mic = lambda: "Allow"
     m.list_mics = lambda: [("ID-DEFAULT", 100, False), ("ID-2", 80, True)]
-    m.measure_signal = lambda dur=4.0, on_level=None: _fake_measure(next(it))(dur, on_level)
+    m.measure_signal = lambda dur=4.0, on_level=None, device=None: \
+        _fake_measure(next(it))(dur, on_level, device)
     m.apply_mic_level = lambda dev, level: (True, "")
     m.apply_boost = lambda dev: (True, "boost +30 dB aplicado")
+    m._capture_device_by_sd_name = lambda name: None
+    m._device_friendly_name = lambda dev: None
     return m
 
 

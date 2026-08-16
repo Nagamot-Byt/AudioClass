@@ -233,6 +233,9 @@ DEFAULT_CONFIG = {
     "adaptacion_default": "Análisis Académico Profundo",
     "theme": "dark",
     "vu_sensitivity": 0.25,
+    # Microfono elegido por el usuario (por NOMBRE, para sobrevivir a
+    # reordenamientos de ids de PortAudio). Vacio = predeterminado del sistema.
+    "mic_device": "",
     "first_run": True,
     # Privacidad: el analisis con IA ENVIA el texto de la transcripcion a
     # servidores de Google/OpenAI. Sin consentimiento explicito (ia_consent),
@@ -393,6 +396,61 @@ def _gdocs_importable():
         except Exception:
             _GDOCS_IMPORTABLE = False
     return _GDOCS_IMPORTABLE
+
+
+def _input_devices():
+    """[(id, nombre)] de los microfonos disponibles (dispositivos de entrada
+    activos de PortAudio). Vacio si no se pueden enumerar. Se usa para el
+    selector de microfono de Configuracion."""
+    try:
+        import sounddevice as sd
+        return [(i, str(d["name"])) for i, d in enumerate(sd.query_devices())
+                if d["max_input_channels"] >= 1]
+    except Exception:
+        return []
+
+
+def _mic_device_id_for(cfg):
+    """Id de sounddevice del microfono configurado (por nombre), o None para
+    usar el predeterminado del sistema. Se re-resuelve en cada uso por si el
+    dispositivo cambio (desenchufado, reordenado, nombre del driver distinto):
+    primero coincidencia exacta del nombre, luego parcial. Si el microfono
+    configurado ya no existe, cae al default. cfg es el dict de config (los
+    stubs de tests pasan {})."""
+    name = str((cfg or {}).get("mic_device") or "").strip()
+    if not name:
+        return None
+    try:
+        import sounddevice as sd
+        devs = sd.query_devices()
+        for i, d in enumerate(devs):
+            if d["max_input_channels"] >= 1 and str(d["name"]) == name:
+                return i
+        for i, d in enumerate(devs):
+            if d["max_input_channels"] >= 1 and name.lower() in str(d["name"]).lower():
+                return i
+    except Exception:
+        pass
+    return None
+
+
+def _same_mic(a, b):
+    """True si dos nombres de microfono se refieren al mismo dispositivo:
+    coincidencia exacta (case-insensitive) o comparten la parte del driver
+    entre parentesis (p. ej. PortAudio 'Varios micrófonos (Realtek(R) Audio)'
+    vs CoreAudio 'Micrófono (Realtek(R) Audio)')."""
+    if not a or not b:
+        return False
+    a, b = str(a).strip().lower(), str(b).strip().lower()
+    if a == b:
+        return True
+    try:
+        import re
+        ga = set(re.findall(r"\(([^()]*)\)", a))
+        gb = set(re.findall(r"\(([^()]*)\)", b))
+        return bool(ga & gb)
+    except Exception:
+        return False
 
 
 class App(ctk.CTk if CTK else ctk.Tk):
@@ -1950,6 +2008,24 @@ CONSEJOS:
                                                  dropdown_hover_color=C["border"], dropdown_text_color=C["text"])
                     except Exception:
                         pass
+            if hasattr(self, "mic_menu"):
+                if CTK:
+                    try:
+                        self.mic_menu.configure(fg_color=C["button"], text_color=C["text"],
+                                                button_color=C["accent"], button_hover_color=C["accent_hover"],
+                                                dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
+                                                dropdown_text_color=C["text"])
+                    except Exception:
+                        pass
+            if hasattr(self, "mic_opt_menu"):
+                if CTK:
+                    try:
+                        self.mic_opt_menu.configure(fg_color=C["button"], text_color=C["text"],
+                                                    button_color=C["accent"], button_hover_color=C["accent_hover"],
+                                                    dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
+                                                    dropdown_text_color=C["text"])
+                    except Exception:
+                        pass
             # Pills de pasos: re-colorear segun el paso actual (el remapeo por
             # clave no cubre estos CTkLabel crudos creados fuera de _lbl).
             if getattr(self, "_cur_step", None) is not None and getattr(self, "step_lbls", None):
@@ -2204,7 +2280,8 @@ CONSEJOS:
                 self.q.put(("mic_lvl", r))
 
             with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                                blocksize=win, callback=cb):
+                                blocksize=win, callback=cb,
+                                device=_mic_device_id_for(getattr(self, "config", None) or {})):
                 t0 = time.time()
                 while time.time() - t0 < DUR:
                     time.sleep(0.05)
@@ -2283,7 +2360,7 @@ CONSEJOS:
 
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
         top.title("🎛️ Optimizador de micrófono")
-        top.geometry("680x560")
+        top.geometry("680x600")
         top.transient(self)
         top.grab_set()
         self.mic_opt_top = top
@@ -2293,6 +2370,30 @@ CONSEJOS:
         self._lbl(top, "Diagnostica el nivel de entrada y corrige las grabaciones en silencio. "
                        "Habla en voz alta durante cada prueba de 4 segundos.",
                   font=(self.FB, 11), text_color=C["muted"], wraplength=620).pack(pady=(0, 10))
+
+        mic_row = self._frame(top, fg_color="transparent")
+        mic_row.pack(fill="x", padx=30, pady=(0, 6))
+        self._lbl(mic_row, "🎤 Micrófono:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
+        mic_devs = _input_devices()
+        mic_names = ["Predeterminado del sistema"] + [n for _, n in mic_devs]
+        cfg_mic = str((getattr(self, "config", None) or {}).get("mic_device") or "").strip()
+        self.mic_opt_mic_var = ctk.StringVar(
+            value=cfg_mic if cfg_mic in mic_names else "Predeterminado del sistema")
+        if CTK:
+            self.mic_opt_menu = ctk.CTkOptionMenu(mic_row, values=mic_names, variable=self.mic_opt_mic_var,
+                                                  width=430, font=(self.FB, 11), fg_color=C["button"],
+                                                  text_color=C["text"], button_color=C["accent"],
+                                                  button_hover_color=C["accent_hover"],
+                                                  dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
+                                                  dropdown_text_color=C["text"])
+        else:
+            self.mic_opt_menu = ctk.OptionMenu(mic_row, self.mic_opt_mic_var, *mic_names)
+        self.mic_opt_menu.pack(side="left", padx=(0, 8))
+        if not mic_devs:
+            try:
+                self.mic_opt_menu.configure(state="disabled")
+            except Exception:
+                pass
 
         lvl_row = self._frame(top, fg_color="transparent")
         lvl_row.pack(fill="x", padx=30, pady=(0, 4))
@@ -2354,14 +2455,22 @@ CONSEJOS:
                     self.mic_opt_txt.configure(state="disabled")
                 except Exception:
                     pass
-            threading.Thread(target=self._mic_opt_worker, args=(do_apply,), daemon=True).start()
+            mic_name = ""
+            try:
+                mic_name = self.mic_opt_mic_var.get()
+            except Exception:
+                pass
+            threading.Thread(target=self._mic_opt_worker, args=(do_apply,),
+                             kwargs={"mic_name": mic_name}, daemon=True).start()
         except Exception:
             self._mic_opt_busy = False
 
-    def _mic_opt_worker(self, do_apply):
+    def _mic_opt_worker(self, do_apply, mic_name=""):
         """Hilo del optimizador: diagnostica (dispositivo, nivel, mute, permiso,
-        todos los mics) y, si do_apply, aplica 100% + desmute + boost. Los
-        avances van por la cola (_poll) para no tocar widgets desde el hilo."""
+        todos los mics) y, si do_apply, aplica 100% + desmute + boost. El
+        dispositivo objetivo es el elegido en el selector de la ventana
+        (mic_name, por nombre) o el predeterminado del sistema. Los avances
+        van por la cola (_poll) para no tocar widgets desde el hilo."""
         try:
             if sys.platform != "win32":
                 self.q.put(("mic_opt_log", "El optimizador solo aplica en Windows.\n"))
@@ -2370,15 +2479,32 @@ CONSEJOS:
             import optimizar_mic as om
             log = self.q.put
 
-            log(("mic_opt_log", "Leyendo dispositivo por defecto...\n"))
-            dev = om._default_capture_device()
-            did = om._device_id(dev)
-            sname = "?"
-            try:
-                sname = sd.query_devices(sd.default.device[0])["name"]
-            except Exception:
-                pass
-            log(("mic_opt_log", f"Dispositivo por defecto: {sname}\n"))
+            # Dispositivo objetivo: el del selector (por nombre) o el default.
+            target = (mic_name or "").strip()
+            use_default = (not target) or target == "Predeterminado del sistema"
+            dev = None
+            sd_id = None
+            sname = ""
+            if not use_default:
+                try:
+                    dev = om._capture_device_by_sd_name(target)
+                except Exception:
+                    dev = None
+                if dev is None:
+                    log(("mic_opt_log", f"⚠️ No pude identificar '{target}' en Windows; uso el predeterminado.\n"))
+            if dev is None:
+                dev = om._default_capture_device()
+                try:
+                    sname = sd.query_devices(sd.default.device[0])["name"]
+                except Exception:
+                    pass
+            else:
+                sname = target
+                sd_id = _mic_device_id_for({"mic_device": target})
+            if use_default:
+                log(("mic_opt_log", f"Dispositivo por defecto: {sname}\n"))
+            else:
+                log(("mic_opt_log", f"Dispositivo (elegido): {sname}\n"))
             st = om.get_mic_state(dev)
             if st:
                 log(("mic_opt_log", f"  Nivel: {st[0]}%  |  Mute: {'SÍ ⚠️' if st[1] else 'No'}\n"))
@@ -2395,15 +2521,18 @@ CONSEJOS:
             log(("mic_opt_log", "Microfonos activos:\n"))
             try:
                 for did2, lvl, mute in om.list_mics():
-                    mark = " [DEFAULT]" if did2 == did else ""
+                    mark = ""
+                    if _same_mic(did2, sname):
+                        mark = " [DEFAULT]" if use_default else " [ELEGIDO]"
                     extra = f"nivel {lvl}%" + (" mute ⚠️" if mute else "")
-                    log(("mic_opt_log", f"  {extra}{mark}  {did2[:64]}\n"))
+                    log(("mic_opt_log", f"  {extra}{mark}  {str(did2)[:64]}\n"))
             except Exception as e:
                 log(("mic_opt_log", f"  (no enumerable: {e})\n"))
 
             # Prueba de señal ANTES (piso/p90/peak) con medidor en vivo
             self.q.put(("mic_opt_state", "🎙️ HABLA AHORA durante 4 s"))
-            antes = om.measure_signal(4.0, on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
+            antes = om.measure_signal(4.0, device=sd_id,
+                                      on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
             self.q.put(("mic_opt_state", ""))
             log(("mic_opt_log", f"Prueba: {antes['dur']:.1f}s | piso {antes['piso']:.4f} | "
                                  f"p90 {antes['p90']:.4f} | peak {antes['peak']:.3f} → {antes['veredicto']}\n"))
@@ -2428,7 +2557,8 @@ CONSEJOS:
                 log(("mic_opt_log", f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ ⚠️' if st2[1] else 'No'}\n"))
 
             self.q.put(("mic_opt_state", "🎙️ HABLA AHORA durante 4 s (post-optimización)"))
-            despues = om.measure_signal(4.0, on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
+            despues = om.measure_signal(4.0, device=sd_id,
+                                        on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
             self.q.put(("mic_opt_state", ""))
             log(("mic_opt_log", f"Post: {despues['dur']:.1f}s | piso {despues['piso']:.4f} | "
                                  f"p90 {despues['p90']:.4f} | peak {despues['peak']:.3f} → {despues['veredicto']}\n"))
@@ -2556,6 +2686,33 @@ CONSEJOS:
         colab_key.pack(anchor="w", padx=15, pady=(0, 12))
         colab_key.insert(0, self.config.get("colab_key", "audioclass"))
 
+        fm = self._frame(top, fg_color=C["card"])
+        fm.pack(fill="x", padx=20, pady=10)
+        self._lbl(fm, "🎤 Micrófono de grabación", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(fm, "Elige con qué micrófono grabar y medir el nivel. Con 'Predeterminado del sistema' se usa el que Windows tenga activo.",
+                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
+        mic_row = self._frame(fm, fg_color="transparent")
+        mic_row.pack(fill="x", padx=15, pady=(0, 12))
+        mic_devs = _input_devices()
+        mic_names = ["Predeterminado del sistema"] + [n for _, n in mic_devs]
+        cur_mic = str(self.config.get("mic_device") or "").strip()
+        mic_var = ctk.StringVar(value=cur_mic if cur_mic in mic_names else "Predeterminado del sistema")
+        if CTK:
+            self.mic_menu = ctk.CTkOptionMenu(mic_row, values=mic_names, variable=mic_var,
+                                              width=470, font=(self.FB, 11), fg_color=C["button"],
+                                              text_color=C["text"], button_color=C["accent"],
+                                              button_hover_color=C["accent_hover"],
+                                              dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
+                                              dropdown_text_color=C["text"])
+        else:
+            self.mic_menu = ctk.OptionMenu(mic_row, mic_var, *mic_names)
+        self.mic_menu.pack(side="left", padx=(0, 8))
+        if not mic_devs:
+            try:
+                self.mic_menu.configure(state="disabled")
+            except Exception:
+                pass
+
         f0 = self._frame(top, fg_color=C["card"])
         f0.pack(fill="x", padx=20, pady=10)
         self._lbl(f0, "🎤 Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
@@ -2659,6 +2816,8 @@ CONSEJOS:
             self.config["colab_url"] = colab_entry.get().strip()
             self.config["colab_key"] = colab_key.get().strip()
             self.config["google_creds_path"] = gdoc_entry.get().strip()
+            mic_sel = mic_var.get()
+            self.config["mic_device"] = "" if mic_sel == "Predeterminado del sistema" else mic_sel
             self.config["ia_consent"] = bool(ia_consent_var.get())
             save_config(self.config)
 
@@ -2791,6 +2950,10 @@ CONSEJOS:
         except Exception:
             return True
 
+    def _mic_device_id(self):
+        """Delegacion de instancia: id del microfono configurado o None."""
+        return _mic_device_id_for(getattr(self, "config", None) or {})
+
     def _startrec(self):
         # Idempotencia: ya grabando (doble clic) o un procesamiento anterior
         # sigue en curso -> no arrancar otra vez. _proc_active (no _stop_done)
@@ -2804,7 +2967,8 @@ CONSEJOS:
             self._msg("warning", "Espacio", "Necesitas 100 MB libres.")
             return
         try:
-            sd.check_input_settings(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE)
+            sd.check_input_settings(device=_mic_device_id_for(getattr(self, "config", None) or {}),
+                                    samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE)
         except Exception as e:
             self._msg("error", "Microfono", str(e))
             return
@@ -2843,7 +3007,8 @@ CONSEJOS:
                 buf.append(indata.copy().flatten())
 
             with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                                blocksize=win, callback=cb):
+                                blocksize=win, callback=cb,
+                                device=_mic_device_id_for(getattr(self, "config", None) or {})):
                 time.sleep(MIC_PROBE_SECONDS)
             if not buf:
                 self.q.put(("mic_probe", None))
@@ -3058,7 +3223,8 @@ CONSEJOS:
                 self.q.put(("mic_live", r))
 
             with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                                blocksize=win, callback=cb):
+                                blocksize=win, callback=cb,
+                                device=_mic_device_id_for(getattr(self, "config", None) or {})):
                 while not getattr(self, "_mic_warn_decided", False) and time.time() - t0 < 60:
                     time.sleep(0.1)
         except Exception:
@@ -3299,7 +3465,8 @@ CONSEJOS:
                 self.buffer.append(indata.flatten())
         try:
             with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                                blocksize=CHUNK_SIZE, callback=cb):
+                                blocksize=CHUNK_SIZE, callback=cb,
+                                device=_mic_device_id_for(getattr(self, "config", None) or {})):
                 self.stop_ev.wait()
         except Exception as e:
             log_exc("recloop")
@@ -4816,7 +4983,7 @@ def _run_e2e_ui(scenario, out_path):
     reporta el resultado por archivo + exit code. Es el complemento de
     --selftest-transcribe para la UI: funciona en cualquier entorno (CI,
     sandbox, segunda maquina) porque no depende de clics sinteticos.
-        AudioClass.exe --e2e-ui <wizard|config|widgets> [salida.txt]
+        AudioClass.exe --e2e-ui <wizard|config|widgets|mic> [salida.txt]
     Escenarios:
       wizard   asistente de primer arranque: widgets, gate de privacidad
                (bloqueado sin aceptar el aviso), opt-in de IA y completado
@@ -4824,6 +4991,8 @@ def _run_e2e_ui(scenario, out_path):
                seccion de privacidad y cambio de motor de adaptacion
       widgets  inventario y estados iniciales de la UI principal + piezas
                vivas (toasts, siguiente paso, cambio de tema)
+      mic      selectores de microfono (Configuracion + Optimizador) y
+               medicion de nivel con audio sintetico (sin microfono real)
     """
     results = []  # (nombre, ok, detalle)
 
@@ -4974,6 +5143,9 @@ def _run_e2e_ui(scenario, out_path):
                 check("config: botones Probar Conexion x2",
                       sum("Probar Conexión" in t or "Probar Conexion" in t for t in btn) == 2, str(btn))
                 check("config: campos de entrada >= 5", nent >= 5, f"entries={nent}")
+                check("config: selector de microfono presente", hasattr(app, "mic_menu"))
+                check("config: seccion de microfono en el dialogo",
+                      any("Micrófono de grabación" in t for t in _texts(top, ("CTkLabel", "TLabel", "Label"))), "")
                 check("config: botones de test accesibles",
                       hasattr(app, "btn_test_gemini") and hasattr(app, "btn_test_openai"))
                 from audioclass_core import GeminiAdaptationEngine, OpenAIAdaptationEngine
@@ -4986,7 +5158,164 @@ def _run_e2e_ui(scenario, out_path):
                 check("config: motor Gemini al volver",
                       isinstance(app._build_adapt_engine(), GeminiAdaptationEngine))
                 top.destroy()
+
+            # Optimizador de microfono: la ventana tiene su propio selector
+            app._open_mic_opt()
+            pump(app, 6)
+            check("config: optimizador con selector de microfono",
+                  hasattr(app, "mic_opt_menu") and hasattr(app, "mic_opt_mic_var"))
+            try:
+                if getattr(app, "mic_opt_top", None) is not None:
+                    app.mic_opt_top.destroy()
+            except Exception:
+                pass
+            pump(app, 2)
             app.destroy()
+
+        elif scenario == "mic":
+            # Valida el selector de microfono (Configuracion + Optimizador) y
+            # la medicion de nivel del pre-check con AUDIO SINTETICO: no abre
+            # el microfono real, asi que funciona en CI, sandbox y segunda
+            # maquina. Verifica la resolucion por nombre (_mic_device_id_for)
+            # y la decision del pre-check (nivel bajo -> advertencia; nivel
+            # OK -> grabar) sin construir dialogos ni grabar de verdad.
+            write_cfg(first_run=False)
+            app = App()
+            pump(app)
+            check("mic: UI principal cargada", hasattr(app, "brec"))
+
+            # 1) Selector en el dialogo de Configuracion
+            app._open_config()
+            pump(app, 8)
+            top = None
+            for w in _walk(app):
+                if type(w).__name__ in ("CTkToplevel", "Toplevel"):
+                    try:
+                        if w.title() == "Configuracion de AudioClass":
+                            top = w
+                    except Exception:
+                        pass
+            check("mic: dialogo de config abierto", top is not None)
+            check("mic: selector en Configuracion", hasattr(app, "mic_menu"))
+            mic_vals = []
+            try:
+                mic_vals = list(app.mic_menu.cget("values") or [])
+            except Exception:
+                pass
+            check("mic: opcion predeterminado del sistema",
+                  "Predeterminado del sistema" in mic_vals, str(mic_vals))
+            check("mic: selector con valores", len(mic_vals) >= 1, str(mic_vals))
+            first_mic = next((v for v in mic_vals if v != "Predeterminado del sistema"), None)
+            try:
+                if top is not None:
+                    top.destroy()
+            except Exception:
+                pass
+            pump(app, 2)
+
+            # 2) Ventana del optimizador con su propio selector
+            app._open_mic_opt()
+            pump(app, 6)
+            check("mic: selector en el optimizador",
+                  hasattr(app, "mic_opt_menu") and hasattr(app, "mic_opt_mic_var"))
+            try:
+                if getattr(app, "mic_opt_top", None) is not None:
+                    app.mic_opt_top.destroy()
+            except Exception:
+                pass
+            pump(app, 2)
+
+            # 3) Resolucion del microfono configurado (por nombre -> id)
+            check("mic: sin config -> None (predeterminado)", _mic_device_id_for({}) is None)
+            check("mic: nombre inexistente -> None",
+                  _mic_device_id_for({"mic_device": "zz-no-existe-xyz"}) is None)
+            if first_mic:
+                resolved = _mic_device_id_for({"mic_device": first_mic})
+                check("mic: nombre real resuelve a id",
+                      isinstance(resolved, int) and resolved >= 0, f"id={resolved}")
+            else:
+                check("mic: entorno sin dispositivos (tolerado)", True)
+
+            # 4) Medicion de nivel del pre-check con audio sintetico
+            saved_stream, saved_sleep = sd.InputStream, time.sleep
+
+            class _E2EFakeStream:
+                """Entrega una vez el audio sintetico por bloque (sin microfono)."""
+                def __init__(self, samples, blocksize=1600, **kw):
+                    self.samples = samples
+                    self.bs = blocksize
+                    self.cb = kw.get("callback")
+                def __enter__(self):
+                    for i in range(0, len(self.samples), self.bs):
+                        blk = self.samples[i:i + self.bs]
+                        self.cb(blk.reshape(len(blk), 1), len(blk), None, None)
+                    return self
+                def __exit__(self, *a):
+                    return False
+
+            def run_probe(level):
+                # Alimenta ~MIC_PROBE_SECONDS de audio (como el microfono real):
+                # con una sola ventana _frame_rms devuelve vacio (n <= window).
+                sd.InputStream = lambda **kw: _E2EFakeStream(
+                    np.full(int(MIC_PROBE_SECONDS * SAMPLE_RATE), level, np.float32), **kw)
+                time.sleep = lambda *a: None
+                try:
+                    App._mic_probe_worker(app)
+                finally:
+                    sd.InputStream, time.sleep = saved_stream, saved_sleep
+                out = []
+                while True:
+                    try:
+                        m = app.q.get_nowait()
+                    except Exception:
+                        break
+                    if m[0] == "mic_probe":
+                        out.append(m)
+                return out
+
+            p = run_probe(0.1)
+            check("mic: probe mide nivel alto",
+                  len(p) == 1 and p[0][1] is not None and p[0][1] >= 0.09, str(p))
+            p = run_probe(1e-9)
+            check("mic: probe mide silencio",
+                  len(p) == 1 and p[0][1] is not None and p[0][1] < MIC_PROBE_P90_MIN, str(p))
+
+            # 5) Decision del pre-check (sin dialogos reales ni grabacion)
+            app._warn_opened = None
+            app._began = False
+            app._open_mic_warn_dialog = lambda lvl: setattr(app, "_warn_opened", lvl)
+            app._begin_recording = lambda: setattr(app, "_began", True)
+            App._mic_probe_done(app, 0.003)
+            check("mic: nivel bajo abre advertencia",
+                  app._warn_opened == 0.003 and app._began is False,
+                  f"warn={app._warn_opened} began={app._began}")
+            app._mic_probe_pending = False
+            app._warn_opened = None
+            app._began = False
+            App._mic_probe_done(app, 0.05)
+            check("mic: nivel OK graba directo",
+                  app._began is True and app._warn_opened is None,
+                  f"warn={app._warn_opened} began={app._began}")
+
+            # 6) Medidor en vivo del dialogo de advertencia (stream sintetico)
+            app._mic_warn_decided = True
+            sd.InputStream = lambda **kw: _E2EFakeStream(
+                np.full(int(0.1 * SAMPLE_RATE), 0.05, np.float32), **kw)
+            time.sleep = lambda *a: None
+            try:
+                App._mic_live_probe_worker(app)
+            finally:
+                sd.InputStream, time.sleep = saved_stream, saved_sleep
+            live = []
+            while True:
+                try:
+                    live.append(app.q.get_nowait())
+                except Exception:
+                    break
+            check("mic: medidor en vivo emite niveles",
+                  any(mt == "mic_live" and r > 0.04 for mt, r in live), str(live[:3]))
+            app.destroy()
+            pump(app, 2)
 
         elif scenario == "widgets":
             write_cfg(first_run=False)
@@ -5054,7 +5383,7 @@ def _run_e2e_ui(scenario, out_path):
 if __name__ == "__main__":
     # Modo headless de E2E de UI (valida los flujos reales de la interfaz del
     # .exe SIN entrada sintetica — no depende de clics ni del escritorio):
-    #   AudioClass.exe --e2e-ui <wizard|config|widgets> [salida.txt]
+    #   AudioClass.exe --e2e-ui <wizard|config|widgets|mic> [salida.txt]
     if "--e2e-ui" in sys.argv:
         try:
             i = sys.argv.index("--e2e-ui")

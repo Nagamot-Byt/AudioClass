@@ -620,3 +620,58 @@ Notas:
   `desplegar_produccion.sh` que valida los exes recién compilados, y fix de
   `test_export_docx_pdf` (config aislada con `first_run=False` + `ci.yml` exige
   `EXPORT_OK` en vez de enmascararlo con `| tail`).
+
+---
+
+## 🎤 Selector de micrófono en la app (16 agosto 2026)
+
+- ✅ **SELECTOR DE MICRÓFONO EN CONFIGURACIÓN** (`audioclass_v91.py`): nueva
+  sección "🎤 Micrófono de grabación" en el diálogo de Configuración con un
+  menú desplegable que lista los micrófonos del sistema (enumerados con
+  `_input_devices()` desde PortAudio) + la opción "Predeterminado del sistema".
+  La elección se guarda en la config por **NOMBRE** (no por id, que PortAudio
+  puede reordenar al conectar/desconectar dispositivos) bajo la clave
+  `mic_device` (default `""` = sistema; las configs antiguas reciben el
+  default al cargar). `_mic_device_id_for(cfg)` resuelve el nombre a id en cada
+  uso (coincidencia exacta, luego parcial; si ya no existe cae al default).
+- ✅ **TODOS los flujos de captura usan el micrófono elegido**: pre-check de
+  nivel bajo (`_mic_probe_worker`), medidor en vivo del diálogo de advertencia
+  (`_mic_live_probe_worker`), grabación real (`_recloop`), prueba rápida de
+  micrófono (`_mic_test_worker`), `check_input_settings` de `_startrec` y las
+  dos mediciones del optimizador integrado (`optimizar_mic.measure_signal`
+  ahora acepta `device=`). El tema claro/oscuro re-mapea el menú (`_apply_palette`).
+- ✅ **DIAGNÓSTICO CLI CON SELECTOR** (`validar_segunda_maquina.py`):
+  `--list-devices` lista los micrófonos con su id y `--device <id|nombre>`
+  elige con cuál medir/grabar (misma métrica p90).
+- ✅ **SELECTOR PROPIO EN LA VENTANA OPTIMIZADOR DE MICRÓFONO**: la ventana
+  "🎛️ Optimizador de micrófono" ahora tiene un desplegable "🎤 Micrófono"
+  (predeterminado del sistema + los del sistema; preselecciona el de
+  Configuración). `_mic_opt_worker` resuelve el dispositivo objetivo por
+  nombre: `optimizar_mic._capture_device_by_sd_name()` mapea el nombre de
+  PortAudio al IMMDevice de Windows (coincidencia exacta o por la parte del
+  driver entre paréntesis) para nivel/mute/boost, y la prueba de señal usa el
+  id de sounddevice elegido (`device=` en `measure_signal`). Para eso
+  `optimizar_mic.py` ganó `_device_friendly_name()` (IMMDevice::OpenPropertyStore
+  + PKEY_Device_FriendlyName vía ctypes — Activate devuelve E_NOINTERFACE,
+  OpenPropertyStore es el slot 4) y `list_mics()` ahora devuelve nombres
+  amigables en vez de GUIDs (CLI marcando [DEFAULT] por nombre).
+- ✅ **Validado**: escenario E2E `config` 17/17 (3 chequeos nuevos: selector
+  presente + sección en el diálogo + ventana del optimizador con su selector) ·
+  `MIC_PROBE_WARN_OK` · `MIC_OPT_INTEGRATION_OK` (fakes de `measure_signal` y
+  `_capture_device_by_sd_name` actualizados) · 8/8 tests rápidos de la suite
+  vía `run_ci_suite.py` · roundtrip de guardado de `mic_device`, resolución
+  real de nombres, nombres amigables de CoreAudio y marca [DEFAULT]/[ELEGIDO]
+  verificados en esta máquina.
+- ✅ **ESCENARIO E2E `mic` EN `--e2e-ui`**: el modo headless ganó un cuarto
+  escenario que valida en el exe empaquetado (a) el selector de micrófono del
+  diálogo de Configuración (opciones + "Predeterminado del sistema"), (b) el
+  selector propio de la ventana del Optimizador, (c) la resolución por nombre
+  (`_mic_device_id_for`: sin config → None · inexistente → None · real → id)
+  y (d) la **medición de nivel** del pre-check con audio sintético (sin abrir
+  el micrófono real — `sd.InputStream` se sustituye por un stream fake que
+  entrega ~1.5 s de señal): `_mic_probe_worker` mide p90 alto/silencio,
+  `_mic_probe_done` decide advertencia vs grabar (callbacks sustituidos), y
+  el medidor en vivo del diálogo emite niveles por la cola. 14/14 desde el
+  fuente · integrado en `test_e2e_ui.py` (4 escenarios → `E2E_UI_OK`) y en la
+  fase [4b] de `desplegar_produccion.sh` (wizard/config/widgets/**mic**, onefile
+  y onedir).

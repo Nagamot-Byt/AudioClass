@@ -61,7 +61,13 @@ SUITE = [
     ("test_benchmark_models",  r"BENCH_MODELS_OK"),
 ]
 
-TIMEOUTS = {"test_benchmark_models": 600}   # por defecto 300 s
+# Timeouts por test (s). Observados en 4 corridas del driver (14-ago-2026):
+# el único test cerca del tope era el de estrés (217-265s reales vs 300s,
+# margen de ~35s) -> se sube a 480s para no dar falso timeout en runners
+# lentos. El benchmark (118-183s reales) ya tenía 600s; el resto nunca pasó
+# de 68s (default 300s).
+TIMEOUTS = {"test_benchmark_models": 600,
+            "test_stress_transcripcion": 480}
 SKIP_BENCHMARK = "--skip-benchmark" in sys.argv
 
 USE_XVFB = (os.name != "nt"

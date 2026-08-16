@@ -45,11 +45,13 @@ En lugar de simular clics desde fuera, el exe **ejecuta el flujo real de UI dent
 AudioClass.exe --e2e-ui wizard    # asistente: widgets, gate de consentimiento, completar
 AudioClass.exe --e2e-ui config    # dialogo de Configuracion: selector de proveedor, privacidad
 AudioClass.exe --e2e-ui widgets   # inventario de widgets clave de la UI principal
+AudioClass.exe --e2e-ui mic       # selectores de microfono + medicion de nivel (audio sintetico)
 ```
 
 **Cómo funciona (boceto en `audioclass_v91.py`, bloque `__main__`):**
 - `wizard`: crea `App()` con `first_run=True` → comprueba que existen `wiz_priv_ack`, `wiz_ia_consent`, `wiz_gemini`, `wiz_mode` → verifica el **gate** (llamar `_finish_wizard()` sin aceptar → `first_run` sigue `True` y se registra el aviso) → simula el aceptado real (`wiz_priv_ack.set(True)` + `_finish_wizard()`) → verifica `first_run=False`, `ia_consent=False` (opt-in) y que la UI principal se construyó.
-- `config`: `first_run=False` → `_open_config()` → verifica selector de proveedor Gemini/OpenAI, sección "🔒 Privacidad", botones clave → cierra.
+- `config`: `first_run=False` → `_open_config()` → verifica selector de proveedor Gemini/OpenAI, selector de microfono ("🎤 Micrófono de grabación"), sección "🔒 Privacidad", botones clave, y la ventana del optimizador de microfono con su selector propio → cierra.
+- `mic`: `first_run=False` → selectores de microfono (Configuracion + Optimizador) → resolucion por nombre (`_mic_device_id_for`: sin config → `None`, inexistente → `None`, real → id) → **medicion de nivel del pre-check con AUDIO SINTETICO** (sin abrir el microfono real: `sd.InputStream` se reemplaza por un stream fake): `_mic_probe_worker` mide p90 alto/silencio, `_mic_probe_done` decide advertencia vs grabar (callbacks sustituidos, sin dialogos ni grabacion real), y el medidor en vivo del dialogo emite niveles por la cola → cierra.
 - `widgets`: recorre el árbol de la UI principal y escribe un inventario (botones, etiquetas, estado) para verificar que el empaquetado no perdió nada.
 - Resultado: `e2e_report.txt` + `exit 0/1` (con traceback en `e2e_error.txt`).
 

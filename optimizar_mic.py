@@ -18,6 +18,7 @@ Diagnostica y corrige el problema de "grabaciones en silencio / vu_low bajo":
 Sin dependencias: llama a CoreAudio directamente con ctypes (vtable COM).
 Uso:  python optimizar_mic.py [--apply] [--test] [--dur 4]
 """
+import re
 import sys
 import time
 from ctypes import (CFUNCTYPE, POINTER, Structure, WinDLL, byref, c_bool,
@@ -61,6 +62,8 @@ G_IPART = guid("AE2DE0E4-5BCA-4F2D-AA46-5D13F8FDB3A9")
 G_ICONTROL_IFACE = guid("45D37C3F-5140-444A-AE24-400789F3CBF3")
 G_AUDIO_VOL_LEVEL = guid("7FB7B48F-531D-44A2-BCB3-5AD5A134B3DC")
 G_AUDIO_MUTE = guid("DF45AEEA-B74A-4B6B-AFAD-2366B6AA012E")
+G_IPROPERTY_STORE = guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")
+PKEY_DEVICE_FRIENDLYNAME = (guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 14)
 
 CLSCTX_INPROC_SERVER = 0x1
 ECapture, EMultimedia = 1, 1
@@ -135,6 +138,67 @@ def _device_id(dev):
         return s.value
     except Exception:
         return "?"
+
+
+class PROPERTYKEY(Structure):
+    _fields_ = [("fmtid", GUID), ("pid", c_ulong)]
+
+
+class PROPVARIANT(Structure):
+    """Solo se usa el campo pwszVal (VT_LPWSTR) de la union; los 3 wReserved
+    alinean la union al offset 8 del encabezado PROPVARIANT."""
+    _fields_ = [("vt", c_ushort), ("wReserved1", c_ushort),
+                ("wReserved2", c_ushort), ("wReserved3", c_ushort),
+                ("pwszVal", c_wchar_p)]
+
+
+def _device_friendly_name(dev):
+    """Nombre amigable del dispositivo (PKEY_Device_FriendlyName via
+    IMMDevice::OpenPropertyStore + IPropertyStore::GetValue) o None si no
+    es accesible."""
+    st = c_void_p()
+    try:
+        # IMMDevice::OpenPropertyStore (slot 4), STGM_READ = 0
+        hr = _vcall(dev, 4, HRESULT, (c_ulong, POINTER(c_void_p)))(dev, 0, byref(st))
+        if hr != 0 or not st.value:
+            return None
+    except Exception:
+        return None
+    key = PROPERTYKEY(PKEY_DEVICE_FRIENDLYNAME[0], PKEY_DEVICE_FRIENDLYNAME[1])
+    pv = PROPVARIANT()
+    try:
+        # IPropertyStore::GetValue (slot 5)
+        hr = _vcall(st.value, 5, HRESULT, (POINTER(PROPERTYKEY), POINTER(PROPVARIANT)))(
+            st.value, byref(key), byref(pv))
+        if hr != 0 or not pv.pwszVal:
+            return None
+        return pv.pwszVal
+    except Exception:
+        return None
+
+
+def _capture_device_by_sd_name(name):
+    """Devuelve el IMMDevice de captura cuyo nombre amigable coincide con el
+    nombre que reporta sounddevice (p. ej. 'Varios micrófonos (Realtek(R) Audio)').
+    Coincidencia exacta (case-insensitive) primero; luego por la parte del
+    driver entre parentesis (el driver se repite en ambos nombres). None si
+    no hay candidato."""
+    if not name:
+        return None
+    name = name.strip()
+    m = re.findall(r"\(([^()]*)\)", name)
+    driver = m[-1].strip() if m else ""
+    best = None
+    for d in _all_capture_devices():
+        fn = _device_friendly_name(d)
+        if not fn:
+            continue
+        if fn.strip().lower() == name.lower():
+            return d
+        if driver and driver.lower() in fn.lower():
+            if best is None:
+                best = d
+    return best
 
 
 def _activate(dev, iid):
@@ -266,11 +330,13 @@ def apply_boost(dev):
 
 
 def list_mics():
-    """[(id, nivel, mute)] de todos los microfonos activos."""
+    """[(nombre, nivel, mute)] de todos los microfonos activos (nombre
+    amigable de Windows; fallback al id CoreAudio)."""
     out = []
     for d in _all_capture_devices():
         st = get_mic_state(d)
-        out.append((_device_id(d), st[0] if st else None, st[1] if st else None))
+        name = _device_friendly_name(d) or _device_id(d)
+        out.append((name, st[0] if st else None, st[1] if st else None))
     return out
 
 
@@ -286,11 +352,13 @@ def privacy_mic():
         return "desconocido"
 
 
-def measure_signal(dur=4.0, on_level=None):
+def measure_signal(dur=4.0, on_level=None, device=None):
     """Graba dur segundos y mide la senal. Devuelve dict con piso, p90, peak.
 
     on_level (opcional): callback que recibe el RMS de cada bloque de 100 ms
-    (para medidores de nivel EN VIVO en la app, sin imprimir nada)."""
+    (para medidores de nivel EN VIVO en la app, sin imprimir nada).
+    device (opcional): id de sounddevice del microfono a medir; None = el
+    predeterminado del sistema."""
     SR = 16000
     buf = []
 
@@ -303,7 +371,7 @@ def measure_signal(dur=4.0, on_level=None):
 
     try:
         with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                            blocksize=800, callback=cb):
+                            blocksize=800, callback=cb, device=device):
             sd.sleep(int(dur * 1000))
     except Exception as e:
         return {"dur": 0.0, "piso": 0.0, "p90": 0.0, "peak": 0.0, "veredicto": f"ERROR: {e}"}
@@ -348,6 +416,7 @@ def main():
 
     dev = _default_capture_device()
     did = _device_id(dev)
+    dname = _device_friendly_name(dev) or did
     st = get_mic_state(dev)
     sname = "?"
     try:
@@ -369,7 +438,7 @@ def main():
     print(f"\n[3] TODOS LOS MICRÓFONOS ACTIVOS")
     try:
         for did2, lvl, mute in list_mics():
-            mark = " [DEFAULT]" if did2 == did else ""
+            mark = " [DEFAULT]" if did2 == dname else ""
             extra = f"nivel {lvl}%" + (" mute ⚠️" if mute else "")
             print(f"    {extra}{mark}  {did2[:64]}")
     except Exception as e:

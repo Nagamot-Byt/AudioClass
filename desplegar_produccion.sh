@@ -303,13 +303,13 @@ else
 fi
 
 # ── [4b] E2E UI DEL EXE (modo headless, sin entrada sintética) ───────────────
-# Los flujos reales de la interfaz (asistente, Configuracion, UI principal)
-# se ejecutan DENTRO del propio proceso del exe con --e2e-ui: funciona en
-# cualquier entorno (CI, sandbox, segunda maquina) porque no depende de
-# clics sinteticos ni del escritorio fisico.
+# Los flujos reales de la interfaz (asistente, Configuracion, UI principal,
+# selectores y medicion de microfono) se ejecutan DENTRO del propio proceso
+# del exe con --e2e-ui: funciona en cualquier entorno (CI, sandbox, segunda
+# maquina) porque no depende de clics sinteticos ni del escritorio fisico.
 run_e2e_ui() {
     local exe="$1" label="$2" failed=0 sc rc t0 t1
-    for sc in wizard config widgets; do
+    for sc in wizard config widgets mic; do
         rm -f e2e_ui_result.txt e2e_ui_error.txt
         t0=$(date +%s)
         run_limited 180 ./"$exe" --e2e-ui "$sc" e2e_ui_result.txt
@@ -331,7 +331,7 @@ run_e2e_ui() {
     return "$failed"
 }
 
-step "[4b] Validación E2E de UI del exe: --e2e-ui wizard/config/widgets"
+step "[4b] Validación E2E de UI del exe: --e2e-ui wizard/config/widgets/mic"
 if [ -f "$EXE_SRC" ]; then
     if run_e2e_ui "$EXE_SRC" onefile; then
         ok "E2E UI onefile: 3 escenarios en verde"
