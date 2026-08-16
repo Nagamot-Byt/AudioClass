@@ -675,3 +675,11 @@ Notas:
   fuente · integrado en `test_e2e_ui.py` (4 escenarios → `E2E_UI_OK`) y en la
   fase [4b] de `desplegar_produccion.sh` (wizard/config/widgets/**mic**, onefile
   y onedir).
+- ✅ **SELECTOR DE MICRÓFONO EN EL ASISTENTE DE PRIMER ARRANQUE**: nueva
+  sección "3. ¿Con qué micrófono grabarás?" en el wizard (las siguientes se
+  renumeraron: API Key 4, transcripción 5, privacidad 6). El selector
+  (`wiz_mic_menu` + `wiz_mic`) lista los micrófonos del sistema y guarda en
+  `mic_device` al completar (`_finish_wizard`), de modo que el usuario elige
+  su micrófono en la PRIMERA ejecución y todos los flujos de captura ya lo
+  usan. Escenario E2E `wizard` ampliado a 19/19 (selector presente + micrófono
+  persistido en disco).

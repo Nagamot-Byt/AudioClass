@@ -771,9 +771,36 @@ class App(ctk.CTk if CTK else ctk.Tk):
                                variable=self.wiz_profile, value=name,
                                bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", padx=30, pady=5)
 
+        fm = self._frame(body, fg_color=C["card"])
+        fm.pack(fill="x", padx=100, pady=10)
+        self._lbl(fm, "3. ¿Con qué micrófono grabarás?",
+                  font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
+        self._lbl(fm, "Elige el micrófono para grabar y medir el nivel. Con 'Predeterminado del sistema' se usa el que Windows tenga activo.",
+                  font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
+        wiz_devs = _input_devices()
+        wiz_names = ["Predeterminado del sistema"] + [n for _, n in wiz_devs]
+        self.wiz_mic = ctk.StringVar(value="Predeterminado del sistema")
+        microw = self._frame(fm, fg_color="transparent")
+        microw.pack(anchor="w", padx=20, pady=(0, 15))
+        if CTK:
+            self.wiz_mic_menu = ctk.CTkOptionMenu(microw, values=wiz_names, variable=self.wiz_mic,
+                                                  width=460, font=(self.FB, 12), fg_color=C["button"],
+                                                  text_color=C["text"], button_color=C["accent"],
+                                                  button_hover_color=C["accent_hover"],
+                                                  dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
+                                                  dropdown_text_color=C["text"])
+        else:
+            self.wiz_mic_menu = ctk.OptionMenu(microw, self.wiz_mic, *wiz_names)
+        self.wiz_mic_menu.pack(side="left", padx=(0, 8))
+        if not wiz_devs:
+            try:
+                self.wiz_mic_menu.configure(state="disabled")
+            except Exception:
+                pass
+
         f2 = self._frame(body, fg_color=C["card"])
         f2.pack(fill="x", padx=100, pady=10)
-        self._lbl(f2, "3. ¿Tienes una API Key de IA? (opcional, pero recomendada)",
+        self._lbl(f2, "4. ¿Tienes una API Key de IA? (opcional, pero recomendada)",
                   font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self._lbl(f2, "Sirve para analizar tus clases con IA (resúmenes, guías, exámenes). Gemini es gratis: aistudio.google.com/app/apikey. También puedes usar OpenAI (GPT): añade su clave luego en Configuración.",
                   font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=20, pady=(0, 10))
@@ -787,7 +814,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         f3 = self._frame(body, fg_color=C["card"])
         f3.pack(fill="x", padx=100, pady=10)
-        self._lbl(f3, "4. ¿Cómo quieres transcribir?",
+        self._lbl(f3, "5. ¿Cómo quieres transcribir?",
                   font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self.wiz_mode = ctk.StringVar(value="local")
         if CTK:
@@ -805,7 +832,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         f4 = self._frame(body, fg_color=C["card"])
         f4.pack(fill="x", padx=100, pady=10)
-        self._lbl(f4, "5. Privacidad y consentimiento",
+        self._lbl(f4, "6. Privacidad y consentimiento",
                   font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self._lbl(f4, "🔒 Tus grabaciones y transcripciones se procesan en TU equipo y se guardan en tu carpeta. "
                       "Si activas el análisis con IA (Gemini u OpenAI), el TEXTO de la transcripción se envía "
@@ -846,6 +873,8 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.config["rec_consent_ack"] = True
         self.config["audio_profile"] = self.wiz_profile.get()
         self.config["transcription_mode"] = self.wiz_mode.get()
+        mic_sel = self.wiz_mic.get()
+        self.config["mic_device"] = "" if mic_sel == "Predeterminado del sistema" else mic_sel
         # 'nuevo' = Modo Guiado (vista simple); 'avanzado' = todo visible
         self.config["modo_guiado"] = (self.wiz_level.get() == "nuevo")
         gemini_key = self.wiz_gemini.get().strip()
@@ -2021,6 +2050,15 @@ CONSEJOS:
                 if CTK:
                     try:
                         self.mic_opt_menu.configure(fg_color=C["button"], text_color=C["text"],
+                                                    button_color=C["accent"], button_hover_color=C["accent_hover"],
+                                                    dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
+                                                    dropdown_text_color=C["text"])
+                    except Exception:
+                        pass
+            if hasattr(self, "wiz_mic_menu"):
+                if CTK:
+                    try:
+                        self.wiz_mic_menu.configure(fg_color=C["button"], text_color=C["text"],
                                                     button_color=C["accent"], button_hover_color=C["accent_hover"],
                                                     dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
                                                     dropdown_text_color=C["text"])
@@ -5060,6 +5098,7 @@ def _run_e2e_ui(scenario, out_path):
                   hasattr(app, "wiz_profile") and app.wiz_profile.get() == "Clase Universitaria")
             check("wizard: selector de nivel (nuevo)",
                   hasattr(app, "wiz_level") and app.wiz_level.get() == "nuevo")
+            check("wizard: selector de microfono", hasattr(app, "wiz_mic_menu"))
 
             # Gate: sin aceptar el aviso de privacidad NO se puede continuar
             msgs.clear()
@@ -5068,9 +5107,18 @@ def _run_e2e_ui(scenario, out_path):
                   app.config.get("first_run") is not False
                   and any(m[0] == "warning" for m in msgs), str(msgs))
 
-            # Aceptar aviso + opt-in de IA -> completar asistente
+            # Aceptar aviso + opt-in de IA -> completar asistente. Si hay
+            # microfonos reales, elige el primero para verificar la persistencia.
             app.wiz_priv_ack.set(True)
             app.wiz_ia_consent.set(True)
+            wiz_first_mic = None
+            try:
+                wv = list(app.wiz_mic_menu.cget("values") or [])
+                wiz_first_mic = next((v for v in wv if v != "Predeterminado del sistema"), None)
+                if wiz_first_mic:
+                    app.wiz_mic.set(wiz_first_mic)
+            except Exception:
+                pass
             app._finish_wizard()
             pump(app)
             check("wizard: first_run=False al completar", app.config.get("first_run") is False)
@@ -5089,6 +5137,9 @@ def _run_e2e_ui(scenario, out_path):
                 on_disk = json.load(f)
             check("wizard: config persistida (first_run=False)", on_disk.get("first_run") is False)
             check("wizard: config persistida (ia_consent=True)", on_disk.get("ia_consent") is True)
+            check("wizard: microfono persistido en disco",
+                  on_disk.get("mic_device") == (wiz_first_mic or ""),
+                  f"mic_device={on_disk.get('mic_device')!r}")
             app.destroy()
             pump(app, 2)
 
