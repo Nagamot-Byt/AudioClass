@@ -32,6 +32,13 @@ Se probaron 5 métodos de interacción contra la ventana real del exe, verifican
 
 ## 4. Solución propuesta: modo headless `--e2e-ui <escenario>` dentro del exe
 
+> **✅ Estado: IMPLEMENTADO (14 agosto 2026).** El modo ya vive en `audioclass_v91.py`
+> (`_run_e2e_ui` + rama `--e2e-ui` en `__main__`), con test de la suite
+> (`test_e2e_ui.py`, integrado en `ci.yml` con xvfb) y fase `[4b]` en
+> `desplegar_produccion.sh` que lo ejecuta sobre los exes recién compilados
+> (onefile y onedir) — los tres escenarios pasan desde el fuente (17/17,
+> 14/14, 13/13) y se validan sobre los binarios en cada despliegue.
+
 En lugar de simular clics desde fuera, el exe **ejecuta el flujo real de UI dentro de su propio proceso** y reporta el resultado por archivos + exit code. Es el mismo patrón que `--selftest-transcribe` (ya empaquetado y validado), ampliado a la UI:
 
 ```

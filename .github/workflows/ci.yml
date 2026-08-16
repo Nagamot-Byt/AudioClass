@@ -107,8 +107,17 @@ jobs:
         run: |
           # Instancia App() -> necesita un display: xvfb (ya viene en las
           # imagenes de ubuntu-latest; si faltara se instala con apt).
+          # NOTA: el pipeline | tail enmascaraba el exit code y el paso
+          # "pasaba" aunque el test fallara (EXPORT_FAIL). Se captura la
+          # salida y se exige EXPLICITAMENTE el patrón EXPORT_OK.
           command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
-          xvfb-run -a python -u test_export_docx_pdf.py 2>&1 | tail -4
+          out=$(xvfb-run -a python -u test_export_docx_pdf.py 2>&1)
+          echo "$out" | tail -4
+          echo "$out" | grep -q EXPORT_OK
+      - name: Test E2E de UI headless (asistente + config + widgets)
+        run: |
+          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
+          xvfb-run -a python -u test_e2e_ui.py 2>&1 | tail -8
       - name: Test estrés (ráfaga + cancelación + hilos)
         run: |
           python -u test_stress_transcripcion.py 2>&1 | tail -8

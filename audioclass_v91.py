@@ -4809,7 +4809,265 @@ CONSEJOS:
 # ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _run_e2e_ui(scenario, out_path):
+    """Modo headless de autotest de UI (E2E del exe SIN entrada sintetica):
+    ejecuta los flujos reales de la interfaz DENTRO del propio proceso
+    (widgets + callbacks), con la config aislada en un archivo temporal, y
+    reporta el resultado por archivo + exit code. Es el complemento de
+    --selftest-transcribe para la UI: funciona en cualquier entorno (CI,
+    sandbox, segunda maquina) porque no depende de clics sinteticos.
+        AudioClass.exe --e2e-ui <wizard|config|widgets> [salida.txt]
+    Escenarios:
+      wizard   asistente de primer arranque: widgets, gate de privacidad
+               (bloqueado sin aceptar el aviso), opt-in de IA y completado
+      config   dialogo de Configuracion: selector de proveedor Gemini/OpenAI,
+               seccion de privacidad y cambio de motor de adaptacion
+      widgets  inventario y estados iniciales de la UI principal + piezas
+               vivas (toasts, siguiente paso, cambio de tema)
+    """
+    results = []  # (nombre, ok, detalle)
+
+    def check(name, cond, detail=""):
+        results.append((name, bool(cond), detail))
+
+    def pump(app, n=6):
+        for _ in range(n):
+            try:
+                app.update()
+            except Exception:
+                pass
+
+    # Config aislada: el E2E jamas toca la config real del usuario.
+    global CONFIG_PATH
+    tmp_cfg = os.path.join(os.getcwd(), "_e2eui_config.json")
+    CONFIG_PATH = tmp_cfg
+
+    def write_cfg(first_run, **kw):
+        cfg = DEFAULT_CONFIG.copy()
+        cfg["first_run"] = first_run
+        cfg["ia_consent"] = False
+        cfg["theme"] = "dark"
+        cfg.update(kw)
+        with open(tmp_cfg, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+
+    # Sin dialogos modales (colgarian) ni pantalla de error: registrar y seguir.
+    msgs = []
+    App._msg = lambda self, kind, title, msg: msgs.append((kind, title, msg))
+    App._fatal = lambda self, e: (_ for _ in ()).throw(e)
+
+    def _walk(top):
+        out = []
+        def go(w):
+            for ch in w.winfo_children():
+                out.append(ch)
+                go(ch)
+        go(top)
+        return out
+
+    def _of_type(top, names):
+        return [w for w in _walk(top) if type(w).__name__ in names]
+
+    def _texts(top, names):
+        out = []
+        for w in _of_type(top, names):
+            try:
+                out.append(str(w.cget("text")))
+            except Exception:
+                out.append("")
+        return out
+
+    try:
+        if scenario == "wizard":
+            write_cfg(first_run=True)
+            app = App()
+            pump(app)
+            check("wizard: casilla de privacidad", hasattr(app, "wiz_priv_ack"))
+            check("wizard: casilla de consentimiento IA", hasattr(app, "wiz_ia_consent"))
+            check("wizard: campo API key", hasattr(app, "wiz_gemini"))
+            check("wizard: selector de transcripcion (local)",
+                  hasattr(app, "wiz_mode") and app.wiz_mode.get() == "local")
+            check("wizard: selector de perfil",
+                  hasattr(app, "wiz_profile") and app.wiz_profile.get() == "Clase Universitaria")
+            check("wizard: selector de nivel (nuevo)",
+                  hasattr(app, "wiz_level") and app.wiz_level.get() == "nuevo")
+
+            # Gate: sin aceptar el aviso de privacidad NO se puede continuar
+            msgs.clear()
+            app._finish_wizard()
+            check("wizard gate: bloqueado sin aceptar aviso",
+                  app.config.get("first_run") is not False
+                  and any(m[0] == "warning" for m in msgs), str(msgs))
+
+            # Aceptar aviso + opt-in de IA -> completar asistente
+            app.wiz_priv_ack.set(True)
+            app.wiz_ia_consent.set(True)
+            app._finish_wizard()
+            pump(app)
+            check("wizard: first_run=False al completar", app.config.get("first_run") is False)
+            check("wizard: ia_consent=True (opt-in marcado)", app.config.get("ia_consent") is True)
+            check("wizard: rec_consent_ack=True", app.config.get("rec_consent_ack") is True)
+            check("wizard: perfil guardado", app.config.get("audio_profile") == "Clase Universitaria")
+            check("wizard: modo transcripcion guardado", app.config.get("transcription_mode") == "local")
+            # En pantallas compactas (sh<950) el banner lnext se omite a
+            # proposito; las pilulas de pasos (steps_frame) siempre existen.
+            banner_ok = hasattr(app, "lnext") if not getattr(app, "_compact", False) \
+                else hasattr(app, "steps_frame")
+            check("wizard: UI principal construida",
+                  hasattr(app, "brec") and hasattr(app, "btransh")
+                  and hasattr(app, "bdocs") and banner_ok)
+            with open(tmp_cfg, "r", encoding="utf-8") as f:
+                on_disk = json.load(f)
+            check("wizard: config persistida (first_run=False)", on_disk.get("first_run") is False)
+            check("wizard: config persistida (ia_consent=True)", on_disk.get("ia_consent") is True)
+            app.destroy()
+            pump(app, 2)
+
+            # Opt-in por defecto: sin marcar IA -> ia_consent=False
+            write_cfg(first_run=True)
+            app2 = App()
+            pump(app2)
+            app2.wiz_priv_ack.set(True)
+            app2.wiz_ia_consent.set(False)
+            app2._finish_wizard()
+            pump(app2)
+            check("wizard opt-in: ia_consent=False por defecto",
+                  app2.config.get("ia_consent") is False)
+            check("wizard opt-in: rec_consent_ack=True aun sin IA",
+                  app2.config.get("rec_consent_ack") is True)
+            app2.destroy()
+
+        elif scenario == "config":
+            write_cfg(first_run=False, adapt_provider="gemini")
+            app = App()
+            pump(app)
+            check("config: UI principal cargada", hasattr(app, "brec") and hasattr(app, "ladapt"))
+            app._open_config()
+            pump(app, 8)
+            top = None
+            for w in _walk(app):
+                if type(w).__name__ in ("CTkToplevel", "Toplevel"):
+                    try:
+                        if w.title() == "Configuracion de AudioClass":
+                            top = w
+                    except Exception:
+                        pass
+            check("config: dialogo abierto (titulo correcto)", top is not None)
+            if top is not None:
+                RAD = ("CTkRadioButton", "TRadiobutton", "Radiobutton")
+                CHK = ("CTkCheckBox", "TCheckbutton", "Checkbutton")
+                BTN = ("CTkButton", "TButton", "Button")
+                ENT = ("CTkEntry", "TEntry", "Entry")
+                rad = _texts(top, RAD)
+                chk = _texts(top, CHK)
+                btn = _texts(top, BTN)
+                nent = len(_of_type(top, ENT))
+                check("config: proveedor Gemini", any("Gemini" in t for t in rad), str(rad))
+                check("config: proveedor OpenAI", any("OpenAI" in t for t in rad), str(rad))
+                check("config: modelos Gemini (Flash/Pro)",
+                      any("Flash" in t for t in rad) and any(t.strip() == "Pro" for t in rad), str(rad))
+                check("config: modelos OpenAI (mini/GPT-4o)",
+                      any("mini" in t for t in rad) and any("GPT-4o" in t for t in rad), str(rad))
+                check("config: casilla de consentimiento IA",
+                      any("Permito el análisis" in t or "Permito el analisis" in t for t in chk), str(chk))
+                check("config: boton Guardar Cambios", any("Guardar Cambios" in t for t in btn), str(btn))
+                check("config: botones Probar Conexion x2",
+                      sum("Probar Conexión" in t or "Probar Conexion" in t for t in btn) == 2, str(btn))
+                check("config: campos de entrada >= 5", nent >= 5, f"entries={nent}")
+                check("config: botones de test accesibles",
+                      hasattr(app, "btn_test_gemini") and hasattr(app, "btn_test_openai"))
+                from audioclass_core import GeminiAdaptationEngine, OpenAIAdaptationEngine
+                check("config: motor Gemini con adapt_provider=gemini",
+                      isinstance(app.adapt_engine, GeminiAdaptationEngine))
+                app.config["adapt_provider"] = "openai"
+                check("config: motor OpenAI al cambiar proveedor",
+                      isinstance(app._build_adapt_engine(), OpenAIAdaptationEngine))
+                app.config["adapt_provider"] = "gemini"
+                check("config: motor Gemini al volver",
+                      isinstance(app._build_adapt_engine(), GeminiAdaptationEngine))
+                top.destroy()
+            app.destroy()
+
+        elif scenario == "widgets":
+            write_cfg(first_run=False)
+            app = App()
+            pump(app)
+            check("widgets: boton grabar", hasattr(app, "brec"))
+            check("widgets: boton detener", hasattr(app, "bstop"))
+            check("widgets: botones transcribir", hasattr(app, "btransh") and hasattr(app, "btr"))
+            check("widgets: botones exportar",
+                  hasattr(app, "bpdf") and hasattr(app, "bdocx") and hasattr(app, "bdocs"))
+            # En pantallas compactas (sh<950) el banner lnext se omite a
+            # proposito; las pilulas de pasos (steps_frame) siempre existen.
+            banner_ok = hasattr(app, "lnext") if not getattr(app, "_compact", False) \
+                else hasattr(app, "steps_frame")
+            check("widgets: banner siguiente paso", banner_ok)
+            check("widgets: estado de adaptacion",
+                  hasattr(app, "ladapt") and "Sin API Key" in str(app.ladapt.cget("text")))
+            check("widgets: pasos guiados (4)",
+                  hasattr(app, "step_lbls") and len(app.step_lbls) == 4,
+                  str(len(app.step_lbls)) if hasattr(app, "step_lbls") else "sin step_lbls")
+            check("widgets: historial", hasattr(app, "hist_frame"))
+            # Estados iniciales reales del flujo guiado
+            check("widgets: grabar habilitado", str(app.brec.cget("state")) != "disabled")
+            check("widgets: transcribir deshabilitado sin grabacion",
+                  str(app.btr.cget("state")) == "disabled")
+            gdoc_txt = str(app.bdocs.cget("text"))
+            check("widgets: Google Docs etiqueta segun disponibilidad",
+                  ("no disponible" in gdoc_txt) if not _gdocs_importable() else ("Google Docs" in gdoc_txt),
+                  gdoc_txt)
+            # Piezas vivas de la UI (sin efectos externos)
+            app._show_toast("E2E ok", kind="ok")
+            app._update_next_step()
+            before = app.dark
+            app._theme()
+            pump(app)
+            check("widgets: cambio de tema aplicado", app.dark != before)
+            check("widgets: app viva tras ejercitar", bool(app.winfo_exists()))
+            app.destroy()
+
+        else:
+            check(f"escenario desconocido: {scenario}", False, "usa wizard|config|widgets")
+    except Exception as e:
+        check("excepcion no capturada", False, f"{e}\n{traceback.format_exc()}")
+    finally:
+        try:
+            if os.path.exists(tmp_cfg):
+                os.remove(tmp_cfg)
+        except Exception:
+            pass
+
+    all_ok = all(ok for _, ok, _ in results)
+    lines = [f"E2E-UI {scenario}: {'PASS' if all_ok else 'FAIL'} ({sum(1 for _, ok, _ in results if ok)}/{len(results)})"]
+    for name, ok, det in results:
+        lines.append(f"  {'OK ' if ok else 'FAIL'} {name}" + (f"  [{det}]" if det and not ok else ""))
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        pass
+    for ln in lines:
+        print(ln)
+    return 0 if all_ok else 1
+
+
 if __name__ == "__main__":
+    # Modo headless de E2E de UI (valida los flujos reales de la interfaz del
+    # .exe SIN entrada sintetica — no depende de clics ni del escritorio):
+    #   AudioClass.exe --e2e-ui <wizard|config|widgets> [salida.txt]
+    if "--e2e-ui" in sys.argv:
+        try:
+            i = sys.argv.index("--e2e-ui")
+            scenario = sys.argv[i + 1] if len(sys.argv) > i + 1 else "widgets"
+            out_path = sys.argv[i + 2] if len(sys.argv) > i + 2 else "e2e_ui_result.txt"
+            sys.exit(_run_e2e_ui(scenario, out_path))
+        except Exception:
+            try:
+                with open("e2e_ui_error.txt", "w", encoding="utf-8") as f:
+                    f.write(traceback.format_exc())
+            except Exception:
+                pass
+            sys.exit(1)
     # Modo headless de autotest (valida la transcripcion local del .exe sin GUI):
     #   AudioClass.exe --selftest-transcribe <audio.wav> <salida.txt> [progreso.txt]
     # Registra ademas los mensajes de progreso (porcentaje + tiempo restante)

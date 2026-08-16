@@ -1,6 +1,6 @@
 """Test de exportacion PDF/DOCX: genera archivos reales con timestamps,
 numeracion de lineas e insignia 'Revisado por IA' y verifica su contenido."""
-import os, sys, zipfile, tempfile, traceback
+import os, sys, json, zipfile, tempfile, traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # La consola de Windows (cp1252) no imprime '✓' ni emojis: reconfigure a utf-8
@@ -11,6 +11,19 @@ if hasattr(sys.stdout, "reconfigure"):
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import audioclass_v91 as appmod
+
+# ── Config aislada (hermetica) ───────────────────────────────────────────────
+# El test NO debe depender de la config real del usuario (~/AudioClass_Recordings):
+# si su first_run quedara en True (p. ej. tras ejecutar el asistente) la App
+# mostraria el wizard y no existiria adapt_txt. Se fija una config temporal con
+# first_run=False, igual que test_ui_smoke / test_privacy_consent.
+SMOKE_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_smoke_export_config.json")
+appmod.CONFIG_PATH = SMOKE_CFG
+_export_cfg = appmod.DEFAULT_CONFIG.copy()
+_export_cfg["first_run"] = False
+_export_cfg["theme"] = "dark"
+with open(SMOKE_CFG, "w", encoding="utf-8") as f:
+    json.dump(_export_cfg, f)
 
 # ── Simular el App sin abrir dialogo de guardado ─────────────────────────────
 _saved = {}
@@ -149,6 +162,11 @@ try:
             r.destroy()
         except Exception:
             pass
+except Exception:
+    pass
+try:
+    if os.path.exists(SMOKE_CFG):
+        os.remove(SMOKE_CFG)
 except Exception:
     pass
 sys.exit(0 if all_ok else 1)

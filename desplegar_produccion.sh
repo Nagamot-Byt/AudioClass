@@ -21,6 +21,7 @@
 #    [2] Build onefile    PyInstaller AudioClass_v91_onefile.spec → dist_onefile/
 #    [3] Entregables      copia a "AudioClass COMPLETA v9.1.exe" + regenera el zip
 #    [4] Exe: selftest    --selftest-transcribe tts_clase.wav (texto real, 100%)
+#    [4b] Exe: E2E UI     --e2e-ui wizard|config|widgets (flujos reales de la interfaz, headless)
 #    [5] Exe: WCAG + diálogo micrófono débil  run_wcag_on_exe.py + test_mic_warn_on_exe.py
 #                        (contraste y diálogo de advertencia sobre el código empaquetado)
 #    [6] Benchmark        test_benchmark_models.py (base > tiny)  [--skip-benchmark]
@@ -166,6 +167,7 @@ if "$PY" -m py_compile audioclass_v91.py audioclass_core.py 2>/dev/null; then ok
 run_tests test_ui_smoke "SMOKE_OK"
 run_tests test_ui_v91 "UI_V91 OK|TODO OK"
 run_tests test_wcag_contrast "RESULTADO: TODO OK"
+run_tests test_export_docx_pdf "EXPORT_OK"
 
 if [ "$FAIL" -gt 0 ]; then
     log ""
@@ -282,6 +284,53 @@ if [ -f "$EXE_SRC" ]; then
     rm -f "$OUT_SELFTEST" "$PROG_SELFTEST" selftest_error.txt
 else
     fail "Sin exe no hay selftest"
+fi
+
+# ── [4b] E2E UI DEL EXE (modo headless, sin entrada sintética) ───────────────
+# Los flujos reales de la interfaz (asistente, Configuracion, UI principal)
+# se ejecutan DENTRO del propio proceso del exe con --e2e-ui: funciona en
+# cualquier entorno (CI, sandbox, segunda maquina) porque no depende de
+# clics sinteticos ni del escritorio fisico.
+run_e2e_ui() {
+    local exe="$1" label="$2" failed=0 sc rc t0 t1
+    for sc in wizard config widgets; do
+        rm -f e2e_ui_result.txt e2e_ui_error.txt
+        t0=$(date +%s)
+        run_limited 180 ./"$exe" --e2e-ui "$sc" e2e_ui_result.txt
+        rc=$?
+        t1=$(date +%s)
+        if [ "$rc" -eq 0 ] && [ -f e2e_ui_result.txt ] && grep -q "PASS" e2e_ui_result.txt; then
+            ok "E2E-UI $sc ($label) exit=0 en $((t1 - t0))s"
+        elif [ "$rc" -eq 124 ]; then
+            fail "E2E-UI $sc ($label): timeout >180s"
+            failed=1
+        else
+            fail "E2E-UI $sc ($label): rc=$rc"
+            [ -f e2e_ui_result.txt ] && grep "FAIL" e2e_ui_result.txt | sed 's/^/      /' | tee -a "$LOG"
+            [ -f e2e_ui_error.txt ] && sed 's/^/      /' e2e_ui_error.txt | tail -5 | tee -a "$LOG"
+            failed=1
+        fi
+        rm -f e2e_ui_result.txt e2e_ui_error.txt
+    done
+    return "$failed"
+}
+
+step "[4b] Validación E2E de UI del exe: --e2e-ui wizard/config/widgets"
+if [ -f "$EXE_SRC" ]; then
+    if run_e2e_ui "$EXE_SRC" onefile; then
+        ok "E2E UI onefile: 3 escenarios en verde"
+    else
+        fail "E2E UI onefile: al menos un escenario fallo"
+    fi
+    if [ "$DO_ONEDIR" = 1 ] && [ -f "dist/AudioClass/AudioClass.exe" ]; then
+        if run_e2e_ui "dist/AudioClass/AudioClass.exe" onedir; then
+            ok "E2E UI onedir: 3 escenarios en verde"
+        else
+            fail "E2E UI onedir: al menos un escenario fallo"
+        fi
+    fi
+else
+    fail "Sin exe no hay E2E UI"
 fi
 
 # ── [5] WCAG SOBRE EL CÓDIGO EMPAQUETADO ─────────────────────────────────────
