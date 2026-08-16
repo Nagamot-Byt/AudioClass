@@ -2,12 +2,14 @@ name: CI
 
 # #10 — Regresión automática ampliada (2026-08): compila todos los .py y
 # ejecuta la suite de tests del núcleo mediante run_ci_suite.py, la ÚNICA
-# fuente de verdad de la lista (13 tests: UI smoke/v91, WCAG, privacidad,
-# seguridad del servidor Colab, motor paralelo, exportación DOCX/PDF, E2E de
-# UI headless, estrés, mejoras v10, idioma 'auto', watchdog y benchmark de
-# modelos). desplegar_produccion.sh fase [1] consume EXACTAMENTE la misma
-# suite, así que CI y despliegue no pueden divergir. Se ejecuta en cada push
-# y PR, y manualmente con workflow_dispatch.
+# fuente de verdad de la lista y de la ejecución (13 tests: UI smoke/v91,
+# WCAG, privacidad, seguridad del servidor Colab, motor paralelo, exportación
+# DOCX/PDF, E2E de UI headless, estrés, mejoras v10, idioma 'auto', watchdog y
+# benchmark de modelos). Cada test es un paso nombrado que llama al driver en
+# modo test único, y un guard de paridad falla si los pasos de aquí no
+# coinciden exactamente con la lista del driver. desplegar_produccion.sh
+# fase [1] consume la misma suite completa, así que CI y despliegue no pueden
+# divergir. Se ejecuta en cada push y PR, y manualmente con workflow_dispatch.
 #
 # Modelos y fixtures (NO versionados en git):
 #   * models/tiny.pt (75 MB) y los .pt de base no se versionan: el paso
@@ -102,17 +104,71 @@ jobs:
           if [ -f prueba_voz_es.wav ] && [ ! -f tts_clase.wav ]; then cp prueba_voz_es.wav tts_clase.wav; fi
           ls -la prueba_voz_es.wav tts_clase.wav 2>/dev/null \
             || echo "AVISO: sin fixture de voz en el repo: test_stress fallara y el benchmark saltara"
-      - name: Suite completa de tests del fuente (run_ci_suite.py)
+      - name: Instalar xvfb (si falta) para los tests GUI
+        run: command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
+      - name: "Guard: pasos de CI == suite de run_ci_suite.py"
         run: |
-          # ÚNICA fuente de verdad de la suite: los 13 tests (UI/privacidad/
-          # WCAG/Colab + motor + exportación + estrés + v10 + watchdog +
-          # benchmark) los define run_ci_suite.py y los corre igual el CI y
-          # desplegar_produccion.sh fase [1]. Los tests GUI se envuelven con
-          # xvfb-run automáticamente (Linux sin DISPLAY).
-          # NOTA: se captura la salida y se exige EXPLÍCITAMENTE CI_SUITE_OK
-          # (el pipeline | tail enmascara el exit code: bug histórico del
-          # paso de exportación, que "pasaba" aunque el test fallara).
-          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
-          out=$(python -u run_ci_suite.py 2>&1)
-          echo "$out"
-          echo "$out" | grep -q CI_SUITE_OK
+          # run_ci_suite.py es la fuente de verdad de la lista y de la
+          # ejecución (patrón, timeout, xvfb). Este guard falla si algún paso
+          # nombrado de abajo no existe en la suite, o si la suite añade un
+          # test sin paso aquí — así la lista no puede volver a divergir.
+          python - <<'EOF'
+          import re, subprocess, sys
+          txt = open(".github/workflows/ci.yml", encoding="utf-8").read()
+          steps = sorted(set(re.findall(r"python -u run_ci_suite\.py (\w+)", txt)))
+          listed = subprocess.run([sys.executable, "-u", "run_ci_suite.py", "--list"],
+                                  capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace")
+          suite = sorted(l.strip() for l in listed.stdout.splitlines() if l.strip())
+          if steps == suite:
+              print("CI_SUITE_PARITY_OK", len(suite))
+          else:
+              print("CI_SUITE_PARITY_FAIL")
+              print("  en ci.yml:", steps)
+              print("  en suite :", suite)
+              sys.exit(1)
+          EOF
+      # ── Pasos nombrados por test ───────────────────────────────────────────
+      # Cada paso ejecuta el driver en modo test único: la lógica (patrón de
+      # éxito, timeout, xvfb automático para GUI) vive SOLO en run_ci_suite.py.
+      # Se captura la salida y se exige CI_SUITE_OK explícitamente (el
+      # pipeline | tail enmascara el exit code: bug histórico de exportación).
+      - name: "Test UI smoke (test_ui_smoke)"
+        run: |
+          out=$(python -u run_ci_suite.py test_ui_smoke 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test UI v91 (test_ui_v91)"
+        run: |
+          out=$(python -u run_ci_suite.py test_ui_v91 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test contraste WCAG AA (test_wcag_contrast)"
+        run: |
+          out=$(python -u run_ci_suite.py test_wcag_contrast 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test privacidad/consentimiento (test_privacy_consent)"
+        run: |
+          out=$(python -u run_ci_suite.py test_privacy_consent 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test seguridad servidor Colab (test_colab_server_security)"
+        run: |
+          out=$(python -u run_ci_suite.py test_colab_server_security 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test motor paralelo (test_parallel_transcribe)"
+        run: |
+          out=$(python -u run_ci_suite.py test_parallel_transcribe 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test exportación DOCX/PDF (test_export_docx_pdf)"
+        run: |
+          out=$(python -u run_ci_suite.py test_export_docx_pdf 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test E2E de UI headless (test_e2e_ui)"
+        run: |
+          out=$(python -u run_ci_suite.py test_e2e_ui 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test estrés (test_stress_transcripcion)"
+        run: |
+          out=$(python -u run_ci_suite.py test_stress_transcripcion 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test mejoras v10 (test_mejoras_v10)"
+        run: |
+          out=$(python -u run_ci_suite.py test_mejoras_v10 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test idioma auto (test_lang_auto)"
+        run: |
+          out=$(python -u run_ci_suite.py test_lang_auto 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test watchdog anti-cuelgue (test_watchdog)"
+        run: |
+          out=$(python -u run_ci_suite.py test_watchdog 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+      - name: "Test benchmark de modelos (test_benchmark_models)"
+        run: |
+          out=$(python -u run_ci_suite.py test_benchmark_models 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK

@@ -15,16 +15,19 @@ display (Linux/CI); en Windows el display es nativo y no hace falta.
 Uso:
     python -u run_ci_suite.py                 # suite completa (13 tests)
     python -u run_ci_suite.py --skip-benchmark # omite test_benchmark_models (lento)
+    python -u run_ci_suite.py --list          # imprime la lista (nombres, 1 por línea)
+    python -u run_ci_suite.py <nombre>        # un solo test (pasos nombrados del CI)
 
 Salida por test:  "OK   nombre (Ns)"  /  "FAIL nombre (rc=N, sin patrón ...)"
 Resumen final:    "CI_SUITE_OK (13/13)"  /  "CI_SUITE_FAIL (11/13)"
-Exit code 0 si TODOS pasan, 1 si alguno falla.
+Exit code 0 si TODOS pasan, 1 si alguno falla, 2 si el nombre no existe.
 """
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -67,42 +70,80 @@ USE_XVFB = (os.name != "nt"
 
 
 def run_one(name, pattern):
-    """Ejecuta un test, devuelve (ok, rc, output, segundos)."""
+    """Ejecuta un test, devuelve (ok, rc, output, segundos).
+
+    La salida va a un ARCHIVO temporal, no a un pipe: si un test deja un
+    proceso hijo reteniendo el stdout, el pipe bloquearía la lectura del
+    driver y el timeout no podría interrumpirla en Windows (se observó un
+    colgado de ~51 min). Con archivo, el driver solo espera al proceso
+    directo y el timeout lo mata de forma fiable.
+    """
     args = [sys.executable, "-u", os.path.join(HERE, name + ".py")]
     if USE_XVFB and name in GUI:
         args = ["xvfb-run", "-a"] + args
+    tmp = os.path.join(tempfile.gettempdir(), f"_suite_{name}.log")
     t0 = time.time()
     try:
-        # Los tests reconfiguran su stdout a UTF-8; en Windows hay que
-        # decodificar explícitamente en UTF-8 (si no, cp1252 rompe con
-        # bytes no imprimibles y el patrón nunca aparece aunque el test pase).
-        p = subprocess.run(args, capture_output=True,
-                           encoding="utf-8", errors="replace",
-                           timeout=TIMEOUTS.get(name, 300))
-        out = (p.stdout or "") + (p.stderr or "")
+        with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
+            p = subprocess.run(args, stdout=fh, stderr=subprocess.STDOUT,
+                               timeout=TIMEOUTS.get(name, 300))
+        # Los tests reconfiguran su stdout a UTF-8; se lee explícitamente en
+        # UTF-8 (si no, cp1252 rompe con bytes no imprimibles y el patrón
+        # nunca aparece aunque el test pase).
+        out = open(tmp, encoding="utf-8", errors="replace").read()
         ok = p.returncode == 0 and re.search(pattern, out) is not None
         return ok, p.returncode, out, time.time() - t0
-    except subprocess.TimeoutExpired as e:
-        out = ((e.stdout or b"").decode("utf-8", "replace")
-               if isinstance(e.stdout, bytes) else (e.stdout or ""))
+    except subprocess.TimeoutExpired:
+        out = ""
+        try:
+            out = open(tmp, encoding="utf-8", errors="replace").read()
+        except Exception:
+            pass
         return False, 124, out, time.time() - t0
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+
+def run_one_test(name, pattern):
+    """Corre un test e imprime su línea; devuelve (ok, rc, output, segundos)."""
+    ok, rc, out, secs = run_one(name, pattern)
+    tail = " ".join(out.strip().splitlines()[-2:])[:100]
+    if ok:
+        print(f"OK   {name} ({secs:.0f}s)")
+    else:
+        print(f"FAIL {name} (rc={rc}, {secs:.0f}s, sin patrón {pattern!r}; último: {tail})")
+    return ok, rc, out, secs
 
 
 def main():
-    if SKIP_BENCHMARK:
-        suite = [e for e in SUITE if e[0] != "test_benchmark_models"]
-    else:
-        suite = list(SUITE)
+    # --list: los nombres de la suite (los pasos nombrados del CI se generan
+    # a partir de esta lista y un guard de paridad exige que coincidan).
+    if "--list" in sys.argv:
+        for name, _ in SUITE:
+            print(name)
+        return 0
+    # <nombre>: un solo test — la ejecución (patrón, timeout, xvfb) sigue
+    # viviendo AQUÍ, así el CI no duplica lógica ni criterios de éxito.
+    named = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if named:
+        name = named[0]
+        pattern = dict(SUITE).get(name)
+        if pattern is None:
+            print(f"run_ci_suite.py: test desconocido '{name}' (usa --list)")
+            return 2
+        ok, _, _, _ = run_one_test(name, pattern)
+        print("CI_SUITE_OK (1/1)" if ok else "CI_SUITE_FAIL (0/1)")
+        return 0 if ok else 1
+    # Suite completa (la usa desplegar_produccion.sh fase [1]).
+    suite = [e for e in SUITE if e[0] != "test_benchmark_models"] if SKIP_BENCHMARK \
+        else list(SUITE)
     passed = 0
     for name, pattern in suite:
-        ok, rc, out, secs = run_one(name, pattern)
-        if ok:
-            passed += 1
-        tail = " ".join(out.strip().splitlines()[-2:])[:100]
-        if ok:
-            print(f"OK   {name} ({secs:.0f}s)")
-        else:
-            print(f"FAIL {name} (rc={rc}, {secs:.0f}s, sin patrón {pattern!r}; último: {tail})")
+        ok, _, _, _ = run_one_test(name, pattern)
+        passed += int(ok)
     summary = f"CI_SUITE_OK ({passed}/{len(suite)})" if passed == len(suite) \
         else f"CI_SUITE_FAIL ({passed}/{len(suite)})"
     print(summary + (" [benchmark omitido]" if SKIP_BENCHMARK else ""))
