@@ -222,7 +222,7 @@ if [ -f "$EXE_SRC" ]; then
 import zipfile, os
 with zipfile.ZipFile(r'$ZIP_DEST', 'w', zipfile.ZIP_DEFLATED) as z:
     z.write(r'$EXE_DEST', r'$EXE_DEST')
-    for doc in ('LEEME.txt', 'EULA.txt', 'AVISO_DE_PRIVACIDAD.txt', 'TERCEROS_Y_LICENCIAS.md'):
+    for doc in ('LEEME.txt', 'LICENCIA.txt', 'EULA.txt', 'AVISO_DE_PRIVACIDAD.txt', 'TERCEROS_Y_LICENCIAS.md'):
         if os.path.exists(doc):
             z.write(doc)
 print('zip ok')
@@ -264,7 +264,7 @@ with zipfile.ZipFile(r'$ZIP_ONEDIR', 'w', zipfile.ZIP_DEFLATED) as z:
         for f in files:
             p = os.path.join(root, f)
             z.write(p, os.path.relpath(p, 'dist'))
-    for doc in ('LEEME.txt', 'EULA.txt', 'AVISO_DE_PRIVACIDAD.txt', 'TERCEROS_Y_LICENCIAS.md'):
+    for doc in ('LEEME.txt', 'LICENCIA.txt', 'EULA.txt', 'AVISO_DE_PRIVACIDAD.txt', 'TERCEROS_Y_LICENCIAS.md'):
         if os.path.exists(doc):
             z.write(doc)
 print('zip onedir ok')

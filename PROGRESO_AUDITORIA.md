@@ -722,3 +722,21 @@ Notas:
   repo completo = **0 emojis** · `py_compile` de todo el código + `bash -n`
   OK · **suite completa `CI_SUITE_OK (13/13)`** (e2e_ui 47s con los 4
   escenarios, estrés 231s, benchmark 136s) · mic_opt/probe/export en verde.
+- **RECOMPILACIÓN SIN EMOJIS DESDE `2c1405c` (17 agosto 2026)**: onefile y
+  onedir recompilados desde el commit del tag `v9.1-final` (working tree
+  idéntico al commit, diff vacío) para que los binarios distribuidos queden
+  sin emojis. Despliegue completo `desplegar_produccion.sh --with-onedir`:
+  **`PRODUCCIÓN LISTA` (34 OK · 0 fallos · 0 advertencias)**. Fase [1] suite
+  del fuente `CI_SUITE_OK (13/13)` en 744s; onefile 599.835.697 bytes + zip
+  COMPLETA; onedir con selftest (51s, 100%) + zip ONEDIR 601.503.346 bytes;
+  **E2E-UI 4 escenarios (wizard/config/widgets/mic) en ambos exes = 8/8
+  exit=0**; WCAG empaquetado TODO OK; micrófono débil MIC_WARN_ON_EXE_OK;
+  integridad SHA-256 zip == raíz. **Verificación de bytecode**: se extrajo el
+  PYZ (5.851 módulos) de ambos exes y se escaneó el código compilado con
+  regex Unicode: **0 hits de emoji en los módulos propios de la app**
+  (audioclass_v91, audioclass_core, etc.); los únicos hits restantes son
+  tablas de datos internas y funcionales de librerías de terceros
+  empaquetadas (fontTools.agl, html.entities, tokenizer de whisper, torch),
+  que no son código del proyecto y tocarlas rompería la app. Repo: master en
+  `2c1405c`, working tree limpio, tag `v9.1-final` en el mismo commit.
+  Pendiente solo el push (sin remoto configurado).
