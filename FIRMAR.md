@@ -1,4 +1,4 @@
-# 🔏 Firma de código de AudioClass (eliminar SmartScreen)
+# Firma de código de AudioClass (eliminar SmartScreen)
 
 El aviso "Windows protegió tu PC" aparece porque el exe **no está firmado**.
 La solución definitiva es firmar con un **certificado de firma de código**
@@ -28,13 +28,13 @@ lo trata como editor desconocido (a veces peor que no firmar).
    ```bash
    signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 "$CERT_THUMBPRINT" "AudioClass COMPLETA v9.1.exe"
    ```
-   ⚠️ Firmar después de compilar y ANTES de crear el zip (el zip debe contener
+   Firmar después de compilar y ANTES de crear el zip (el zip debe contener
    el exe firmado).
 
 ## Mientras no haya certificado (ya implementado)
 - **`LEEME.txt` dentro del zip** con los pasos exactos:
-  "Más información" → "Ejecutar de todos modos"; o clic derecho →
-  Propiedades → **Desbloquear** (para archivos bajados de internet).
+  "Más información" -> "Ejecutar de todos modos"; o clic derecho ->
+  Propiedades -> **Desbloquear** (para archivos bajados de internet).
 - **`CHECKLIST_INSTALACION.md`**: sección SmartScreen con los pasos del
   usuario limpio y la nota de NO desactivar SmartScreen ni el antivirus.
 

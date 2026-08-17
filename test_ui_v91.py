@@ -67,7 +67,7 @@ fake = type("Fake", (), {"pipeline": pipe})()
 metrics = m.App._mic_metrics(fake, raw, proc)
 check("_mic_metrics devuelve texto", isinstance(metrics, str) and len(metrics) > 20, repr(metrics[:60]))
 check("_mic_metrics: voz detectada (SNR positivo)",
-      "✓ Voz detectada" in metrics and "SNR" in metrics, metrics.splitlines()[0])
+      "[OK] Voz detectada" in metrics and "SNR" in metrics, metrics.splitlines()[0])
 check("_mic_metrics: menciona noise gate y limiter",
       "noise gate" in metrics and "limite" in metrics)
 for line in metrics.splitlines():
@@ -78,7 +78,7 @@ for line in metrics.splitlines():
 raw_noise = np.clip(fan(0.05), -1.0, 1.0).astype(np.float32)
 metrics_n = m.App._mic_metrics(fake, raw_noise, pipe.process(raw_noise))
 check("_mic_metrics: solo-ruido -> aviso sin crashear",
-      "⚠️" in metrics_n or "Voz muy baja" in metrics_n, metrics_n.splitlines()[0])
+      "[!]" in metrics_n or "Voz muy baja" in metrics_n, metrics_n.splitlines()[0])
 
 # Audio vacio -> sin crashear
 metrics_e = m.App._mic_metrics(fake, np.zeros(0, np.float32), np.zeros(0, np.float32))

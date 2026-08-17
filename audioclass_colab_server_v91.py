@@ -10,17 +10,17 @@ Instrucciones:
 1. Cambia runtime a GPU (T4 o superior)
 2. Ejecuta esta celda completa
 3. Copia la URL de ngrok que aparece
-4. Pegala en AudioClass Desktop → Configuracion → URL Colab
-5. Copia la API Key que imprime y pegala en Configuracion → Clave Colab
+4. Pegala en AudioClass Desktop -> Configuracion -> URL Colab
+5. Copia la API Key que imprime y pegala en Configuracion -> Clave Colab
    (la clave se lee de la variable de entorno COLAB_API_KEY; si no existe,
    se genera una ALEATORIA fuerte en cada arranque — ya no hay clave fija
    trivial).
 
 Endpoints:
-  POST /transcribe      → Audio → texto
-  POST /transcribe_ts   → Audio → texto + timestamps
-  POST /compile         → Compilar multiples transcripciones
-  GET  /status          → Estado del servidor
+  POST /transcribe      -> Audio -> texto
+  POST /transcribe_ts   -> Audio -> texto + timestamps
+  POST /compile         -> Compilar multiples transcripciones
+  GET  /status          -> Estado del servidor
 """
 
 import subprocess, sys, os, json, warnings, tempfile, secrets, hmac
@@ -54,7 +54,7 @@ def _resolve_api_key():
     k = os.environ.get("COLAB_API_KEY", "").strip()
     if k:
         if len(k) < 16 or k.lower() in _TRIVIAL_KEYS:
-            print(f"⚠️  COLAB_API_KEY rechazada ('{k}') — necesita >= 16 caracteres "
+            print(f"COLAB_API_KEY rechazada ('{k}') — necesita >= 16 caracteres "
                   "y no ser trivial. Se generara una aleatoria.")
             k = ""
     if not k:
@@ -63,7 +63,7 @@ def _resolve_api_key():
 
 
 API_KEY = _resolve_api_key()
-NGROK_TOKEN = ""                # ← PEGA AQUI TU TOKEN DE NGROK
+NGROK_TOKEN = ""                # <- PEGA AQUI TU TOKEN DE NGROK
 MODEL_NAME = "large-v3"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TEMP_DIR = Path("/tmp/audioclass_cloud")
@@ -71,14 +71,14 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 # ─── Fuente Unicode para PDF (DejaVu Sans) ────────────────────────────────────
 # La fuente core "Arial" de fpdf2 es latin-1: los acentos y simbolos
-# tipograficos (— • → …) salen como "?" o rompen el PDF. DejaVu Sans
+# tipograficos (— • -> …) salen como "?" o rompen el PDF. DejaVu Sans
 # cubre todo el rango Unicode. Se busca en el sistema (Colab/Ubuntu suele
 # traerla) y si no, se descarga una vez a TEMP_DIR.
 PDF_FONT_PATH = None
 PDF_FONT_BOLD = None
 
 _PDF_FALLBACK_CHARS = {
-    "—": "-", "–": "-", "…": "...", "•": "-", "→": "->",
+    "—": "-", "–": "-", "…": "...", "•": "-", "\u2192": "->",
     "├": "|", "└": "`", "“": '"', "”": '"', "‘": "'", "’": "'",
 }
 
@@ -466,10 +466,10 @@ if __name__ == "__main__":
         if NGROK_TOKEN:
             ngrok.set_auth_token(NGROK_TOKEN)
         else:
-            print("⚠️  NGROK_TOKEN vacio: ngrok necesita un authtoken (gratis en ngrok.com).")
+            print("NGROK_TOKEN vacio: ngrok necesita un authtoken (gratis en ngrok.com).")
         public_url = ngrok.connect(8000).public_url
     except Exception as e:
-        print("❌ No se pudo abrir el tunel de ngrok:", e)
+        print("No se pudo abrir el tunel de ngrok:", e)
         print("   Crea un authtoken gratuito en ngrok.com y pegalo en NGROK_TOKEN,")
         print("   o usa el servidor solo en local: http://localhost:8000")
         public_url = "http://localhost:8000"
@@ -477,7 +477,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print(f"SERVIDOR AUDIOCLASS CLOUD v9.1 ACTIVO")
     print(f"URL: {public_url}")
-    print(f"API Key: {API_KEY}   ← copiala a AudioClass → Configuracion → Clave Colab")
+    print(f"API Key: {API_KEY}   <- copiala a AudioClass -> Configuracion -> Clave Colab")
     print(f"Modelo: {MODEL_NAME} | Dispositivo: {DEVICE.upper()}")
     print("="*60 + "\n")
 

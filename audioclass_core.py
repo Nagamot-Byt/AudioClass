@@ -1108,7 +1108,7 @@ class LocalWhisperEngine:
                                               f"{total}/{total} chunks listos")
                         else:
                             progress_callback(num, total,
-                                              f"⚡ {workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest")
+                                              f"{workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest")
                 stop.wait(0.25)
 
         def _transcribe_one(idx, chunk):
@@ -1382,56 +1382,56 @@ class GeminiAdaptationEngine:
     TEMPLATES = {
         "Análisis Académico Profundo": {
             "prompt": ACADEMIC_PROMPT + "\n\nTRANSCRIPCIÓN:\n{TEXT}\n\nANÁLISIS ACADÉMICO:",
-            "icon": "🎓",
+            "icon": "",
             "desc": "Filtro cognitivo con tesis, pilares, evidencia y registro de filtrado",
             "max_tokens": 4096,
             "temperature": 0.1
         },
         "Resumen Ejecutivo": {
             "prompt": "Analiza la siguiente transcripción de una clase o conferencia y genera un RESUMEN EJECUTIVO profesional.\n\nInstrucciones:\n- Extrae los 5-7 puntos más importantes\n- Usa bullets claros y concisos\n- Incluye conclusiones clave\n- Máximo 500 palabras\n- Formato: Markdown simple\n\nTranscripción:\n{TEXT}\n\nResumen Ejecutivo:",
-            "icon": "📋",
+            "icon": "",
             "desc": "Puntos clave y conclusiones",
             "max_tokens": 2048,
             "temperature": 0.3
         },
         "Guía de Estudio": {
             "prompt": "Convierte la siguiente transcripción de clase en una GUÍA DE ESTUDIO estructurada para estudiantes.\n\nInstrucciones:\n1. Identifica el tema principal y subtemas\n2. Crea secciones con títulos claros\n3. Destaca definiciones importantes en negrita\n4. Lista fórmulas, fechas o datos clave\n5. Añade una sección de 'Puntos Clave para Recordar'\n6. Formato: Markdown con headers (# ## ###)\n\nTranscripción:\n{TEXT}\n\nGuía de Estudio:",
-            "icon": "📚",
+            "icon": "",
             "desc": "Secciones, definiciones y puntos clave",
             "max_tokens": 4096,
             "temperature": 0.2
         },
         "Flashcards (Preguntas)": {
             "prompt": "Genera FLASHCARDS de estudio a partir de esta transcripción de clase.\n\nInstrucciones:\n- Crea 10-15 preguntas y respuestas\n- Cada flashcard debe ser concisa\n- Formato exacto:\n  Q: [Pregunta]\n  A: [Respuesta]\n  ---\n- Cubre los conceptos más importantes\n\nTranscripción:\n{TEXT}\n\nFlashcards:",
-            "icon": "🎯",
+            "icon": "",
             "desc": "Preguntas y respuestas para memorizar",
             "max_tokens": 4096,
             "temperature": 0.2
         },
         "Preguntas de Examen": {
             "prompt": "Genera PREGUNTAS DE EXAMEN tipo test a partir de esta transcripción.\n\nInstrucciones:\n- 10 preguntas de opción múltiple (A, B, C, D)\n- 3 preguntas de respuesta corta\n- 2 preguntas de desarrollo\n- Indica la respuesta correcta para las de opción múltiple\n- Formato claro y ordenado\n\nTranscripción:\n{TEXT}\n\nPreguntas de Examen:",
-            "icon": "❓",
+            "icon": "",
             "desc": "Test, respuesta corta y desarrollo",
             "max_tokens": 4096,
             "temperature": 0.2
         },
         "Mapa Conceptual (Texto)": {
             "prompt": "Genera un MAPA CONCEPTUAL en formato texto jerárquico a partir de esta transcripción.\n\nInstrucciones:\n- Usa indentación con tabs para mostrar jerarquía\n- Concepto principal al nivel 0\n- Subconceptos indentados\n- Relaciones claras entre ideas\n- Formato:\n  CONCEPTO PRINCIPAL\n    ├─ Subconcepto A\n    │  ├─ Detalle 1\n    │  └─ Detalle 2\n    └─ Subconcepto B\n\nTranscripción:\n{TEXT}\n\nMapa Conceptual:",
-            "icon": "🗺️",
+            "icon": "",
             "desc": "Jerarquía visual en texto",
             "max_tokens": 4096,
             "temperature": 0.2
         },
         "Texto Limpio (Corrección)": {
             "prompt": "Corrige y limpia la siguiente transcripción en bruto.\n\nInstrucciones:\n- Corrige errores gramaticales y ortográficos obvios\n- Elimina repeticiones ('eh', 'mmm', 'este...')\n- Mejora la puntuación\n- Divide en párrafos lógicos\n- Mantén TODO el contenido, no resumas\n- Formato: texto corrido y limpio\n\nTranscripción:\n{TEXT}\n\nTexto Corregido:",
-            "icon": "✨",
+            "icon": "",
             "desc": "Corrección de errores y muletillas",
             "max_tokens": 4096,
             "temperature": 0.1
         },
         "Cronología / Timeline": {
-            "prompt": "Extrae una CRONOLOGÍA o timeline de eventos, fechas o procesos mencionados en esta transcripción.\n\nInstrucciones:\n- Lista en orden cronológico\n- Formato: [Fecha/Evento] → Descripción\n- Si no hay fechas exactas, usa orden lógico (primero, luego, después, finalmente)\n- Destaca causas y consecuencias\n\nTranscripción:\n{TEXT}\n\nCronología:",
-            "icon": "📅",
+            "prompt": "Extrae una CRONOLOGÍA o timeline de eventos, fechas o procesos mencionados en esta transcripción.\n\nInstrucciones:\n- Lista en orden cronológico\n- Formato: [Fecha/Evento] -> Descripción\n- Si no hay fechas exactas, usa orden lógico (primero, luego, después, finalmente)\n- Destaca causas y consecuencias\n\nTranscripción:\n{TEXT}\n\nCronología:",
+            "icon": "",
             "desc": "Orden cronológico de eventos",
             "max_tokens": 2048,
             "temperature": 0.2

@@ -4,7 +4,7 @@ CONTRATO DE LICENCIA DE USUARIO FINAL (EULA) — AudioClass v9.1
 Al instalar, copiar o utilizar AudioClass ("el Software"), aceptas los
 siguientes términos. Si no los aceptas, no instales ni uses el Software.
 
-> ⚠️ Documento de apoyo. Revisa su adaptación con asesoría legal según tu
+> Documento de apoyo. Revisa su adaptación con asesoría legal según tu
 > jurisdicción antes de usarlo como contrato oficial de distribución.
 
 ───────────────────────────────────────────────────────────────────────────────

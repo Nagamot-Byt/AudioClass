@@ -3,7 +3,7 @@ numeracion de lineas e insignia 'Revisado por IA' y verifica su contenido."""
 import os, sys, json, zipfile, tempfile, traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# La consola de Windows (cp1252) no imprime '✓' ni emojis: reconfigure a utf-8
+# La consola de Windows (cp1252) no imprime '[OK]' ni emojis: reconfigure a utf-8
 # para que los prints del test no lancen UnicodeEncodeError sin PYTHONIOENCODING.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -78,7 +78,7 @@ adapt_txt = (
 try:
     app.adapt_txt.configure(state="normal")
     app.adapt_txt.delete("1.0", "end")
-    app.adapt_txt.insert("end", f"🎓 Análisis Académico Profundo\n{'='*55}\n\n{adapt_txt}\n")
+    app.adapt_txt.insert("end", f"Análisis Académico Profundo\n{'='*55}\n\n{adapt_txt}\n")
     app.adapt_txt.configure(state="disabled")
 except Exception as e:
     print("WARN adapt_txt:", e)

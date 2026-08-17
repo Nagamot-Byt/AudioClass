@@ -176,7 +176,7 @@ def main():
     print(f"  Tiempos por corrida: {[round(t,1) for t in times]}s")
     # El motor no debe degradarse en la 3ª corrida (factor < 2.5x de la 1ª)
     if times[2] > times[0] * 2.5:
-        print(f"  ⚠ DEGRADACIÓN: la 3ª corrida tardó {times[2]:.0f}s vs {times[0]:.0f}s la 1ª")
+        print(f"  DEGRADACIÓN: la 3ª corrida tardó {times[2]:.0f}s vs {times[0]:.0f}s la 1ª")
         return 1
     print("  A_OK (sin degradación ni fallos)")
 
@@ -186,7 +186,7 @@ def main():
     leaked = after_threads - base_threads
     print(f"[HILOS] base={base_threads} tras ráfaga={after_threads} (delta {leaked})")
     if leaked > 3:
-        print(f"  ⚠ POSIBLE FUGA DE HILOS: delta {leaked} > 3")
+        print(f"  POSIBLE FUGA DE HILOS: delta {leaked} > 3")
         return 1
     print("  THREADS_OK")
 
@@ -225,7 +225,7 @@ def main():
         n_models = _live_whisper_models()
         print(f"  Objetos Whisper vivos: {n_models} (diseño ~8: 6 cache + plantilla + eng.model)")
         if n_models > 12:
-            print(f"  ⚠ POSIBLE FUGA DE MODELOS: {n_models} objetos Whisper vivos > 12")
+            print(f"  POSIBLE FUGA DE MODELOS: {n_models} objetos Whisper vivos > 12")
             return 1
         # Señal 2 (heurística): la media de los 3 últimos deltas de RSS no debe
         # superar 150 MB/corrida. Un pico aislado se tolera (ruido del allocator
@@ -234,7 +234,7 @@ def main():
         mean_delta = float(np.mean(last3))
         print(f"  Media de deltas finales: {mean_delta:.1f} MB")
         if mean_delta > 150:
-            print(f"  ⚠ POSIBLE FUGA DE MEMORIA: media de deltas {mean_delta:.1f} MB > 150")
+            print(f"  POSIBLE FUGA DE MEMORIA: media de deltas {mean_delta:.1f} MB > 150")
             return 1
         print("  MEM_OK (objetos acotados y RSS estable; sin fuga)")
     else:
@@ -327,7 +327,7 @@ def main():
     final_threads = threading.active_count()
     print(f"[HILOS-FINAL] base={base_threads} final={final_threads} (delta {final_threads - base_threads})")
     if final_threads - base_threads > 4:
-        print("  ⚠ FUGA DE HILOS AL FINAL")
+        print("  FUGA DE HILOS AL FINAL")
         return 1
 
     print("\nSTRESS_ALL_OK")

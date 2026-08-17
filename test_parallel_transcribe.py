@@ -8,7 +8,7 @@ Genera un WAV de 100s (4 chunks de 30s) con ruido suave y verifica:
 """
 import os, sys, time, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# La consola de Windows (cp1252) no imprime emojis como ⚡: reconfigure a utf-8
+# La consola de Windows (cp1252) no imprime emojis como : reconfigure a utf-8
 # para que los prints con mensajes de progreso no lancen UnicodeEncodeError.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

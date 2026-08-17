@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Prueba E2E del flujo real de AudioClass: grabar → pipeline → transcribir.
+"""Prueba E2E del flujo real de AudioClass: grabar -> pipeline -> transcribir.
 
 Replica EXACTAMENTE lo que hace la app (ver App._procsave en audioclass_v91.py):
   1. El audio capturado se concatena y se guarda como WAV int16 (crudo).
@@ -12,7 +12,7 @@ La "grabación" se simula con voz REAL (prueba_voz_es.wav) repetida ~5x para
 superar 30s y forzar varios chunks de 30s (paralelismo real).
 
 Valida:
-- El texto generado supera un umbral (len > 100) → la transcripción sale.
+- El texto generado supera un umbral (len > 100) -> la transcripción sale.
 - Hay mensajes de progreso con tiempo restante estimado ("rest").
 - workers > 1 (paralelismo real) cuando hay >= 2 chunks.
 - El progreso es monótono (la barra nunca retrocede).
@@ -20,7 +20,7 @@ Valida:
 """
 import os, sys, time, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# La consola de Windows (cp1252) no imprime emojis como ⚡: reconfigure a utf-8
+# La consola de Windows (cp1252) no imprime emojis como : reconfigure a utf-8
 # para que los prints con mensajes de progreso no lancen UnicodeEncodeError.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

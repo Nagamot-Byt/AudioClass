@@ -1,10 +1,10 @@
-# 🛡️ REVISIÓN DE CIBERSEGURIDAD Y EXPOSICIÓN LEGAL — AudioClass v9.1
+#  REVISIÓN DE CIBERSEGURIDAD Y EXPOSICIÓN LEGAL — AudioClass v9.1
 
 > **Objetivo:** identificar riesgos de seguridad y de responsabilidad legal (reclamaciones de usuarios, docentes, corporaciones y autoridades) derivados del uso y distribución de AudioClass, y dar un plan accionable para reducirlos.
 >
 > **Fecha:** 12 agosto 2026 · **Alcance:** app de escritorio Windows (`audioclass_v91.py` + `audioclass_core.py`), servidor Colab opcional (`audioclass_colab_server_v91.py`), exe empaquetado (onefile/onedir), config y datos de usuario.
 >
-> ⚠️ **Aviso legal:** este documento es una revisión técnica de riesgos con fines informativos. **No constituye asesoría legal.** Las normas citadas deben validarse con un abogado según la jurisdicción, el uso concreto y el rol (usuario individual, centro educativo, empresa). Ningún documento elimina la responsabilidad; la reduce y la documenta.
+> **Aviso legal:** este documento es una revisión técnica de riesgos con fines informativos. **No constituye asesoría legal.** Las normas citadas deben validarse con un abogado según la jurisdicción, el uso concreto y el rol (usuario individual, centro educativo, empresa). Ningún documento elimina la responsabilidad; la reduce y la documenta.
 
 ---
 
@@ -38,7 +38,7 @@ Revisión de código fuente (GUI, núcleo, servidor Colab, empaquetado), auditor
 | D5 | Voz del usuario (medición de micrófono) | Temporal, `mic_voz_user.wav` | No | — |
 | D6 | Audio/PDF en servidor Colab (opcional, self-hosted) | En la sesión de Colab del propio usuario | Sí (nube de Google/el usuario) | Responsabilidad del usuario que lo despliega |
 
-**Flujo crítico:** Grabación (local) → Transcripción (local) → **Análisis con IA = envío de la transcripción a `generativelanguage.googleapis.com` o `api.openai.com`**. Este envío ocurre sin que la app muestre un aviso de privacidad previo.
+**Flujo crítico:** Grabación (local) -> Transcripción (local) -> **Análisis con IA = envío de la transcripción a `generativelanguage.googleapis.com` o `api.openai.com`**. Este envío ocurre sin que la app muestre un aviso de privacidad previo.
 
 ---
 
@@ -48,7 +48,7 @@ Revisión de código fuente (GUI, núcleo, servidor Colab, empaquetado), auditor
 - **GDPR (UE) / LOPDGDD (España):** el usuario de la app actúa como *responsable del tratamiento*; la app es la herramienta. Obliga a: licitud (consentimiento o interés legítimo), transparencia (informar qué se graba y por qué), minimización, seguridad (art. 32), derechos ARCO/ARSULIPO (acceso, rectificación, supresión, portabilidad), y **DPIA** si el tratamiento es a gran escala o de categorías especiales.
 - **LGPD (Brasil):** mismo esquema (bases legales, derechos del titular, ANPD).
 - **CCPA/CPRA (California) y leyes estatales de EE. UU.:** derechos de acceso/borrado/opt-out; aplica si hay usuarios californianos (la app es global vía descarga).
-- **FERPA (EE. UU., educación):** si un centro educativo usa la app con transcripciones de clases, las grabaciones pueden ser "education records" → políticas de acceso, retención y consentimiento de los padres/estudiantes.
+- **FERPA (EE. UU., educación):** si un centro educativo usa la app con transcripciones de clases, las grabaciones pueden ser "education records" -> políticas de acceso, retención y consentimiento de los padres/estudiantes.
 - **COPPA (EE. UU., menores de 13):** prohibido recopilar datos de menores sin consentimiento parental verificable. Una app que graba aulas debe **asumir que graba menores** y desactivar el envío a IA por defecto, o exigir verificación.
 
 ### 4.2 Grabación de conversaciones (consentimiento)
@@ -70,14 +70,14 @@ Revisión de código fuente (GUI, núcleo, servidor Colab, empaquetado), auditor
 
 | ID | Severidad | Hallazgo | Evidencia | Mitigación |
 |---|---|---|---|---|
-| H1 | 🔴 Alta | **Sin aviso de privacidad ni consentimiento en la app** antes de enviar transcripciones a Gemini/OpenAI. El asistente de primer uso pregunta por la API key, pero no informa de que el texto saldrá a servidores de terceros. | `audioclass_v91.py` (wizard + `_adapt`) | Aviso + checkbox de consentimiento en wizard y en Configuración; opción "procesar todo local" sin IA |
-| H2 | 🔴 Alta | **Servidor Colab: API key en la URL** (`/download?file=…&key=…`, `/compile?…&key=…`) → se filtra a logs de ngrok/Colab, historial y proxies. | `audioclass_colab_server_v91.py` L357-363 | Header `X-API-Key` (ya hay HMAC con `compare_digest`); nunca key en query string |
-| H3 | 🟠 Media | **Colab: sin límite de tamaño de subida ni rate-limit.** Un túnel público con la key permite abusos (coste de Colab, almacenamiento, abuso del endpoint). | `audioclass_colab_server_v91.py` | Tope de MB (p. ej. 200 MB), rate-limit por IP/key, token de sesión |
-| H4 | 🟠 Media | **Sin cifrado en reposo de grabaciones/transcripciones.** Las keys se cifran con DPAPI (bien), pero los WAV/transcripciones en `~/AudioClass_Recordings` van en claro. | `audioclass_v91.py` L108 | Documentar; ofrecer "carpeta cifrada" (BitLocker/EFS) como opción para uso corporativo |
-| H5 | 🟠 Media | **El exe no está firmado** → SmartScreen avisa. No es un riesgo de seguridad del código, pero erosiona la confianza y puede alegarse en una reclamación de "software no confiable". | FIRMAR.md | Firmar con certificado (EV/OV) o documentar el proceso de verificación de hash |
-| H6 | 🟡 Baja | **Transcripción con alucinaciones**: el selftest ya detecta frases plantilla de whisper. Un transcript erróneo presentado como fiel puede dar lugar a reclamaciones (especialmente en ámbitos legales/médicos). | `test_*` selftest, warning en `desplegar_produccion.sh` | Disclaimer en cada exportación: "transcripción automática, puede contener errores" |
-| H7 | 🟡 Baja | **Logs con rutas/nombres de archivo** (no contenido, pero metadatos). | `~/AudioClass_Recordings/logs/` | Rotación y retención limitada (p. ej. 30 días) |
-| H8 | ✅ Control existente | Keys cifradas con **DPAPI** ligado al usuario; config fuera de la carpeta de la app; transcripción local sin red; **WCAG AA validado en cada build**. | `_SECRET_FIELDS`, DPAPI | Mantener y documentar |
+| H1 | Alta | **Sin aviso de privacidad ni consentimiento en la app** antes de enviar transcripciones a Gemini/OpenAI. El asistente de primer uso pregunta por la API key, pero no informa de que el texto saldrá a servidores de terceros. | `audioclass_v91.py` (wizard + `_adapt`) | Aviso + checkbox de consentimiento en wizard y en Configuración; opción "procesar todo local" sin IA |
+| H2 | Alta | **Servidor Colab: API key en la URL** (`/download?file=…&key=…`, `/compile?…&key=…`) -> se filtra a logs de ngrok/Colab, historial y proxies. | `audioclass_colab_server_v91.py` L357-363 | Header `X-API-Key` (ya hay HMAC con `compare_digest`); nunca key en query string |
+| H3 |  Media | **Colab: sin límite de tamaño de subida ni rate-limit.** Un túnel público con la key permite abusos (coste de Colab, almacenamiento, abuso del endpoint). | `audioclass_colab_server_v91.py` | Tope de MB (p. ej. 200 MB), rate-limit por IP/key, token de sesión |
+| H4 |  Media | **Sin cifrado en reposo de grabaciones/transcripciones.** Las keys se cifran con DPAPI (bien), pero los WAV/transcripciones en `~/AudioClass_Recordings` van en claro. | `audioclass_v91.py` L108 | Documentar; ofrecer "carpeta cifrada" (BitLocker/EFS) como opción para uso corporativo |
+| H5 |  Media | **El exe no está firmado** -> SmartScreen avisa. No es un riesgo de seguridad del código, pero erosiona la confianza y puede alegarse en una reclamación de "software no confiable". | FIRMAR.md | Firmar con certificado (EV/OV) o documentar el proceso de verificación de hash |
+| H6 |  Baja | **Transcripción con alucinaciones**: el selftest ya detecta frases plantilla de whisper. Un transcript erróneo presentado como fiel puede dar lugar a reclamaciones (especialmente en ámbitos legales/médicos). | `test_*` selftest, warning en `desplegar_produccion.sh` | Disclaimer en cada exportación: "transcripción automática, puede contener errores" |
+| H7 |  Baja | **Logs con rutas/nombres de archivo** (no contenido, pero metadatos). | `~/AudioClass_Recordings/logs/` | Rotación y retención limitada (p. ej. 30 días) |
+| H8 | Control existente | Keys cifradas con **DPAPI** ligado al usuario; config fuera de la carpeta de la app; transcripción local sin red; **WCAG AA validado en cada build**. | `_SECRET_FIELDS`, DPAPI | Mantener y documentar |
 
 ---
 
@@ -95,21 +95,21 @@ Revisión de código fuente (GUI, núcleo, servidor Colab, empaquetado), auditor
 
 ## 7. Plan de acción priorizado
 
-### 🔴 P0 — Esta semana (reduce el riesgo de forma inmediata)
+### P0 — Esta semana (reduce el riesgo de forma inmediata)
 1. **Aviso + consentimiento en la app (H1):**
-   - En el asistente de primer uso: "🔒 Tus transcripciones se procesan localmente. Si activas el análisis con IA (Gemini/OpenAI), **el texto se envía a servidores de Google/OpenAI**. ¿Aceptas?" con checkbox.
+   - En el asistente de primer uso: "Tus transcripciones se procesan localmente. Si activas el análisis con IA (Gemini/OpenAI), **el texto se envía a servidores de Google/OpenAI**. ¿Aceptas?" con checkbox.
    - Botón en Configuración: "Ver aviso de privacidad" que muestre el texto de la plantilla §8.2.
    - Opción global "No enviar nunca datos a IA" (default recomendado: OFF para IA).
 2. **Endurecer el servidor Colab (H2/H3):** key vía header `X-API-Key`, tope de subida, rate-limit simple, `pip install` bajo `if __name__ == "__main__"`.
 3. **Distribuir las plantillas legales** (§8) dentro del zip: `AVISO_DE_PRIVACIDAD.txt`, `EULA.txt`.
 
-### 🟠 P1 — Este mes
+###  P1 — Este mes
 4. **Disclaimer en exportaciones (H6):** añadir "Transcripción automática — puede contener errores" en el pie de cada PDF/DOCX y al exportar a Google Docs.
 5. **Retención y borrado:** botón "Borrar todas mis grabaciones" y documentar retención de logs (30 días).
 6. **Firma del exe (H5):** iniciar proceso con certificado OV/EV (o al menos publicar el SHA-256 oficial en la web del proyecto).
 7. **Cifrado en reposo (H4):** documentar BitLocker/EFS para la carpeta de grabaciones en guías corporativas.
 
-### 🟡 P2 — Próximos meses
+###  P2 — Próximos meses
 8. **DPIA** del tratamiento (obligatorio si se vende a centros educativos a gran escala).
 9. **DPA** modelo para que corporaciones/centros lo firmen con el proveedor de IA (o con el usuario como responsable).
 10. **Registro de actividad** para auditoría (quién exportó qué y cuándo) sin almacenar contenido.
@@ -180,41 +180,41 @@ Revisión de código fuente (GUI, núcleo, servidor Colab, empaquetado), auditor
 
 Investigación de las principales causas de litigio contra software generado con IA ("vibe coding") y apps de transcripción/grabación, con su aplicación a AudioClass y su estado:
 
-### 12.1 ⚖️ Grabar sin consentimiento (el vector Nº1 para esta app)
+### 12.1  Grabar sin consentimiento (el vector Nº1 para esta app)
 - **Caso Otter.ai (class action, ago 2025, EE. UU.):** demanda contra el transcriptor de reuniones por (1) **grabar conversaciones privadas sin consentimiento** (leyes de interceptación federales y estatales, CIPA §§631-632) y (2) **usar las conversaciones para entrenar sus modelos de IA** sin permiso. Es el precedente más directo para una app de grabación+transcripción.
 - **Leyes estatales:** 11-13 estados exigen consentimiento de TODOS los participantes (CA, FL, IL, MD, MA, MI, MT, NV, NH, OR, PA, VT, DC). Grabar sin consentimiento = responsabilidad civil y penal.
-- **Estado en AudioClass:** ✅ **CUBIERTO** — (a) asistente de primer uso con aviso y casilla obligatoria; (b) **aviso de grabación al iniciar la primera grabación** (`_begin_recording`: sin aceptar no se graba; queda guardado en config); (c) el indicador **"● GRABANDO"** es visible durante toda la grabación (nada de grabación oculta, el problema central del caso Otter).
+- **Estado en AudioClass:** **CUBIERTO** — (a) asistente de primer uso con aviso y casilla obligatoria; (b) **aviso de grabación al iniciar la primera grabación** (`_begin_recording`: sin aceptar no se graba; queda guardado en config); (c) el indicador **" GRABANDO"** es visible durante toda la grabación (nada de grabación oculta, el problema central del caso Otter).
 
-### 12.2 🤖 La empresa responde por lo que dice su IA
+### 12.2 La empresa responde por lo que dice su IA
 - **Moffatt v. Air Canada (2024, BC CRT):** la aerolínea fue condenada por la información errónea de su chatbot; el tribunal rechazó que "el chatbot actuaba solo". Precedente: **lo que genera la IA se atribuye al que la despliega**.
-- **Estado en AudioClass:** ➕ **ARREGLADO parcialmente** — las exportaciones (PDF/DOCX/GDocs/Colab) y los archivos de adaptación ahora llevan el aviso "**Transcripción/Contenido generado por IA — puede contener errores. No constituye acta oficial**". Es la mitigación documentada del precedente Air Canada (el usuario sabe que es contenido automático).
+- **Estado en AudioClass:**  **ARREGLADO parcialmente** — las exportaciones (PDF/DOCX/GDocs/Colab) y los archivos de adaptación ahora llevan el aviso "**Transcripción/Contenido generado por IA — puede contener errores. No constituye acta oficial**". Es la mitigación documentada del precedente Air Canada (el usuario sabe que es contenido automático).
 
-### 12.3 💥 Daños por contenido generado (suicidios, consejos dañinos)
+### 12.3  Daños por contenido generado (suicidios, consejos dañinos)
 - **Character.AI / OpenAI (2024-2026):** demandas por muerte de menores vinculadas a chatbots; Google y Character.AI llegaron a acuerdos (ene 2026). También demandas por alucinaciones que difaman personas (NOYB vs. OpenAI, abr 2024).
-- **Estado en AudioClass:** el análisis con IA genera resúmenes/guías de ESTUDIO (no consejos terapéuticos ni jurídicos). ✅ **CUBIERTO** — disclaimers en todas las salidas + **los avisos de privacidad ahora indican explícitamente que el contenido no es consejo médico/legal ni acta oficial**, y el envío a IA requiere consentimiento explícito. Recomendación P2: restringir por edad/uso declarado si se distribuye a menores.
+- **Estado en AudioClass:** el análisis con IA genera resúmenes/guías de ESTUDIO (no consejos terapéuticos ni jurídicos). **CUBIERTO** — disclaimers en todas las salidas + **los avisos de privacidad ahora indican explícitamente que el contenido no es consejo médico/legal ni acta oficial**, y el envío a IA requiere consentimiento explícito. Recomendación P2: restringir por edad/uso declarado si se distribuye a menores.
 
-### 12.4 📚 Copyright y licencias del código generado por IA (vibe coding)
+### 12.4 Copyright y licencias del código generado por IA (vibe coding)
 - **Doe v. GitHub, Microsoft y OpenAI (2022-2024):** la mayoría de reclamaciones fueron desestimadas (jul 2024), pero **sobrevivieron las de incumplimiento de licencia/atribución** de código open source reproducido sin atribución.
-- **Riesgo específico del vibe coding:** el modelo puede reproducir código GPL/AGPL sin atribución → **contaminación de licencia** (el peor caso: obligar a liberar la app). El código generado por IA puede además **carecer de protección de copyright** (requisito de autoría humana) pero **sí infringir el de otros** — "toda la responsabilidad, ninguna protección".
-- **Estado en AudioClass:** ➕ **ARREGLADO** — se verificó que **todas las dependencias son permisivas** (MIT/BSD/Apache; fpdf2 LGPL por enlace dinámico; PyInstaller GPL con excepción de bootloader) → **sin contaminación copyleft**. Se añadió **`TERCEROS_Y_LICENCIAS.md`** (atribución requerida) y **`LICENCIA.txt`** (licencia explícita de la app, plantilla MIT por completar).
+- **Riesgo específico del vibe coding:** el modelo puede reproducir código GPL/AGPL sin atribución -> **contaminación de licencia** (el peor caso: obligar a liberar la app). El código generado por IA puede además **carecer de protección de copyright** (requisito de autoría humana) pero **sí infringir el de otros** — "toda la responsabilidad, ninguna protección".
+- **Estado en AudioClass:**  **ARREGLADO** — se verificó que **todas las dependencias son permisivas** (MIT/BSD/Apache; fpdf2 LGPL por enlace dinámico; PyInstaller GPL con excepción de bootloader) -> **sin contaminación copyleft**. Se añadió **`TERCEROS_Y_LICENCIAS.md`** (atribución requerida) y **`LICENCIA.txt`** (licencia explícita de la app, plantilla MIT por completar).
 
-### 12.5 🧾 Publicidad engañosa de IA ("AI washing")
+### 12.5  Publicidad engañosa de IA ("AI washing")
 - **FTC Operation AI Comply (sep 2024-2026):** acciones contra empresas por prometer resultados de IA sin respaldo ("AI lawyer", generación de ingresos, moderación falsa). No hay "exención de IA" en las leyes de publicidad.
-- **Estado en AudioClass:** ✅ **CUBIERTO** — sin claims engañosos (grep de overclaims en app/LEEME/GUÍA: limpio); el claim "máxima precisión" del asistente se suavizó a "**mayor precisión**" (comparativo factual); la insignia "✓ Revisado por IA" es factual y va acompañada del disclaimer de errores.
+- **Estado en AudioClass:** **CUBIERTO** — sin claims engañosos (grep de overclaims en app/LEEME/GUÍA: limpio); el claim "máxima precisión" del asistente se suavizó a "**mayor precisión**" (comparativo factual); la insignia "Revisado por IA" es factual y va acompañada del disclaimer de errores.
 
-### 12.6 ♿ Demandas por accesibilidad (ADA/WCAG)
+### 12.6  Demandas por accesibilidad (ADA/WCAG)
 - Más de **4.000-5.000 demandas/año** en EE. UU. por sitios y apps inaccesibles; legislación en curso (Websites and Software Applications Accessibility Act 2025) que podría extenderlo a software de escritorio.
-- **Estado en AudioClass:** ➕ **YA CUMPLE (activo existente)** — contraste WCAG 2.1 AA validado en cada despliegue (run_wcag_on_exe) sobre el bytecode empaquetado. Mantener y documentar.
+- **Estado en AudioClass:**  **YA CUMPLE (activo existente)** — contraste WCAG 2.1 AA validado en cada despliegue (run_wcag_on_exe) sobre el bytecode empaquetado. Mantener y documentar.
 
-### 12.7 🛡️ GDPR/privacidad y uso de datos de usuarios por terceros
+### 12.7  GDPR/privacidad y uso de datos de usuarios por terceros
 - **NOYB vs. OpenAI (abr 2024):** reclamación por alucinaciones sobre personas (inexactitud, art. 5.1.d) y falta de corrección; Italia multó a OpenAI con 15 M€ (dic 2024). Los datos enviados a APIs de IA se retienen por defecto en el proveedor (Gemini API: hasta 55 días para abuso, sin entrenamiento; OpenAI API: sin entrenamiento desde mar 2023).
-- **Estado en AudioClass:** ✅ **CUBIERTO** — la app **declara y pide consentimiento** (opt-in) antes de cualquier envío a Gemini/OpenAI; los avisos (asistente, diálogo de consentimiento y Configuración) ahora **mencionan la retención del proveedor** (Gemini hasta 55 días; OpenAI sin entrenamiento). Usuarios con configs antiguas ven el diálogo en el primer uso de IA.
+- **Estado en AudioClass:** **CUBIERTO** — la app **declara y pide consentimiento** (opt-in) antes de cualquier envío a Gemini/OpenAI; los avisos (asistente, diálogo de consentimiento y Configuración) ahora **mencionan la retención del proveedor** (Gemini hasta 55 días; OpenAI sin entrenamiento). Usuarios con configs antiguas ven el diálogo en el primer uso de IA.
 
-### 12.8 🔒 Seguridad del código (auditoría interna, hallazgos reales)
-- **Path traversal en `/download` del servidor Colab** (leer archivos fuera del directorio temporal): ➕ **ARREGLADO** (validación `resolve()` + `is_relative_to`).
-- **API key en URLs** (filtrable a logs de ngrok/historial): ➕ **ARREGLADO** (header `X-API-Key`, URLs generadas sin clave).
-- **Sin límite de subida ni rate-limit** en Colab: ➕ **ARREGLADO** (tope 200 MB, 30 peticiones/min por clave).
-- **`pip install` en cada import** del servidor: ➕ **ARREGLADO** (solo bajo `__main__`).
+### 12.8 Seguridad del código (auditoría interna, hallazgos reales)
+- **Path traversal en `/download` del servidor Colab** (leer archivos fuera del directorio temporal):  **ARREGLADO** (validación `resolve()` + `is_relative_to`).
+- **API key en URLs** (filtrable a logs de ngrok/historial):  **ARREGLADO** (header `X-API-Key`, URLs generadas sin clave).
+- **Sin límite de subida ni rate-limit** en Colab:  **ARREGLADO** (tope 200 MB, 30 peticiones/min por clave).
+- **`pip install` en cada import** del servidor:  **ARREGLADO** (solo bajo `__main__`).
 
 ## 13. Arreglos aplicados (12 agosto 2026)
 
@@ -222,15 +222,15 @@ Investigación de las principales causas de litigio contra software generado con
 |---|---|---|
 | `audioclass_v91.py` | Asistente: tarjeta "Privacidad y consentimiento" (casilla obligatoria + opt-in de IA + retención del proveedor + "no es consejo médico/legal") | 12.1, 12.2, 12.3, 12.7 |
 | `audioclass_v91.py` | Aviso de grabación al iniciar la primera grabación (sin aceptar no se graba) | 12.1 |
-| `audioclass_v91.py` | "máxima precisión" → "mayor precisión" (claim factual) | 12.5 |
+| `audioclass_v91.py` | "máxima precisión" -> "mayor precisión" (claim factual) | 12.5 |
 | `audioclass_v91.py` | Nota "generado automáticamente — verifica" dentro del panel de adaptación | 12.2 |
 | `audioclass_v91.py` | `_adapt` no envía nada a IA sin consentimiento (diálogo `_prompt_ia_consent`, revocable en Configuración) | 12.7, 12.2 |
-| `audioclass_v91.py` | Diálogo de Configuración: sección "🔒 Privacidad" con checkbox de consentimiento | 12.7 |
+| `audioclass_v91.py` | Diálogo de Configuración: sección "Privacidad" con checkbox de consentimiento | 12.7 |
 | `audioclass_v91.py` | Disclaimers en exportaciones PDF/DOCX/GDocs y en archivos de adaptación | 12.2, 12.5 |
 | `audioclass_colab_server_v91.py` | Anti path-traversal en `/download`; key por header `X-API-Key`; URLs sin clave; rate-limit 30/min; tope de subida 200 MB; `pip install` bajo `__main__`; disclaimer en PDF generado | 12.8 |
 | `audioclass_colab_server_v91.py` | **Headers de seguridad en todas las respuestas** (middleware): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy: default-src 'none'` | 12.8 |
 | `.gitignore` | `.env*` ignorado como red de seguridad (la app guarda las claves cifradas con DPAPI en `audioclass_config.json`, mejor que `.env` para escritorio) | 12.7, 12.8 |
-| `.github/workflows/release.yml` (nuevo) | Post-producción automática: tag `v*` → compila onefile+onedir en CI, selftests + WCAG empaquetados, zips con documentos legales y GitHub Release (rollback por tags) | 12.8 |
+| `.github/workflows/release.yml` (nuevo) | Post-producción automática: tag `v*` -> compila onefile+onedir en CI, selftests + WCAG empaquetados, zips con documentos legales y GitHub Release (rollback por tags) | 12.8 |
 | `TERCEROS_Y_LICENCIAS.md` (nuevo) | Atribución de todas las dependencias (MIT/BSD/Apache/LGPL-dinámico) | 12.4 |
 | `LICENCIA.txt` (nuevo) | Licencia explícita de la app (MIT, plantilla) | 12.4 |
 | `test_colab_server_security.py` | 11 tests del endurecimiento (path traversal, header, rate-limit, tope, URLs sin clave, **4 headers de seguridad**) | 12.8 |
@@ -239,12 +239,12 @@ Investigación de las principales causas de litigio contra software generado con
 
 ## 14. Pendiente (P1/P2, recomendado)
 
-- [x] Aviso de grabación al iniciar grabación + indicador GRABANDO visible — ✅ hecho
-- [x] Retención del proveedor mencionada en los avisos de IA — ✅ hecho
+- [x] Aviso de grabación al iniciar grabación + indicador GRABANDO visible — hecho
+- [x] Retención del proveedor mencionada en los avisos de IA — hecho
 - [ ] Publicar el SHA-256 oficial del exe y firmar con certificado — P1
 - [ ] Botón "Borrar todas mis grabaciones" + rotación de logs (30 días) — P1
 - [ ] DPIA si se despliega en centros educativos/empresas — P2
-- [x] `LICENCIA.txt` completada (© Daniel Pérez) + `EULA.txt` + `AVISO_DE_PRIVACIDAD.txt` + `TERCEROS_Y_LICENCIAS.md` — ✅ hecho e integrados en el zip del despliegue
+- [x] `LICENCIA.txt` completada (© Daniel Pérez) + `EULA.txt` + `AVISO_DE_PRIVACIDAD.txt` + `TERCEROS_Y_LICENCIAS.md` — hecho e integrados en el zip del despliegue
 
 ---
 

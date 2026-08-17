@@ -20,7 +20,7 @@
 #    [1] Tests del fuente suite ÚNICA run_ci_suite.py (13 tests: UI, privacidad,
 #                        WCAG, Colab, motor, exportación, E2E, estrés, v10,
 #                        lang_auto, watchdog, benchmark) — la misma que el CI
-#    [2] Build onefile    PyInstaller AudioClass_v91_onefile.spec → dist_onefile/
+#    [2] Build onefile    PyInstaller AudioClass_v91_onefile.spec -> dist_onefile/
 #    [3] Entregables      copia a "AudioClass COMPLETA v9.1.exe" + regenera el zip
 #    [4] Exe: selftest    --selftest-transcribe tts_clase.wav (texto real, 100%)
 #    [4b] Exe: E2E UI     --e2e-ui wizard|config|widgets (flujos reales de la interfaz, headless)
@@ -57,7 +57,7 @@ for arg in "$@"; do
         --help|-h)
             sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
-        *) echo "❌ Argumento desconocido: $arg  (usa --help)"; exit 1 ;;
+        *) echo "Argumento desconocido: $arg  (usa --help)"; exit 1 ;;
     esac
 done
 
@@ -77,9 +77,9 @@ TIMEOUT_SELFTEST=360  # selftest del exe (onefile descomprime ~60-90s + transcri
 TIMEOUT_WCAG_EXE=480  # run_wcag_on_exe (crea varias instancias de la app)
 
 log() { printf '%s\n' "$*" | tee -a "$LOG"; }
-ok()  { log "${C_GRN}✅${C_END} $*"; PASS=$((PASS+1)); }
-warn(){ log "${C_YEL}⚠️  $*${C_END}"; WARN=$((WARN+1)); }
-fail(){ log "${C_RED}❌ $*${C_END}"; FAIL=$((FAIL+1)); }
+ok()  { log "${C_GRN}[OK]${C_END} $*"; PASS=$((PASS+1)); }
+warn(){ log "${C_YEL}$*${C_END}"; WARN=$((WARN+1)); }
+fail(){ log "${C_RED}$*${C_END}"; FAIL=$((FAIL+1)); }
 step(){ log ""; log "${C_BLU}════════ $* ( $(date '+%H:%M:%S') ) ════════${C_END}"; }
 
 # Ejecuta un comando con timeout (Git Bash puede no tener 'timeout'):
@@ -140,7 +140,7 @@ run_tests() {
 
 # ════════════════════════════════════════════════════════════════════════════
 echo "" > "$LOG"
-log "${C_BLD}🎙️  DESPLIEGUE DE PRODUCCIÓN — AudioClass v9.1${C_END}"
+log "${C_BLD} DESPLIEGUE DE PRODUCCIÓN — AudioClass v9.1${C_END}"
 log "   $(date '+%Y-%m-%d %H:%M:%S')   (log: $LOG)"
 [ "$DO_BUILD" = 1 ] && log "   Modo: build + entregables + validación completa"
 [ "$DO_BUILD" = 0 ] && log "   Modo: validación (--skip-build: usa el exe ya compilado)"
@@ -166,7 +166,7 @@ log "  Audio de prueba: $AUDIO_TEST (${AUDIO_DUR}s)"
 # run_ci_suite.py es la ÚNICA fuente de verdad de la suite: los 13 tests
 # (UI smoke/v91, WCAG, privacidad, seguridad Colab, motor paralelo,
 # exportación, E2E de UI, estrés, v10, lang_auto, watchdog y benchmark).
-# ci.yml la consume igual → CI y despliegue no pueden divergir.
+# ci.yml la consume igual -> CI y despliegue no pueden divergir.
 # Los tests GUI se envuelven con xvfb-run SOLO en Linux sin DISPLAY;
 # en Windows el display es nativo y no hace falta.
 step "[1] Tests del código fuente (run_ci_suite.py)"
@@ -388,10 +388,10 @@ rm -f /tmp/_zipchk.txt
 
 # ── RESUMEN ──────────────────────────────────────────────────────────────────
 step "RESUMEN"
-log "  ✅ OK: $PASS   ❌ FALLOS: $FAIL   ⚠️  Advertencias: $WARN"
-ls -la --time-style=+%Y-%m-%d_%H:%M "$EXE_DEST" "$ZIP_DEST" 2>/dev/null | awk '{print "  📦", $7, $6, $5, "bytes"}' >> "$LOG" || true
-[ -f "$EXE_DEST" ] && log "  📦 $EXE_DEST — $(stat -c%s "$EXE_DEST") bytes, $(stat -c%y "$EXE_DEST" | cut -d. -f1)"
-[ -f "$ZIP_DEST" ] && log "  📦 $ZIP_DEST — $(stat -c%s "$ZIP_DEST") bytes, $(stat -c%y "$ZIP_DEST" | cut -d. -f1)"
+log "  OK: $PASS   FALLOS: $FAIL   Advertencias: $WARN"
+ls -la --time-style=+%Y-%m-%d_%H:%M "$EXE_DEST" "$ZIP_DEST" 2>/dev/null | awk '{print "  ", $7, $6, $5, "bytes"}' >> "$LOG" || true
+[ -f "$EXE_DEST" ] && log "  $EXE_DEST — $(stat -c%s "$EXE_DEST") bytes, $(stat -c%y "$EXE_DEST" | cut -d. -f1)"
+[ -f "$ZIP_DEST" ] && log "  $ZIP_DEST — $(stat -c%s "$ZIP_DEST") bytes, $(stat -c%y "$ZIP_DEST" | cut -d. -f1)"
 
 if [ "$FAIL" -gt 0 ]; then
     log ""
@@ -399,6 +399,6 @@ if [ "$FAIL" -gt 0 ]; then
     exit 1
 fi
 log ""
-log "${C_GRN}RESULTADO: PRODUCCIÓN LISTA ✅${C_END}"
+log "${C_GRN}RESULTADO: PRODUCCIÓN LISTA [OK]${C_END}"
 log "  Los usuarios finales reciben: $EXE_DEST (+ zip $ZIP_DEST)"
 exit 0

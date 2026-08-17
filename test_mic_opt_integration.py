@@ -147,7 +147,7 @@ check("diagnostico: no aplica boost", "boost del nodo" not in text)
 # ── _mic_opt_worker: aplicar optimizacion ────────────────────────────────────
 msgs = _run_worker(True, [0.01, 0.05])          # antes debil, despues OK
 text = "".join(d for mt, d in msgs if mt == "mic_opt_log")
-check("apply: nivel 100%", "nivel → 100%" in text)
+check("apply: nivel 100%", "nivel -> 100%" in text)
 check("apply: boost", "boost" in text)
 check("apply: prueba antes y post", "Prueba:" in text and "Post:" in text)
 check("apply: resumen xN", "x5.0" in text or "RESUMEN" in text, "RESUMEN" in text)

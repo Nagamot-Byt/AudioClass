@@ -1,11 +1,11 @@
-# 📦 TERCEROS Y LICENCIAS — AudioClass v9.1
+# TERCEROS Y LICENCIAS — AudioClass v9.1
 
 AudioClass se distribuye como exe autocontenido que **empaqueta** las siguientes
 bibliotecas de terceros. Todas son de **licencias permisivas (MIT/BSD/Apache)**
 o **LGPL/GPL con excepción que permite la distribución sin contaminar la app**:
 **ninguna obliga a liberar el código de AudioClass**.
 
-> ⚠️ **Importante:** este aviso de atribución es un requisito de las licencias
+> **Importante:** este aviso de atribución es un requisito de las licencias
 > MIT/BSD/Apache (incluir el aviso de copyright). Su ausencia es una vía de
 > reclamación por incumplimiento de licencia — por eso se distribuye con la app.
 

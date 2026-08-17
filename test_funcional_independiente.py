@@ -255,7 +255,7 @@ def main():
     try:
         app.adapt_txt.configure(state="normal")
         app.adapt_txt.delete("1.0", "end")
-        app.adapt_txt.insert("end", f"🎓 Análisis Académico Profundo\n{'=' * 55}\n\n{adapt_txt}\n")
+        app.adapt_txt.insert("end", f"Análisis Académico Profundo\n{'=' * 55}\n\n{adapt_txt}\n")
         app.adapt_txt.configure(state="disabled")
     except Exception as e:
         print("  WARN adapt_txt:", e)

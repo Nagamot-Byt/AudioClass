@@ -11,7 +11,7 @@ Novedades v9.1:
   extracción de tesis, pilares, evidencia dura y registro de filtrado
 • Transcripción condicionada para priorizar voz del docente
 • Pipeline de audio profesional con 4 perfiles preconfigurados
-• Modo Fácil: Grabar → Procesar → Transcribir → Analizar (1 botón)
+• Modo Fácil: Grabar -> Procesar -> Transcribir -> Analizar (1 botón)
 • Motor Local (Tiny/Base/Small) + Cloud Colab (Medium/Large-v3)
 • Adaptación Inteligente vía Gemini API (Google AI Studio)
 • Segmentación automática para textos largos (sin caídas de servidor)
@@ -374,7 +374,7 @@ from audioclass_core import (AudioPipeline, LocalWhisperEngine,
 # Simbolos tipograficos comunes -> sustituto ASCII. Solo se aplican como
 # compatibilidad cuando NO hay fuente Unicode (con DejaVu no hacen falta).
 _PDF_FALLBACK_CHARS = {
-    "—": "-", "–": "-", "…": "...", "•": "-", "→": "->",
+    "—": "-", "–": "-", "…": "...", "•": "-", "\u2192": "->",
     "├": "|", "└": "`", "“": '"', "”": '"', "‘": "'", "’": "'",
 }
 
@@ -694,7 +694,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         bar.grid(row=1, column=0, sticky="ew")
         self._lbl(bar, "No te preocupes: todo esto se puede cambiar después en Configuración.",
                   font=(self.FB, 11), text_color=C["muted"]).pack(side="left", padx=(24, 12), pady=14)
-        self._btn(bar, "🚀 Comenzar a usar AudioClass", self._finish_wizard,
+        self._btn(bar, "Comenzar a usar AudioClass", self._finish_wizard,
                   width=320, height=48, font=(self.FB, 16, "bold"),
                   fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="right", padx=(12, 24), pady=10)
 
@@ -725,7 +725,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         body.grid_columnconfigure(0, weight=1)
 
-        self._lbl(body, "🎓 ¡Bienvenido a AudioClass!",
+        self._lbl(body, "¡Bienvenido a AudioClass!",
                   font=(self.FH, 30, "bold"), text_color=C["accent"]).pack(pady=(34, 8))
         self._lbl(body, "Configuración rápida — 2 minutos y listo",
                   font=(self.FB, 14), text_color=C["muted"]).pack(pady=(0, 22))
@@ -739,10 +739,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         self.wiz_level = ctk.StringVar(value="nuevo")
         if CTK:
-            ctk.CTkRadioButton(f0, text="🧭 Soy nuevo — vista simple (recomendado)",
+            ctk.CTkRadioButton(f0, text="Soy nuevo — vista simple (recomendado)",
                                variable=self.wiz_level, value="nuevo",
                                font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
-            ctk.CTkRadioButton(f0, text="⚙️ Soy avanzado — quiero ver todas las opciones",
+            ctk.CTkRadioButton(f0, text="Soy avanzado — quiero ver todas las opciones",
                                variable=self.wiz_level, value="avanzado",
                                font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
         else:
@@ -818,10 +818,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
                   font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
         self.wiz_mode = ctk.StringVar(value="local")
         if CTK:
-            ctk.CTkRadioButton(f3, text="🖥️ En mi computadora (rápido y sin internet)", 
+            ctk.CTkRadioButton(f3, text="En mi computadora (rápido y sin internet)", 
                                variable=self.wiz_mode, value="local",
                                font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
-            ctk.CTkRadioButton(f3, text="☁️ En Google Colab (mayor precisión, necesita internet)", 
+            ctk.CTkRadioButton(f3, text="En Google Colab (mayor precisión, necesita internet)", 
                                variable=self.wiz_mode, value="cloud",
                                font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=5)
         else:
@@ -834,7 +834,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         f4.pack(fill="x", padx=100, pady=10)
         self._lbl(f4, "6. Privacidad y consentimiento",
                   font=(self.FH, 14, "bold")).pack(anchor="w", padx=20, pady=(15, 5))
-        self._lbl(f4, "🔒 Tus grabaciones y transcripciones se procesan en TU equipo y se guardan en tu carpeta. "
+        self._lbl(f4, "Tus grabaciones y transcripciones se procesan en TU equipo y se guardan en tu carpeta. "
                       "Si activas el análisis con IA (Gemini u OpenAI), el TEXTO de la transcripción se envía "
                       "a los servidores de Google u OpenAI (que lo retienen temporalmente: Gemini hasta 55 días, "
                       "OpenAI sin usarlo para entrenar) para generar resúmenes, guías y exámenes. "
@@ -846,9 +846,9 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.wiz_priv_ack = ctk.BooleanVar(value=False)
         self.wiz_ia_consent = ctk.BooleanVar(value=False)
         if CTK:
-            ctk.CTkCheckBox(f4, text="✅ He leído y acepto el aviso de privacidad",
+            ctk.CTkCheckBox(f4, text="He leído y acepto el aviso de privacidad",
                             variable=self.wiz_priv_ack, font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
-            ctk.CTkCheckBox(f4, text="🤖 Permito el análisis con IA (el texto de mis transcripciones se enviará a Gemini/OpenAI — puedo desactivarlo en Configuración)",
+            ctk.CTkCheckBox(f4, text="Permito el análisis con IA (el texto de mis transcripciones se enviará a Gemini/OpenAI — puedo desactivarlo en Configuración)",
                             variable=self.wiz_ia_consent, font=(self.FB, 12), fg_color=C["accent"]).pack(anchor="w", padx=30, pady=4)
         else:
             ctk.Checkbutton(f4, text="He leido y acepto el aviso de privacidad",
@@ -918,7 +918,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
                 pady=8 if getattr(self, "_compact", False) else 15)
         sb.grid_propagate(False)
 
-        self._lbl(sb, "🗂  Historial de Clases", font=(self.FH, 16, "bold"), text_color=C["text"]).pack(pady=(18, 12), padx=15, anchor="w")
+        self._lbl(sb, " Historial de Clases", font=(self.FH, 16, "bold"), text_color=C["text"]).pack(pady=(18, 12), padx=15, anchor="w")
 
         if CTK:
             hf = ctk.CTkScrollableFrame(sb, corner_radius=8, fg_color=C["card"])
@@ -938,11 +938,11 @@ class App(ctk.CTk if CTK else ctk.Tk):
         self.bdel.pack(fill="x", pady=(0, 6))
         self.bcompile = self._btn(bf, "Compilar Todo", self._compile, state="disabled", width=260, height=32, fg_color=C["cloud"], hover_color=C["cloud"])
         self.bcompile.pack(fill="x", pady=(0, 6))
-        self.bguide = self._btn(bf, "❓ Guía Rápida", self._open_guide, width=260, height=32, fg_color=C["accent"], hover_color=C["accent_hover"])
+        self.bguide = self._btn(bf, "Guía Rápida", self._open_guide, width=260, height=32, fg_color=C["accent"], hover_color=C["accent_hover"])
         self.bguide.pack(fill="x", pady=(0, 6))
-        self.bconfig = self._btn(bf, "⚙️ Configuración", self._open_config, width=260, height=32)
+        self.bconfig = self._btn(bf, "Configuración", self._open_config, width=260, height=32)
         self.bconfig.pack(fill="x", pady=(0, 6))
-        self.badv = self._btn(bf, "⚙️ Opciones avanzadas", self._toggle_advanced, width=260, height=32,
+        self.badv = self._btn(bf, "Opciones avanzadas", self._toggle_advanced, width=260, height=32,
                               fg_color=C["cloud"], hover_color=C["cloud"])
         self.badv.pack(fill="x")
 
@@ -962,7 +962,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         hd.grid_columnconfigure(0, weight=1)
         brand = self._frame(hd, fg_color="transparent")
         brand.grid(row=0, column=0, sticky="w", padx=(18, 8), pady=(1, 0))
-        self._lbl(brand, "🎓", font=(self.FH, 24), text_color=C["head_text"], theme_key="head_text").pack(side="left", padx=(0, 12))
+        self._lbl(brand, "AC", font=(self.FH, 24), text_color=C["head_text"], theme_key="head_text").pack(side="left", padx=(0, 12))
         btb = self._frame(brand, fg_color="transparent")
         btb.pack(side="left")
         self._lbl(btb, APP_NAME, font=(self.FH, 21, "bold"), text_color=C["head_text"], theme_key="head_text").pack(anchor="w")
@@ -970,9 +970,9 @@ class App(ctk.CTk if CTK else ctk.Tk):
                   font=(self.FB, 11), text_color=C["head_text"], theme_key="head_text").pack(anchor="w")
         hdr = self._frame(hd, fg_color="transparent")
         hdr.grid(row=0, column=1, sticky="e", padx=(8, 16), pady=(8, 2))
-        self.lconn = self._lbl(hdr, "🖥️ Motor local", font=(self.FB, 11), text_color=C["head_text"], theme_key="head_text")
+        self.lconn = self._lbl(hdr, "Motor local", font=(self.FB, 11), text_color=C["head_text"], theme_key="head_text")
         self.lconn.pack(side="left", padx=(0, 12))
-        self.btheme_hd = self._btn(hdr, "🌙" if self.dark else "☀️", self._theme,
+        self.btheme_hd = self._btn(hdr, "Tema", self._theme,
                                    width=44, height=34, font=(self.FB, 14),
                                    fg_color=C["card"], hover_color=C["border"])
         self.btheme_hd.pack(side="left")
@@ -1031,7 +1031,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self.lnext_sub = self._lbl(nx, "", font=(self.FB, 11), text_color=C["muted"],
                                        anchor="w", wraplength=1000)
             self.lnext_sub.grid(row=1, column=0, sticky="ew", padx=(16, 8), pady=(0, 2))
-            self._btn(nx, "❓ ¿Cómo se hace?", lambda: self._open_guide(self._next_guide_step or 1),
+            self._btn(nx, "¿Cómo se hace?", lambda: self._open_guide(self._next_guide_step or 1),
                       width=170, height=32, font=(self.FB, 11), fg_color=C["accent"],
                       hover_color=C["accent_hover"]).grid(row=0, column=1, rowspan=2, padx=(8, 16), pady=6)
 
@@ -1040,7 +1040,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
 
         self._lbl(easy, "MODO FACIL", font=(self.FH, 16, "bold"), text_color=C["easy"]).pack(anchor="w", padx=18, pady=(2, 2))
         if not getattr(self, "_compact", False):
-            self._lbl(easy, "Un solo boton hace TODO: Grabar → Procesar → Transcribir → Analizar Academicamente",
+            self._lbl(easy, "Un solo boton hace TODO: Grabar -> Procesar -> Transcribir -> Analizar Academicamente",
                        font=(self.FB, 11), text_color=C["muted"]).pack(anchor="w", padx=18, pady=(0, 4))
 
         easy_row = self._frame(easy, fg_color="transparent")
@@ -1073,30 +1073,30 @@ class App(ctk.CTk if CTK else ctk.Tk):
         ct = self._frame(mn, fg_color=C["card"])
         ct.grid(row=2, column=0, sticky="ew", padx=22, pady=10)
 
-        self.brec = self._btn(ct, "🎙️", self._togglerec, width=64, height=64, corner_radius=32,
+        self.brec = self._btn(ct, "REC", self._togglerec, width=64, height=64, corner_radius=32,
                                font=(self.FB, 26), fg_color=C["mic"], hover_color=C["err"],
                                no_theme=True)
         self.brec.pack(side="left", padx=(18, 12), pady=10)
 
-        self.bstop = self._btn(ct, "🛑 Detener", self._stoprec, width=150, height=52,
+        self.bstop = self._btn(ct, "Detener", self._stoprec, width=150, height=52,
                                 font=(self.FB, 14, "bold"), fg_color=C["err"], hover_color=C["err"])
         self.bstop.pack(side="left", padx=(0, 12), pady=10)
         self.bstop.pack_forget()
 
-        self.btr = self._btn(ct, "📝 Transcribir", lambda: self._starttrans(False), width=150, height=42, state="disabled")
+        self.btr = self._btn(ct, "Transcribir", lambda: self._starttrans(False), width=150, height=42, state="disabled")
         self.btr.pack(side="left", padx=(0, 8), pady=10)
-        self.bts = self._btn(ct, "⏱️ Con tiempos", lambda: self._starttrans(True), width=130, height=42, state="disabled")
+        self.bts = self._btn(ct, "Con tiempos", lambda: self._starttrans(True), width=130, height=42, state="disabled")
         self.bts.pack(side="left", padx=(0, 8), pady=10)
-        self.bpdf = self._btn(ct, "📄 Guardar PDF", self._pdf, width=130, height=42, state="disabled")
+        self.bpdf = self._btn(ct, "Guardar PDF", self._pdf, width=130, height=42, state="disabled")
         self.bpdf.pack(side="left", padx=(0, 8), pady=10)
-        self.bdocx = self._btn(ct, "📝 Guardar DOCX", self._export_docx, width=140, height=42, state="disabled")
+        self.bdocx = self._btn(ct, "Guardar DOCX", self._export_docx, width=140, height=42, state="disabled")
         self.bdocx.pack(side="left", padx=(0, 8), pady=10)
-        self.bdocs = self._btn(ct, "🌐 Google Docs", self._export_docs, width=140, height=42, state="disabled",
+        self.bdocs = self._btn(ct, "Google Docs", self._export_docs, width=140, height=42, state="disabled",
                                 fg_color=C["ok"], hover_color=C["ok"])
         # Si el componente OAuth no esta disponible (exe de distribucion), el
         # boton queda desactivado con etiqueta clara en vez de fallar al pulsar.
         if not _gdocs_importable():
-            self.bdocs.configure(text="🌐 Google Docs (no disponible)", width=180)
+            self.bdocs.configure(text="Google Docs (no disponible)", width=180)
         self.bdocs.pack(side="left", padx=(0, 8), pady=10)
         self.bcancel = self._btn(ct, "Cancelar", self._cancel, width=100, height=42, state="disabled",
                                   fg_color=C["err"], hover_color=C["err"])
@@ -1110,7 +1110,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
         vu.pack(side="left", padx=(0, 14), pady=12)
         vu_row1 = self._frame(vu, fg_color="transparent")
         vu_row1.pack(side="top", fill="x")
-        self._lbl(vu_row1, "🎚", font=(self.FB, 12)).pack(side="left", padx=(0, 6))
+        self._lbl(vu_row1, "VU", font=(self.FB, 12)).pack(side="left", padx=(0, 6))
         if CTK:
             self.vu_bar = ctk.CTkProgressBar(vu_row1, width=170, height=10, corner_radius=5,
                                              fg_color=C["button"], progress_color=C["accent"])
@@ -1323,10 +1323,10 @@ class App(ctk.CTk if CTK else ctk.Tk):
         th = self._frame(tr, fg_color="transparent")
         th.grid(row=0, column=0, sticky="ew", padx=18, pady=(12, 6))
         self._lbl(th, "Transcripción", font=(self.FH, 15, "bold"), text_color=C["text"]).pack(side="left")
-        self.lbadge = self._lbl(th, "✓ Revisado por IA", font=(self.FB, 10, "bold"), text_color=C["ok"])
+        self.lbadge = self._lbl(th, "Revisado por IA", font=(self.FB, 10, "bold"), text_color=C["ok"])
         self.lbadge.pack(side="right", padx=(0, 14))
         self.lbadge.pack_forget()
-        self._btn(th, "📋 Copiar", self._copy_trans, width=92, height=28, font=(self.FB, 10),
+        self._btn(th, "Copiar", self._copy_trans, width=92, height=28, font=(self.FB, 10),
                   fg_color=C["button"], hover_color=C["border"]).pack(side="right", padx=(0, 14))
         self.lmodel = self._lbl(th, "Cargando...", font=(self.FB, 11), text_color=C["warn"])
         self.lmodel.pack(side="right")
@@ -1368,14 +1368,14 @@ class App(ctk.CTk if CTK else ctk.Tk):
         ft.grid(row=8, column=0, sticky="ew", padx=22, pady=(0, 5))
         ftl = self._frame(ft, fg_color="transparent")
         ftl.pack(side="left")
-        self._lbl(ftl, f"📁 {OUTPUT_DIR}", font=(self.FB, 10), text_color=C["muted"]).pack(side="left")
-        self._lbl(ft, "Espacio ▶  ·  Ctrl+R grabar  ·  Ctrl+S guardar  ·  Ctrl+E exportar  ·  F1 ayuda",
+        self._lbl(ftl, f"{OUTPUT_DIR}", font=(self.FB, 10), text_color=C["muted"]).pack(side="left")
+        self._lbl(ft, "Espacio  ·  Ctrl+R grabar  ·  Ctrl+S guardar  ·  Ctrl+E exportar  ·  F1 ayuda",
                   font=(self.FB, 10), text_color=C["muted"]).pack(side="right", padx=(0, 18))
-        self._btn(ftl, "📂 Abrir carpeta", self._open_output_dir, width=130, height=28,
+        self._btn(ftl, "Abrir carpeta", self._open_output_dir, width=130, height=28,
                   font=(self.FB, 10)).pack(side="left", padx=(12, 0))
-        self._btn(ftl, "🎤 Probar micrófono", self._test_mic, width=170, height=28,
+        self._btn(ftl, "Probar micrófono", self._test_mic, width=170, height=28,
                   font=(self.FB, 10), fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="left", padx=(8, 0))
-        self._btn(ftl, "🎛️ Optimizar micrófono", self._open_mic_opt, width=195, height=28,
+        self._btn(ftl, "Optimizar micrófono", self._open_mic_opt, width=195, height=28,
                   font=(self.FB, 10), fg_color=C["ok"], hover_color=C["ok"]).pack(side="left", padx=(8, 0))
         self.ltime = self._lbl(ft, "", font=(self.FB, 10), text_color=C["muted"])
         self.ltime.pack(side="right")
@@ -1424,7 +1424,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             for b in getattr(self, "adapt_extra", []):
                 self._set_panel_visible(b, not guided)
             if hasattr(self, "badv"):
-                self.badv.configure(text=("⚙️ Opciones avanzadas" if guided else "🧭 Modo Guiado"))
+                self.badv.configure(text=("Opciones avanzadas" if guided else "Modo Guiado"))
         except Exception:
             pass
 
@@ -1469,17 +1469,17 @@ class App(ctk.CTk if CTK else ctk.Tk):
             self.cmb_model.configure(state="normal")
             self.lmodel.configure(text=f"Local: {self.model_var.get()}", text_color=C["muted"])
             if hasattr(self, "lconn"):
-                self.lconn.configure(text=f"🖥️ Motor local · {self.model_var.get()}", text_color=C["head_text"])
+                self.lconn.configure(text=f"Motor local · {self.model_var.get()}", text_color=C["head_text"])
         else:
             self.cmb_model.configure(state="disabled")
             if self.config.get("colab_url"):
                 self.lmodel.configure(text="Cloud: Colab GPU", text_color=C["cloud"])
                 if hasattr(self, "lconn"):
-                    self.lconn.configure(text="☁️ Motor Cloud · GPU", text_color=C["head_text"])
+                    self.lconn.configure(text="Motor Cloud · GPU", text_color=C["head_text"])
             else:
                 self.lmodel.configure(text="Cloud: Sin URL", text_color=C["warn"])
                 if hasattr(self, "lconn"):
-                    self.lconn.configure(text="☁️ Motor Cloud · sin URL", text_color=C["head_text"])
+                    self.lconn.configure(text="Motor Cloud · sin URL", text_color=C["head_text"])
 
     def _chlocalmodel(self, name):
         self.config["local_model"] = name
@@ -1586,29 +1586,29 @@ class App(ctk.CTk if CTK else ctk.Tk):
             has_key = bool(self.config.get("gemini_api_key", ""))
 
         if rec:
-            main = "🛑 Estás grabando..."
+            main = "Estás grabando..."
             sub = "Cuando termines tu clase pulsa el botón amarillo: DETENER."
             col, step = C["warn"], 1
         elif not has_audio:
-            main = "🎙️ Pulsa el botón rojo: GRABAR MI CLASE"
-            sub = "Habla con normalidad. Cuando termines pulsa 🛑 DETENER."
+            main = "Pulsa el botón rojo: GRABAR MI CLASE"
+            sub = "Habla con normalidad. Cuando termines pulsa DETENER."
             col, step = C["err"], 1
         elif not has_text:
-            main = "📝 Pulsa el botón: TRANSCRIBIR"
+            main = "Pulsa el botón: TRANSCRIBIR"
             sub = "AudioClass convierte la voz del profesor en texto. Funciona sin internet."
             col, step = C["accent"], 2
         elif not has_adapt:
             if has_key:
-                main = "🎓 Pulsa: ANÁLISIS ACADÉMICO PROFUNDO"
+                main = "Pulsa: ANÁLISIS ACADÉMICO PROFUNDO"
                 sub = "Gemini convierte tu transcripción en apuntes: resumen, tesis, datos clave."
                 col, step = C["academic"], 3
             else:
-                main = "🎓 Añade tu API Key de IA (Gemini u OpenAI)"
-                sub = "Configuración → elige tu proveedor de IA y pega tu API Key para analizar tus clases."
+                main = "Añade tu API Key de IA (Gemini u OpenAI)"
+                sub = "Configuración -> elige tu proveedor de IA y pega tu API Key para analizar tus clases."
                 col, step = C["gemini"], 3
         else:
-            main = "📄 ¡Clase lista! Guárdala o compártela"
-            sub = "Pulsa GUARDAR PDF o 🌐 GOOGLE DOCS para tener tus apuntes en un archivo."
+            main = "¡Clase lista! Guárdala o compártela"
+            sub = "Pulsa GUARDAR PDF o GOOGLE DOCS para tener tus apuntes en un archivo."
             col, step = C["ok"], 4
 
         self._next_guide_step = step
@@ -1719,12 +1719,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
         pulse_col = _PULSE.get(kind, C["accent"])
         self._toast_btn = None
         if CTK:
-            lbl = ctk.CTkLabel(self.steps_frame, text="✓ " + msg,
+            lbl = ctk.CTkLabel(self.steps_frame, text="[OK] " + msg,
                                font=(self.FH, 12, "bold"),
                                text_color=pill_fg, fg_color=pill_bg,
                                corner_radius=10, padx=12, pady=3)
         else:
-            lbl = ctk.Label(self.steps_frame, text="✓ " + msg,
+            lbl = ctk.Label(self.steps_frame, text="[OK] " + msg,
                             font=(self.FH, 12, "bold"),
                             bg=pill_bg, fg=pill_fg, padx=12, pady=3)
         lbl.pack(side="left", padx=(42, 0))  # comienza desplazado a la derecha
@@ -1862,44 +1862,44 @@ AudioClass hace 3 cosas por ti:
 ──────────────────────────────────────────────
 PASO 1 — GRABA TU CLASE
 ──────────────────────────────────────────────
-• Pulsa el botón rojo "🎙️ Grabar mi clase".
+• Pulsa el botón rojo "Grabar mi clase".
 • Mantén silencio los primeros segundos (así la app aprende el ruido del aula).
-• Cuando termines, pulsa "🛑 Detener".
+• Cuando termines, pulsa "Detener".
 • La app mejora el audio automáticamente (quita ruido y silencios).
 
 ──────────────────────────────────────────────
 PASO 2 — TRANSCRIBE (la voz se vuelve texto)
 ──────────────────────────────────────────────
-• Pulsa "📝 Transcribir" y espera.
+• Pulsa "Transcribir" y espera.
 • El texto aparecerá en la pantalla.
-• Si quieres que cada frase lleve su hora, pulsa "⏱️ Con tiempos".
+• Si quieres que cada frase lleve su hora, pulsa "Con tiempos".
 • Modo local = rápido y sin internet. Modo cloud = más preciso.
 
 ──────────────────────────────────────────────
 PASO 3 — ANALIZA CON INTELIGENCIA ARTIFICIAL
 ──────────────────────────────────────────────
-• Pulsa "🎓 Análisis Académico Profundo": obtienes resumen, tesis,
+• Pulsa "Análisis Académico Profundo": obtienes resumen, tesis,
   ideas principales, datos importantes y registro de lo filtrado.
-• Otras opciones: 📋 Resumen, 📚 Guía de estudio, 🎯 Tarjetas,
-  ❓ Preguntas de examen, 🗺️ Mapa conceptual, ✨ Texto limpio, 📅 Cronología.
+• Otras opciones: Resumen, Guía de estudio, Tarjetas,
+  Preguntas de examen, Mapa conceptual, Texto limpio, Cronología.
 • Esto usa Gemini (necesita tu API Key, gratuita en aistudio.google.com/app/apikey).
 
 ──────────────────────────────────────────────
 PASO 4 — GUARDA O COMPARTE
 ──────────────────────────────────────────────
-• "📄 Guardar PDF" crea un archivo PDF de tu transcripción.
-• "🌐 Google Docs" crea un documento en tu Google Drive.
+• "Guardar PDF" crea un archivo PDF de tu transcripción.
+• "Google Docs" crea un documento en tu Google Drive.
 • Todo se guarda solo en tu carpeta: ~/AudioClass_Recordings
 
 ──────────────────────────────────────────────
 MODO FÁCIL (recomendado)
 ──────────────────────────────────────────────
 • Activa el interruptor verde "MODO FÁCIL" arriba.
-• Grabas → Detienes → la app hace TODO sola (procesa, transcribe y analiza).
+• Grabas -> Detienes -> la app hace TODO sola (procesa, transcribe y analiza).
 
 CONSEJOS:
 • La primera vez, Whisper descarga un modelo pequeño (tardará unos minutos).
-• Puedes cambiar perfil de audio, modelo y más en "⚙️ Configuración".
+• Puedes cambiar perfil de audio, modelo y más en "Configuración".
 • Si algo falla, pulsa "Cancelar" y vuelve a intentarlo.
 """
         box.insert("1.0", guia)
@@ -1938,7 +1938,7 @@ CONSEJOS:
             pass
         box.configure(state="disabled")
 
-        self._btn(top, "Entendido ✓", top.destroy, width=200, height=40, fg_color=C["ok"],
+        self._btn(top, "Entendido", top.destroy, width=200, height=40, fg_color=C["ok"],
                   hover_color=C["ok"]).pack(pady=(0, 18))
 
         if step is not None:
@@ -1979,7 +1979,7 @@ CONSEJOS:
             pass
         if getattr(self, "btheme_hd", None):
             try:
-                self.btheme_hd.configure(text="☀️" if not self.dark else "🌙")
+                self.btheme_hd.configure(text="Tema")
             except Exception:
                 pass
 
@@ -2261,14 +2261,14 @@ CONSEJOS:
                 pass
 
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("🎤 Prueba de Microfono")
+        top.title("Prueba de Microfono")
         top.geometry("600x440")
         top.transient(self)
         top.grab_set()
         self.mic_test_top = top
         self._mic_busy = False
 
-        self._lbl(top, "🎤 Prueba rapida de microfono", font=(self.FH, 18, "bold"),
+        self._lbl(top, "Prueba rapida de microfono", font=(self.FH, 18, "bold"),
                   text_color=C["accent"]).pack(pady=(18, 4))
         self._lbl(top, "Pulsa el boton, espera 2 segundos y habla durante ~6 segundos.",
                   font=(self.FB, 12), text_color=C["muted"]).pack(pady=(0, 12))
@@ -2292,7 +2292,7 @@ CONSEJOS:
                                     anchor="w", wraplength=540)
         self.mic_result.pack(padx=30, pady=(4, 10))
 
-        self.btn_mic_test = self._btn(top, "🎙️ Comenzar prueba (8 s)", self._mic_test_start,
+        self.btn_mic_test = self._btn(top, "Comenzar prueba (8 s)", self._mic_test_start,
                                       width=280, height=44, font=(self.FB, 14, "bold"),                                       fg_color=C["err"], hover_color=C["err"])
         self.btn_mic_test.pack(pady=(4, 8))
         self._btn(top, "Cerrar", top.destroy, width=140, height=36).pack(pady=(0, 14))
@@ -2306,7 +2306,7 @@ CONSEJOS:
             if hasattr(self, "btn_mic_test") and self.btn_mic_test.winfo_exists():
                 self.btn_mic_test.configure(state="disabled", text="Escuchando... habla ahora")
             if hasattr(self, "mic_state") and self.mic_state.winfo_exists():
-                self.mic_state.configure(text="🎙️ HABLA AHORA durante ~6 segundos", text_color=C["err"])
+                self.mic_state.configure(text="HABLA AHORA durante ~6 segundos", text_color=C["err"])
             if hasattr(self, "mic_result") and self.mic_result.winfo_exists():
                 self.mic_result.configure(text="")
             threading.Thread(target=self._mic_test_worker, daemon=True).start()
@@ -2376,9 +2376,9 @@ CONSEJOS:
         snr = speech_p / max(floor_p, 1e-12)
         lines = []
         if speech_p > 0.02:
-            lines.append(f"✓ Voz detectada (nivel de habla {speech_p:.3f})")
+            lines.append(f"[OK] Voz detectada (nivel de habla {speech_p:.3f})")
         else:
-            lines.append(f"⚠️ Voz muy baja ({speech_p:.3f}) — acercate al microfono o habla mas alto")
+            lines.append(f"Voz muy baja ({speech_p:.3f}) — acercate al microfono o habla mas alto")
         lines.append(f"Silencio recortado: {sil_r:.0f}% -> {sil_p:.0f}% (noise gate)")
         lines.append(f"Nivel de habla: {speech_r:.4f} -> {speech_p:.4f}")
         lines.append(f"SNR habla/piso: {snr:.1f}x")
@@ -2408,13 +2408,13 @@ CONSEJOS:
                 pass
 
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("🎛️ Optimizador de micrófono")
+        top.title("Optimizador de micrófono")
         top.geometry("680x600")
         top.transient(self)
         top.grab_set()
         self.mic_opt_top = top
 
-        self._lbl(top, "🎛️ Optimizador de micrófono", font=(self.FH, 18, "bold"),
+        self._lbl(top, "Optimizador de micrófono", font=(self.FH, 18, "bold"),
                   text_color=C["accent"]).pack(pady=(16, 4))
         self._lbl(top, "Diagnostica el nivel de entrada y corrige las grabaciones en silencio. "
                        "Habla en voz alta durante cada prueba de 4 segundos.",
@@ -2422,7 +2422,7 @@ CONSEJOS:
 
         mic_row = self._frame(top, fg_color="transparent")
         mic_row.pack(fill="x", padx=30, pady=(0, 6))
-        self._lbl(mic_row, "🎤 Micrófono:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
+        self._lbl(mic_row, "Micrófono:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
         mic_devs = _input_devices()
         mic_names = ["Predeterminado del sistema"] + [n for _, n in mic_devs]
         cfg_mic = str((getattr(self, "config", None) or {}).get("mic_device") or "").strip()
@@ -2473,11 +2473,11 @@ CONSEJOS:
 
         btns = self._frame(top, fg_color="transparent")
         btns.pack(fill="x", padx=30, pady=(0, 14))
-        self.btn_mic_opt_diag = self._btn(btns, "🔍 Diagnosticar", lambda: self._mic_opt_start(False),
+        self.btn_mic_opt_diag = self._btn(btns, "Diagnosticar", lambda: self._mic_opt_start(False),
                                           width=200, height=40, font=(self.FB, 12, "bold"),
                                           fg_color=C["accent"], hover_color=C["accent_hover"])
         self.btn_mic_opt_diag.pack(side="left", padx=(0, 8))
-        self.btn_mic_opt_apply = self._btn(btns, "⚡ Aplicar optimización", lambda: self._mic_opt_start(True),
+        self.btn_mic_opt_apply = self._btn(btns, "Aplicar optimización", lambda: self._mic_opt_start(True),
                                            width=225, height=40, font=(self.FB, 12, "bold"),
                                            fg_color=C["ok"], hover_color=C["ok"])
         self.btn_mic_opt_apply.pack(side="left", padx=(0, 8))
@@ -2540,7 +2540,7 @@ CONSEJOS:
                 except Exception:
                     dev = None
                 if dev is None:
-                    log(("mic_opt_log", f"⚠️ No pude identificar '{target}' en Windows; uso el predeterminado.\n"))
+                    log(("mic_opt_log", f"No pude identificar '{target}' en Windows; uso el predeterminado.\n"))
             if dev is None:
                 dev = om._default_capture_device()
                 try:
@@ -2556,13 +2556,13 @@ CONSEJOS:
                 log(("mic_opt_log", f"Dispositivo (elegido): {sname}\n"))
             st = om.get_mic_state(dev)
             if st:
-                log(("mic_opt_log", f"  Nivel: {st[0]}%  |  Mute: {'SÍ ⚠️' if st[1] else 'No'}\n"))
+                log(("mic_opt_log", f"  Nivel: {st[0]}%  |  Mute: {'SÍ [!]' if st[1] else 'No'}\n"))
             else:
                 log(("mic_opt_log", "  (nivel no accesible)\n"))
 
             pv = om.privacy_mic()
             if pv != "Allow":
-                log(("mic_opt_log", f"Permiso de micrófono: {pv}  ⚠️ DENEGADO — permite el acceso en "
+                log(("mic_opt_log", f"Permiso de micrófono: {pv}  DENEGADO — permite el acceso en "
                                      "Configuración > Privacidad > Micrófono\n"))
             else:
                 log(("mic_opt_log", "Permiso de micrófono: Allow\n"))
@@ -2573,23 +2573,23 @@ CONSEJOS:
                     mark = ""
                     if _same_mic(did2, sname):
                         mark = " [DEFAULT]" if use_default else " [ELEGIDO]"
-                    extra = f"nivel {lvl}%" + (" mute ⚠️" if mute else "")
+                    extra = f"nivel {lvl}%" + (" mute [!]" if mute else "")
                     log(("mic_opt_log", f"  {extra}{mark}  {str(did2)[:64]}\n"))
             except Exception as e:
                 log(("mic_opt_log", f"  (no enumerable: {e})\n"))
 
             # Prueba de señal ANTES (piso/p90/peak) con medidor en vivo
-            self.q.put(("mic_opt_state", "🎙️ HABLA AHORA durante 4 s"))
+            self.q.put(("mic_opt_state", "HABLA AHORA durante 4 s"))
             antes = om.measure_signal(4.0, device=sd_id,
                                       on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
             self.q.put(("mic_opt_state", ""))
             log(("mic_opt_log", f"Prueba: {antes['dur']:.1f}s | piso {antes['piso']:.4f} | "
-                                 f"p90 {antes['p90']:.4f} | peak {antes['peak']:.3f} → {antes['veredicto']}\n"))
+                                 f"p90 {antes['p90']:.4f} | peak {antes['peak']:.3f} -> {antes['veredicto']}\n"))
             if not do_apply:
                 if antes["veredicto"] == "OK":
-                    log(("mic_opt_log", "✅ El micrófono captura bien. No se requiere optimización.\n"))
+                    log(("mic_opt_log", "El micrófono captura bien. No se requiere optimización.\n"))
                 else:
-                    log(("mic_opt_log", "Sugerencia: pulsa '⚡ Aplicar optimización' para subir el nivel "
+                    log(("mic_opt_log", "Sugerencia: pulsa 'Aplicar optimización' para subir el nivel "
                                          "al 100% y activar el boost si el driver lo permite.\n"))
                 self.q.put(("mic_opt_done", antes["veredicto"]))
                 return
@@ -2597,30 +2597,30 @@ CONSEJOS:
             # ── Aplicar optimizacion ────────────────────────────────────────
             log(("mic_opt_log", "\nAPLICANDO OPTIMIZACIÓN...\n"))
             ok1, err1 = om.apply_mic_level(dev, 100)
-            log(("mic_opt_log", f"  [{'OK' if ok1 else 'NO'}] nivel → 100% + desmute  {err1}\n"))
+            log(("mic_opt_log", f"  [{'OK' if ok1 else 'NO'}] nivel -> 100% + desmute  {err1}\n"))
             ok2, msg2 = om.apply_boost(dev)
             log(("mic_opt_log", f"  [{'OK' if ok2 else 'NO'}] boost del nodo de volumen  {msg2}\n"))
             time.sleep(0.5)
             st2 = om.get_mic_state(dev)
             if st2:
-                log(("mic_opt_log", f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ ⚠️' if st2[1] else 'No'}\n"))
+                log(("mic_opt_log", f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ [!]' if st2[1] else 'No'}\n"))
 
-            self.q.put(("mic_opt_state", "🎙️ HABLA AHORA durante 4 s (post-optimización)"))
+            self.q.put(("mic_opt_state", "HABLA AHORA durante 4 s (post-optimización)"))
             despues = om.measure_signal(4.0, device=sd_id,
                                         on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
             self.q.put(("mic_opt_state", ""))
             log(("mic_opt_log", f"Post: {despues['dur']:.1f}s | piso {despues['piso']:.4f} | "
-                                 f"p90 {despues['p90']:.4f} | peak {despues['peak']:.3f} → {despues['veredicto']}\n"))
+                                 f"p90 {despues['p90']:.4f} | peak {despues['peak']:.3f} -> {despues['veredicto']}\n"))
             mejo = despues["p90"] / max(antes["p90"], 1e-6)
-            log(("mic_opt_log", f"RESUMEN: p90 {antes['p90']:.4f} → {despues['p90']:.4f}  (x{mejo:.1f})\n"))
+            log(("mic_opt_log", f"RESUMEN: p90 {antes['p90']:.4f} -> {despues['p90']:.4f}  (x{mejo:.1f})\n"))
             if despues["veredicto"] == "OK":
-                log(("mic_opt_log", "✅ El micrófono quedó optimizado. La app ya capturará tu voz.\n"))
+                log(("mic_opt_log", "El micrófono quedó optimizado. La app ya capturará tu voz.\n"))
             elif despues["veredicto"] == "DÉBIL":
-                log(("mic_opt_log", "⚠️ Sigue débil. Si NO hablaste en la prueba, repítela hablando. Si hablaste "
+                log(("mic_opt_log", "Sigue débil. Si NO hablaste en la prueba, repítela hablando. Si hablaste "
                                      "y sigue débil: acércate al micro, revisa el boost en Realtek Audio Console "
                                      "o desactiva la supresión de ruido agresiva.\n"))
             else:
-                log(("mic_opt_log", "❌ Sigue sin señal: revisa que el micro no esté físicamente desactivado "
+                log(("mic_opt_log", "Sigue sin señal: revisa que el micro no esté físicamente desactivado "
                                      "y que el dispositivo por defecto sea el correcto.\n"))
             self.q.put(("mic_opt_done", despues["veredicto"]))
         except Exception as e:
@@ -2678,13 +2678,13 @@ CONSEJOS:
 
         f1 = self._frame(body, fg_color=C["card"])
         f1.pack(fill="x", padx=20, pady=10)
-        self._lbl(f1, "🤖 Proveedor de IA para el análisis", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f1, "Proveedor de IA para el análisis", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f1, "Elige con qué servicio analizar tus clases (resúmenes, guías, exámenes):",
                   font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
         adapt_provider = ctk.StringVar(value=self.config.get("adapt_provider", "gemini"))
         prov_row = self._frame(f1, fg_color="transparent")
         prov_row.pack(anchor="w", padx=15, pady=(0, 8))
-        for val, lbl in (("gemini", "✨ Gemini (Google)"), ("openai", "🤖 OpenAI (GPT)")):
+        for val, lbl in (("gemini", "Gemini (Google)"), ("openai", "OpenAI (GPT)")):
             rb = ctk.CTkRadioButton(prov_row, text=lbl, variable=adapt_provider, value=val,
                                     font=(self.FB, 11), text_color=C["text"])
             rb.pack(side="left", padx=(0, 25))
@@ -2775,7 +2775,7 @@ CONSEJOS:
 
         fm = self._frame(body, fg_color=C["card"])
         fm.pack(fill="x", padx=20, pady=10)
-        self._lbl(fm, "🎤 Micrófono de grabación", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(fm, "Micrófono de grabación", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(fm, "Elige con qué micrófono grabar y medir el nivel. Con 'Predeterminado del sistema' se usa el que Windows tenga activo.",
                   font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
         mic_row = self._frame(fm, fg_color="transparent")
@@ -2802,10 +2802,10 @@ CONSEJOS:
 
         f0 = self._frame(body, fg_color=C["card"])
         f0.pack(fill="x", padx=20, pady=10)
-        self._lbl(f0, "🎤 Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f0, "Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f0, "Graba 8 segundos y comprueba que tu microfono capta bien tu voz.",
                   font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        self._btn(f0, "🎙️ Abrir prueba de microfono", self._test_mic, width=240, height=36,
+        self._btn(f0, "Abrir prueba de microfono", self._test_mic, width=240, height=36,
                   fg_color=C["err"], hover_color=C["err"]).pack(anchor="w", padx=15, pady=(0, 12))
 
         f3 = self._frame(body, fg_color=C["card"])
@@ -2875,7 +2875,7 @@ CONSEJOS:
         else:
             try:
                 gok, gmsg = self.docs_exporter.test_connection(refresh=False)
-                self.gdoc_lbl.configure(text=("✓ " if gok else "· ") + gmsg,
+                self.gdoc_lbl.configure(text=("[OK] " if gok else "· ") + gmsg,
                                         text_color=C["ok"] if gok else C["muted"])
             except Exception:
                 pass
@@ -2883,7 +2883,7 @@ CONSEJOS:
         # ── Privacidad / consentimiento de IA ──
         fp = self._frame(f1, fg_color="transparent")
         fp.pack(fill="x", padx=15, pady=(8, 4))
-        self._lbl(fp, "🔒 Privacidad", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
+        self._lbl(fp, "Privacidad", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
         self._lbl(fp, "Las transcripciones se procesan en tu equipo. El análisis con IA envía el texto a Gemini/OpenAI (retención temporal del proveedor). El contenido generado por IA puede contener errores y no es consejo médico/legal ni acta oficial.",
                   font=(self.FB, 10), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 4))
         ia_consent_var = ctk.BooleanVar(value=bool(self.config.get("ia_consent", False)))
@@ -2940,7 +2940,7 @@ CONSEJOS:
         name = os.path.basename(path).replace("_mejorado.wav", "")
         self.history.append({"path": path, "name": name})
         if CTK:
-            b = ctk.CTkButton(self.hist_frame, text="🗂  " + name, anchor="w", font=(self.FB, 11),
+            b = ctk.CTkButton(self.hist_frame, text=" " + name, anchor="w", font=(self.FB, 11),
                                height=36, corner_radius=8, fg_color=C["button"],
                                text_color=C["text"],
                                hover_color=C["border"], border_width=1, border_color=C["border"],
@@ -3080,7 +3080,7 @@ CONSEJOS:
         # grabacion real (_begin_recording).
         self._mic_probe_pending = True
         try:
-            self.lstatus.configure(text="🔍 Comprobando micrófono...", text_color=C["warn"])
+            self.lstatus.configure(text="Comprobando micrófono...", text_color=C["warn"])
         except Exception:
             pass
         threading.Thread(target=self._mic_probe_worker, daemon=True).start()
@@ -3156,13 +3156,13 @@ CONSEJOS:
         self.mic_warn_bucket = []
         self.mic_warn_p90_hist = [level]
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("🎤 Micrófono muy bajo")
+        top.title("Micrófono muy bajo")
         top.geometry("620x490")
         top.transient(self)
         top.grab_set()
         self.mic_warn_top = top
 
-        self._lbl(top, "🎤 Micrófono muy bajo", font=(self.FH, 17, "bold"),
+        self._lbl(top, "Micrófono muy bajo", font=(self.FH, 17, "bold"),
                   text_color=C["err"]).pack(pady=(16, 4))
         db = 20 * np.log10(max(level, 1e-6))
         self._lbl(top, f"Nivel medido: p90 = {level:.4f}  ({db:+.0f} dB) — por debajo del umbral de voz.",
@@ -3207,7 +3207,7 @@ CONSEJOS:
 
         btns = self._frame(top, fg_color="transparent")
         btns.pack(pady=(0, 6))
-        self._btn(btns, "🎙️ Continuar grabando", lambda: self._mic_warn_decide(True),
+        self._btn(btns, "Continuar grabando", lambda: self._mic_warn_decide(True),
                   width=230, height=42, font=(self.FB, 12, "bold"),
                   fg_color=C["err"], hover_color=C["err"]).pack(side="left", padx=(0, 10))
         self._btn(btns, "Cancelar", lambda: self._mic_warn_decide(False),
@@ -3216,7 +3216,7 @@ CONSEJOS:
         # optimizacion (nivel 100% + desmute + boost) directamente.
         opt_row = self._frame(top, fg_color="transparent")
         opt_row.pack(pady=(0, 14))
-        self._btn(opt_row, "⚡ Abrir optimizador (corregir nivel ahora)",
+        self._btn(opt_row, "Abrir optimizador (corregir nivel ahora)",
                   lambda: self._mic_warn_open_opt(),
                   width=340, height=40, font=(self.FH, 12, "bold"),
                   fg_color=C["ok"], hover_color=C["ok"]).pack()
@@ -3262,7 +3262,7 @@ CONSEJOS:
         try:
             if getattr(self, "mic_warn_best_lbl", None) is not None and self.mic_warn_best_lbl.winfo_exists():
                 bdb = 20 * np.log10(max(best, 1e-6))
-                meta = "✓ ¡Meta alcanzada!" if best >= 0.03 else "meta 0.03 (-30 dB)"
+                meta = "[OK] ¡Meta alcanzada!" if best >= 0.03 else "meta 0.03 (-30 dB)"
                 self.mic_warn_best_lbl.configure(text=f"{best:.4f} ({bdb:+.0f} dB)  {meta}",
                                                  text_color=C["ok"] if best >= 0.03 else C["warn"])
         except Exception:
@@ -3379,7 +3379,7 @@ CONSEJOS:
         participantes de que se esta grabando (requisito en estados all-party
         y en el ambito laboral). Devuelve True si se acepta grabar."""
         return self._ask(
-            "🔴 Aviso de grabación",
+            "Aviso de grabación",
             "AudioClass grabará el audio de esta sesión.\n\n"
             "Si hay otras personas, debes informarles de que la sesión se está grabando "
             "y obtener su consentimiento cuando la ley lo exija (en particular en estados "
@@ -3448,7 +3448,7 @@ CONSEJOS:
         # 'Detener' quedaba lejos o fuera de la ventana. Empaquetarlo antes de
         # 'Transcribir' lo coloca exactamente donde estaba el boton rojo.
         self.bstop.pack(side="left", padx=(18, 12), pady=16, before=self.btr)
-        self.lstatus.configure(text="● GRABANDO", text_color=C["err"])
+        self.lstatus.configure(text="GRABANDO", text_color=C["err"])
         self.btr.configure(state="disabled")
         self.bts.configure(state="disabled")
         self.bpdf.configure(state="disabled")
@@ -3604,8 +3604,8 @@ CONSEJOS:
             except Exception:
                 pass
             # Indicador REC parpadeante mientras se graba
-            dot = "●" if int(time.time() * 2) % 2 == 0 else "○"
-            self.lstatus.configure(text=f"{dot} GRABANDO · {tstr}", text_color=C["err"])
+            dot = ""
+            self.lstatus.configure(text=f"GRABANDO · {tstr}", text_color=C["err"])
             self.after(500, self._updtimer)
 
     def _updviz(self):
@@ -3681,14 +3681,14 @@ CONSEJOS:
                 self.vu_bar['value'] = min(100, frac * 100)
             if peak > 0.95:
                 self.vu_clips += 1
-                txt = f"{db:+.0f} dB ⚠ RECORTE"
+                txt = f"{db:+.0f} dB RECORTE"
                 col = C["err"]
             elif db < -45:
                 # Micro muy bajo: se ignora durante los primeros segundos porque
                 # la app pide silencio para el perfil de ruido (falso positivo).
                 if time.time() - self.t0rec > 2.0:
                     self.vu_low += 1
-                    txt = f"{db:+.0f} dB ⚡ Bajo"
+                    txt = f"{db:+.0f} dB Bajo"
                     col = C["warn"]
                 else:
                     txt = f"{db:+.0f} dB"
@@ -3702,7 +3702,7 @@ CONSEJOS:
                 self.vu_lbl.configure(text=txt, fg=col)
             # Aviso en vivo de audio sin voz (estatica) mientras se graba
             if self.vu_static:
-                wl = "⚠ Audio sin voz detectada"
+                wl = "Audio sin voz detectada"
                 if CTK:
                     self.vu_warn.configure(text=wl, text_color=C["warn"])
                 else:
@@ -3830,18 +3830,18 @@ CONSEJOS:
                 log_exc("metadata")
 
             if getattr(self, "_audio_overflows", 0) > 0:
-                self.q.put(("log", f"⚠ Se detectaron {self._audio_overflows} desbordamientos de audio.\n"
+                self.q.put(("log", f"Se detectaron {self._audio_overflows} desbordamientos de audio.\n"
                                    "Puede haber cortes o estática. Cierra programas pesados y vuelve a grabar si es necesario.\n"))
             if getattr(self, "vu_clips", 0) > 0:
-                self.q.put(("log", f"⚠ Se detectaron {self.vu_clips} momentos de recorte (volumen al límite).\n"
+                self.q.put(("log", f"Se detectaron {self.vu_clips} momentos de recorte (volumen al límite).\n"
                                    "Baja el volumen del micrófono o aléjate un poco para mejor calidad.\n"))
             # Umbral minimo (5 lecturas ≈ 0.4s) para evitar falsos positivos
             if getattr(self, "vu_low", 0) > 5:
-                self.q.put(("log", f"⚠ Nivel de micro muy bajo detectado ({self.vu_low} lecturas).\n"
+                self.q.put(("log", f"Nivel de micro muy bajo detectado ({self.vu_low} lecturas).\n"
                                    "Acerca el micrófono o sube el volumen de entrada para mejor transcripción.\n"))
             # Audio sin voz (estatica): nivel casi constante -> no hay voz real
             if getattr(self, "vu_static", False):
-                self.q.put(("log", "⚠ Audio sin voz detectada (nivel constante / estática).\n"
+                self.q.put(("log", "Audio sin voz detectada (nivel constante / estática).\n"
                                    "La transcripción saldrá vacía. Revisa el micrófono, el cable o el nivel de entrada, y vuelve a grabar.\n"))
             self.q.put(("status", "Listo para transcribir"))
             self.q.put(("enable_rec", None))
@@ -3926,14 +3926,14 @@ CONSEJOS:
                     # El modelo sigue cargandose: la transcripcion se iniciara
                     # sola en cuanto termine (model_ready). No bloquear la UI.
                     self._pending_trans = (timestamps, auto_adapt)
-                    self.lprog.configure(text="⏳ Cargando modelo Whisper... se iniciará solo", text_color=C["warn"])
+                    self.lprog.configure(text="Cargando modelo Whisper... se iniciará solo", text_color=C["warn"])
                     self._apptxt("\nCargando modelo Whisper (la primera vez puede tardar)...\n")
                     self.q.put(("enable", None))
                     return
                 err = self.local_engine.error or "causa desconocida"
                 self._msg("error", "Modelo local no disponible",
                           f"No se pudo cargar Whisper:\n{err}\n\nRevisa la instalación del modelo o "
-                          "usa el modo Cloud (☁️) en Configuración.")
+                          "usa el modo Cloud () en Configuración.")
                 self.lprog.configure(text="Modelo local no disponible", text_color=C["err"])
                 self.q.put(("enable", None))
                 return
@@ -3965,7 +3965,7 @@ CONSEJOS:
             # Pre-validacion de silencio (mejora #2): el motor detecto que el
             # WAV es silencio digital y no gasto tiempo en transcribirlo.
             if result.get("silence"):
-                self.q.put(("log", f"\n⚠ {result.get('silence_msg', 'Audio silencioso')}\n"))
+                self.q.put(("log", f"\n{result.get('silence_msg', 'Audio silencioso')}\n"))
                 self.q.put(("status", "Audio silencioso"))
                 self.q.put(("enable", None))
                 return
@@ -3976,7 +3976,7 @@ CONSEJOS:
             # de forma visible y NO se guarda/exporta el texto basura, igual
             # que con el silencio digital.
             if result.get("hallucination"):
-                self.q.put(("log", f"\n⚠ {result.get('hallucination_msg', 'Posible audio debil')}\n"))
+                self.q.put(("log", f"\n{result.get('hallucination_msg', 'Posible audio debil')}\n"))
                 self.q.put(("status", "Audio debil: revisa el microfono"))
                 self.q.put(("enable", None))
                 return
@@ -3986,7 +3986,7 @@ CONSEJOS:
 
             omit = result.get("chunks_omitidos", 0)
             if omit:
-                self.q.put(("log", f"⚠ {omit} segmento(s) de audio no se pudieron "
+                self.q.put(("log", f"{omit} segmento(s) de audio no se pudieron "
                                    "transcribir (whisper falló o se quedó colgado en "
                                    "ellos); la transcripción es parcial.\n"))
 
@@ -4019,7 +4019,7 @@ CONSEJOS:
 
             omit = result.get("chunks_omitidos", 0)
             if omit:
-                self.q.put(("log", f"⚠ {omit} segmento(s) de audio no se pudieron "
+                self.q.put(("log", f"{omit} segmento(s) de audio no se pudieron "
                                    "transcribir (whisper falló o se quedó colgado en "
                                    "ellos); la transcripción es parcial.\n"))
 
@@ -4057,7 +4057,7 @@ CONSEJOS:
 
         # Garantiza que la barra muestre el 100% al terminar, aunque el ultimo
         # mensaje del motor fuese una estimacion intermedia (ej. 99%).
-        self.q.put(("progress", (1.0, "✓ 100% · Transcripción completada")))
+        self.q.put(("progress", (1.0, "100% · Transcripción completada")))
         self.q.put(("trans_done", text))
         _be = result.get("backend", "")
         _be_str = f" | {_be}" if _be else ""
@@ -4077,14 +4077,14 @@ CONSEJOS:
         texto de la transcripcion a servidores de Google/OpenAI. Se pide una vez
         y queda guardado en la config (revocable en Configuracion)."""
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("🔒 Privacidad y análisis con IA")
+        top.title("Privacidad y análisis con IA")
         try:
             top.attributes("-topmost", True)
         except Exception:
             pass
         f = self._frame(top, fg_color=C["card"])
         f.pack(fill="both", expand=True, padx=20, pady=20)
-        self._lbl(f, "🔒 Aviso de privacidad", font=(self.FH, 16, "bold"), text_color=C["accent"]).pack(anchor="w", pady=(0, 8))
+        self._lbl(f, "Aviso de privacidad", font=(self.FH, 16, "bold"), text_color=C["accent"]).pack(anchor="w", pady=(0, 8))
         self._lbl(f, "Tus grabaciones y transcripciones se procesan en TU equipo. Sin embargo, el análisis con IA "
                       "(Gemini u OpenAI) ENVÍA el texto de la transcripción a los servidores de Google u OpenAI "
                       "(que lo retienen temporalmente: Gemini hasta 55 días; OpenAI no lo usa para entrenar) "
@@ -4244,10 +4244,10 @@ CONSEJOS:
         """Registra una fuente Unicode para los PDFs y devuelve
         (ttf_ok, full_unicode, hay_negrita).
 
-        - DejaVu (assets/): cobertura Unicode completa (acentos, →, ├, └, …)
+        - DejaVu (assets/): cobertura Unicode completa (acentos, ->, ├, └, …)
           -> full_unicode=True: el texto se pasa tal cual.
         - Fuente del sistema (Windows): cubre acentos pero NO simbolos como
-          → o ├ └ -> full_unicode=False: el texto se sanitiza antes.
+          -> o ├ └ -> full_unicode=False: el texto se sanitiza antes.
         - Sin fuente: fuente core "Arial" latin-1 (compatibilidad)."""
         # Rutas candidatas para assets/: junto al script (desarrollo), dentro
         # del bundle de PyInstaller (sys._MEIPASS) y junto al .exe (onedir).
@@ -4336,10 +4336,10 @@ CONSEJOS:
         return False, lines
 
     def _pdf_badge(self, pdf, fam, tit_style, full_unicode):
-        """Insignia verde '✓ Revisado por IA' (bloque redondeado, texto
+        """Insignia verde '[OK] Revisado por IA' (bloque redondeado, texto
         blanco) centrada en la pagina. Con fuente latin-1 cae al texto plano."""
         try:
-            label = "✓ Revisado por IA" if full_unicode else "Revisado por IA"
+            label = "Revisado por IA" if full_unicode else "Revisado por IA"
             pdf.set_font(fam, tit_style, 10)
             bw = pdf.get_string_width(label) + 12
             bx = (210 - bw) / 2
@@ -4544,7 +4544,7 @@ CONSEJOS:
             paras.append(self._docx_p("Transcripción de Clase", bold=True, size=28, center=True))
             paras.append(self._docx_p(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Modelo: {model}", color="808080", size=20))
             # Insignia 'Revisado por IA' (verde, texto blanco, centrada)
-            paras.append(self._docx_p("✓ Revisado por IA", bold=True, color="FFFFFF", shading="10B981", size=22, center=True))
+            paras.append(self._docx_p("Revisado por IA", bold=True, color="FFFFFF", shading="10B981", size=22, center=True))
             paras.append(self._docx_p("Transcripción automática — puede contener errores. No constituye acta oficial.", color="808080", size=17))
             paras.append(self._docx_p(""))
 
@@ -4704,7 +4704,7 @@ CONSEJOS:
                         btn_attr = "btn_test_gemini" if is_g else "btn_test_openai"
                         if hasattr(self, lbl_attr) and getattr(self, lbl_attr).winfo_exists():
                             getattr(self, lbl_attr).configure(
-                                text=("✓ " if ok else "✗ ") + msg,
+                                text=("[OK] " if ok else "[X] ") + msg,
                                 text_color=C["ok"] if ok else C["err"])
                         if hasattr(self, btn_attr) and getattr(self, btn_attr).winfo_exists():
                             getattr(self, btn_attr).configure(state="normal", text="Probar Conexión")
@@ -4716,7 +4716,7 @@ CONSEJOS:
                     try:
                         if hasattr(self, "gdoc_lbl") and self.gdoc_lbl.winfo_exists():
                             self.gdoc_lbl.configure(
-                                text=("✓ " if ok else "✗ ") + msg,
+                                text=("[OK] " if ok else "[X] ") + msg,
                                 text_color=C["ok"] if ok else C["err"])
                         if hasattr(self, "btn_gdoc_connect") and self.btn_gdoc_connect.winfo_exists():
                             self.btn_gdoc_connect.configure(state="normal", text="Conectar con Google")
@@ -4728,9 +4728,9 @@ CONSEJOS:
                     try:
                         if hasattr(self, "bdocs") and self.bdocs.winfo_exists():
                             if _gdocs_importable():
-                                self.bdocs.configure(state="normal", text="🌐 Google Docs")
+                                self.bdocs.configure(state="normal", text="Google Docs")
                             else:
-                                self.bdocs.configure(state="disabled", text="🌐 Google Docs (no disponible)")
+                                self.bdocs.configure(state="disabled", text="Google Docs (no disponible)")
                     except Exception:
                         pass
                     if ok:
@@ -4785,7 +4785,7 @@ CONSEJOS:
                     txt = d
                     try:
                         if getattr(self, "mic_test_top", None) is not None and self.mic_test_top.winfo_exists():
-                            ok = txt.startswith("✓")
+                            ok = txt.startswith("[OK]")
                             self.mic_state.configure(text="Prueba completada",
                                                      text_color=C["ok"] if ok else C["warn"])
                             self.mic_result.configure(text=txt,
@@ -4796,7 +4796,7 @@ CONSEJOS:
                 elif mt == "mic_idle":
                     try:
                         if hasattr(self, "btn_mic_test") and self.btn_mic_test.winfo_exists():
-                            self.btn_mic_test.configure(state="normal", text="🎙️ Comenzar prueba (8 s)")
+                            self.btn_mic_test.configure(state="normal", text="Comenzar prueba (8 s)")
                     except Exception:
                         pass
 
@@ -4949,7 +4949,7 @@ CONSEJOS:
             hdr = "=" * 55 + "\n  TRANSCRIPCION EN VIVO (parcial):\n" + "=" * 55 + "\n\n"
             self.txt.insert("end", hdr)
             self.txt.tag_add("head", "1.0", "end-1c")
-            self.txt.insert("end", t + "\n\n⏳ Terminando...")
+            self.txt.insert("end", t + "\n\nTerminando...")
             # Resaltado dorado de todo el bloque en vivo
             self.txt.tag_add("live", "1.0", "end-1c")
             self.txt.see("end")

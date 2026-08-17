@@ -17,7 +17,7 @@ USO:
 
 Requiere: requests (para Gemini). Para --audio: openai-whisper + numpy + scipy.
 
-Salida: ✓ = paso OK, ✗ = paso fallido, ⚠ = advertencia. Al final, un resumen.
+Salida: [OK] = paso OK, [X] = paso fallido, = advertencia. Al final, un resumen.
 """
 
 import argparse
@@ -72,7 +72,7 @@ def cargar_motor_gemini():
     here = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(here, "audioclass_v91.py")
     if not os.path.exists(path):
-        print(f"✗ No se encontro {path}")
+        print(f"[X] No se encontro {path}")
         sys.exit(1)
 
     # Intento 1: import real del modulo (maxima fidelidad)
@@ -81,7 +81,7 @@ def cargar_motor_gemini():
         import audioclass_v91
         return audioclass_v91.GeminiAdaptationEngine, "modulo completo de la app"
     except Exception as e:
-        print(f"⚠ No se pudo importar audioclass_v91.py ({e})")
+        print(f"No se pudo importar audioclass_v91.py ({e})")
         print("  Uso el motor Gemini extraido directamente del archivo (solo necesita requests).")
 
     # Intento 2: extraer solo la clase (evita numpy/scipy/sounddevice/customtkinter)
@@ -98,7 +98,7 @@ def cargar_motor_gemini():
         exec(compile(class_src, "audioclass_v91.py", "exec"), ns)
         return ns["GeminiAdaptationEngine"], "clase extraida"
     except Exception as e:
-        print(f"✗ No se pudo cargar GeminiAdaptationEngine: {e}")
+        print(f"[X] No se pudo cargar GeminiAdaptationEngine: {e}")
         sys.exit(1)
 
 
@@ -108,9 +108,9 @@ def probar_key(engine, key, model):
     print(f"  Modelo a usar: {e._model_name()}")
     ok, msg = e.test_key()
     if ok:
-        print(f"  ✓ {msg}")
+        print(f"  [OK] {msg}")
     else:
-        print(f"  ✗ {msg}")
+        print(f"  [X] {msg}")
     return ok
 
 
@@ -119,18 +119,18 @@ def probar_adaptacion_corta(engine, key, model):
     e = engine(key, model)
     res = e.adapt(SAMPLE_CLASE, "Análisis Académico Profundo")
     if "error" in res:
-        print(f"  ✗ Error: {res['error']}")
+        print(f"  [X] Error: {res['error']}")
         return False
     text = res.get("text", "")
     if not text:
-        print("  ✗ Gemini devolvio un texto vacio")
+        print("  [X] Gemini devolvio un texto vacio")
         return False
     low = text.lower()
     encontradas = [s for s in SECCIONES if s in low]
-    print(f"  ✓ Respuesta recibida ({len(text)} caracteres)")
+    print(f"  [OK] Respuesta recibida ({len(text)} caracteres)")
     print(f"    Secciones detectadas en la salida: {len(encontradas)}/{len(SECCIONES)}")
     if len(encontradas) < 2:
-        print("  ⚠ La salida no parece seguir el formato academico. Primeros 400 caracteres:")
+        print("  La salida no parece seguir el formato academico. Primeros 400 caracteres:")
         print("    " + text[:400].replace("\n", "\n    "))
     else:
         preview = text[:600].replace("\n", "\n    ")
@@ -149,31 +149,31 @@ def probar_segmentacion(engine, key, model):
     e = engine(key, model)
     res = e.adapt(largo, "Análisis Académico Profundo")
     if "error" in res:
-        print(f"  ✗ Error: {res['error']}")
+        print(f"  [X] Error: {res['error']}")
         return False
     text = res.get("text", "")
     if not text:
-        print("  ✗ Gemini devolvio texto vacio en la sintesis final")
+        print("  [X] Gemini devolvio texto vacio en la sintesis final")
         return False
-    print(f"  ✓ Analisis final sintetizado ({len(text)} caracteres)")
+    print(f"  [OK] Analisis final sintetizado ({len(text)} caracteres)")
     return True
 
 
 def probar_transcripcion_local(audio_path, whisper_model):
     print("\n── Paso 4: Transcripcion local Whisper ─────────────────────────")
     if not audio_path or not os.path.exists(audio_path):
-        print(f"  ✗ Archivo de audio no encontrado: {audio_path}")
+        print(f"  [X] Archivo de audio no encontrado: {audio_path}")
         return False
     try:
         import numpy as np
         from scipy.io import wavfile
     except ImportError:
-        print("  ✗ Faltan numpy/scipy: pip install numpy scipy")
+        print("  [X] Faltan numpy/scipy: pip install numpy scipy")
         return False
     try:
         import whisper
     except ImportError:
-        print("  ✗ Falta openai-whisper: pip install openai-whisper")
+        print("  [X] Falta openai-whisper: pip install openai-whisper")
         return False
     try:
         print(f"  Cargando Whisper {whisper_model} (la primera vez lo descarga)...")
@@ -201,19 +201,19 @@ def probar_transcripcion_local(audio_path, whisper_model):
         )
         text = (result.get("text") or "").strip()
         if not text:
-            print("  ✗ Whisper devolvio texto vacio")
+            print("  [X] Whisper devolvio texto vacio")
             return False
-        print(f"  ✓ Transcripcion lista ({len(text)} caracteres)")
+        print(f"  [OK] Transcripcion lista ({len(text)} caracteres)")
         print("  Vista previa:")
         print("    " + text[:400].replace("\n", "\n    "))
         return True
     except Exception as e:
-        print(f"  ✗ Error de transcripcion: {e}")
+        print(f"  [X] Error de transcripcion: {e}")
         return False
 
 
 def main():
-    # Consolas Windows (cp1252) no soportan ╔ ✓ ⚠: forzar UTF-8 o reemplazo
+    # Consolas Windows (cp1252) no soportan ╔ [OK] [!]: forzar UTF-8 o reemplazo
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
@@ -230,21 +230,21 @@ def main():
     try:
         import requests
     except ImportError:
-        print("✗ Falta el paquete requests: ejecuta primero  pip install -r requirements_v91.txt")
+        print("[X] Falta el paquete requests: ejecuta primero  pip install -r requirements_v91.txt")
         sys.exit(1)
 
     key = obtener_key(args.key)
     if len(key) < 10:
-        print("✗ No se encontro una API Key valida.")
+        print("[X] No se encontro una API Key valida.")
         print("  Opciones:")
         print("    1) python test_gemini_v91.py --key \"TU_CLAVE\"")
         print("    2) Abre la app (Configuracion) y guarda tu key en aistudio.google.com/app/apikey")
         print("    3) Variable de entorno GEMINI_API_KEY")
         sys.exit(1)
 
-    print(f"✓ API Key encontrada ({len(key)} caracteres, terminada en ...{key[-4:]})")
+    print(f"[OK] API Key encontrada ({len(key)} caracteres, terminada en ...{key[-4:]})")
     engine, fuente = cargar_motor_gemini()
-    print(f"✓ Motor Gemini cargado ({fuente})")
+    print(f"[OK] Motor Gemini cargado ({fuente})")
 
     resultados = []
     resultados.append(probar_key(engine, key, args.model))
@@ -257,10 +257,10 @@ def main():
     print("\n" + "═" * 62)
     ok = all(resultados)
     if ok:
-        print("  ✓✓ TODOS LOS PASOS COMPLETADOS — Gemini 2.5 listo en AudioClass v9.1")
+        print("  TODOS LOS PASOS COMPLETADOS — Gemini 2.5 listo en AudioClass v9.1")
         print("     Ya puedes usar la app: graba, transcribe y pulsa 'Analisis Academico Profundo'.")
     else:
-        print("  ✗ HAY PASOS FALLIDOS — revisa los mensajes de arriba.")
+        print("  [X] HAY PASOS FALLIDOS — revisa los mensajes de arriba.")
         print("    Si es un error de API Key/permisos, resuelvelo y vuelve a ejecutar este script.")
     print("═" * 62)
     sys.exit(0 if ok else 1)

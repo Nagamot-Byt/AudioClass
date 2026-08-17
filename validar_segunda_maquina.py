@@ -65,13 +65,13 @@ def resolve_device(sel):
         i = None
     if i is not None:
         if not (0 <= i < len(devs)) or devs[i]["max_input_channels"] < 1:
-            sys.exit(f"❌ El dispositivo {i} no es un microfono valido. Usa --list-devices.")
+            sys.exit(f"El dispositivo {i} no es un microfono valido. Usa --list-devices.")
         return i
     matches = [k for k, d in enumerate(devs) if sel.lower() in str(d["name"]).lower()]
     if not matches:
-        sys.exit(f"❌ Ningun microfono coincide con '{sel}'. Usa --list-devices.")
+        sys.exit(f"Ningun microfono coincide con '{sel}'. Usa --list-devices.")
     if len(matches) > 1:
-        print(f"⚠️  Varios microfonos coinciden con '{sel}' → uso el primero (id {matches[0]}).")
+        print(f"Varios microfonos coinciden con '{sel}' -> uso el primero (id {matches[0]}).")
     return matches[0]
 
 
@@ -80,7 +80,7 @@ def list_devices_cli():
     import sounddevice as sd
     devs = sd.query_devices()
     if not len(devs):
-        sys.exit("❌ No hay dispositivos de audio en esta maquina.")
+        sys.exit("No hay dispositivos de audio en esta maquina.")
     did = default_input_id()
     print("=" * 62)
     print("  MICRÓFONOS DISPONIBLES")
@@ -103,7 +103,7 @@ def mic_p90(dur=4.0, device=None):
     def cb(indata, frames, ti, status):
         buf.append(indata.copy().flatten())
 
-    print(f"🎙️  PRUEBA DE SEÑAL ({dur:.0f} s) — HABLA AHORA en voz alta cerca del microfono...")
+    print(f" PRUEBA DE SEÑAL ({dur:.0f} s) — HABLA AHORA en voz alta cerca del microfono...")
     with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
                         blocksize=800, callback=cb, device=device):
         sd.sleep(int(dur * 1000))
@@ -171,7 +171,7 @@ def main():
             try:
                 device = args[args.index(flag) + 1]
             except IndexError:
-                sys.exit(f"❌ Falta el valor de {flag}: usa --device <id|nombre>")
+                sys.exit(f"Falta el valor de {flag}: usa --device <id|nombre>")
             break
     dur = 12.0
     if "--dur" in args:
@@ -195,7 +195,7 @@ def main():
     except SystemExit:
         raise
     except Exception as e:
-        sys.exit(f"❌ No pude resolver el microfono: {e}")
+        sys.exit(f"No pude resolver el microfono: {e}")
 
     print("=" * 62)
     print(f"  VALIDACIÓN SEGUNDA MÁQUINA — AudioClass v9.1")
@@ -207,7 +207,7 @@ def main():
     try:
         p90 = mic_p90(min(dur, 4.0), device=did)
     except Exception as e:
-        print(f"❌ No pude abrir el microfono (id {did}): {e}")
+        print(f"No pude abrir el microfono (id {did}): {e}")
         return 1
     if p90 < 0.005:
         v = "SILENCIO"
@@ -218,7 +218,7 @@ def main():
     print(f"  Nivel del micro: p90={p90:.4f} -> {v}")
     if do_quick:
         print("\n" + "=" * 62)
-        print(f"  {'✅ ' if v == 'OK' else '❌ '}VEREDICTO MICRO: {v}")
+        print(f"  {'' if v == 'OK' else ''}VEREDICTO MICRO: {v}")
         print("=" * 62)
         return 0 if v == "OK" else 1
 
@@ -226,7 +226,7 @@ def main():
     seg = record_voice(dur, device=did)
     print(f"  Capturados {seg:.1f} s de voz -> mic_voz_user.wav")
     if seg < 1.0:
-        print("❌ No se capturo voz suficiente. Revisa el microfono y repite HABLANDO.")
+        print("No se capturo voz suficiente. Revisa el microfono y repite HABLANDO.")
         return 1
 
     # 3) Selftest del exe
@@ -269,9 +269,9 @@ def main():
     print(f"  progreso: {'100% OK' if prog_ok else 'NO llego a 100%'}")
     print(f"  texto: {texto[:100]}{'…' if len(texto) > 100 else ''}")
     if fails:
-        print(f"  ❌ FALLO: {', '.join(fails)}")
+        print(f"  FALLO: {', '.join(fails)}")
     else:
-        print("  ✅ VALIDACIÓN SEGUNDA MÁQUINA: TODO OK")
+        print("  VALIDACIÓN SEGUNDA MÁQUINA: TODO OK")
     print("=" * 62)
     return 0 if not fails else 1
 

@@ -30,7 +30,7 @@ Las siguientes aperturas son más rápidas.
 ───────────────────────────────────────────────────────────────────
   • Antes de grabar, la app comprueba el nivel del micrófono y te
     avisa si está muy bajo, con un medidor en vivo y un botón
-    "⚡ Abrir optimizador" para corregirlo (nivel al 100% + boost).
+    "Abrir optimizador" para corregirlo (nivel al 100% + boost).
   • Si sigues con poco nivel: Configuración > Sistema > Sonido >
     Entrada, sube el volumen del micrófono al 100 y activa el
     "Aumento de señal" (Mic Boost) si está disponible.

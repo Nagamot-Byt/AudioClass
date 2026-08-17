@@ -8,7 +8,7 @@ AudioClass es una aplicación de escritorio para grabar, transcribir y analizar
 clases o reuniones. La transcripción se realiza en TU propio equipo; el
 análisis con Inteligencia Artificial (IA) es opcional.
 
-> ⚠️ Documento de apoyo. No sustituye asesoría legal. Revisa su adaptación a tu
+> Documento de apoyo. No sustituye asesoría legal. Revisa su adaptación a tu
 > jurisdicción (GDPR/LOPDGDD, LGPD, CCPA, FERPA, COPPA, leyes de grabación)
 > antes de usarlo como política oficial.
 
@@ -23,7 +23,7 @@ almacena tus grabaciones en sus servidores.
 ───────────────────────────────────────────────────────────────────────────────
 2. DATOS QUE SE TRATAN
 ───────────────────────────────────────────────────────────────────────────────
-- Grabaciones de audio (clases, reuniones) → se guardan en la carpeta
+- Grabaciones de audio (clases, reuniones) -> se guardan en la carpeta
   "AudioClass_Recordings" de tu equipo.
 - Transcripciones generadas por la aplicación (texto).
 - Configuración de la aplicación, incluida tu API Key de IA (Gemini u OpenAI)

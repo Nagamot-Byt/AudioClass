@@ -395,7 +395,7 @@ def measure_signal(dur=4.0, on_level=None, device=None):
 
 def test_signal(dur=4.0):
     """Prueba de senal para CLI: avisa por pantalla y delega en measure_signal."""
-    print(f"\n🎙️  PRUEBA DE SEÑAL ({dur:.0f} s) — HABLA AHORA en voz alta cerca del microfono...")
+    print(f"\n PRUEBA DE SEÑAL ({dur:.0f} s) — HABLA AHORA en voz alta cerca del microfono...")
     return measure_signal(dur)
 
 
@@ -427,19 +427,19 @@ def main():
     print(f"\n[1] DISPOSITIVO POR DEFECTO")
     print(f"    {sname}  (id {did})")
     if st:
-        print(f"    Nivel: {st[0]}%  |  Mute: {'SÍ ⚠️' if st[1] else 'No'}")
+        print(f"    Nivel: {st[0]}%  |  Mute: {'SÍ [!]' if st[1] else 'No'}")
     else:
         print("    (nivel no accesible)")
 
     print(f"\n[2] PERMISO DE MICRÓFONO (privacidad Windows)")
     pv = privacy_mic()
-    print(f"    {pv}{'  ⚠️ DENEGADO — permite el acceso en Configuración > Privacidad > Micrófono' if pv != 'Allow' else ''}")
+    print(f"    {pv}{'  DENEGADO — permite el acceso en Configuración > Privacidad > Micrófono' if pv != 'Allow' else ''}")
 
     print(f"\n[3] TODOS LOS MICRÓFONOS ACTIVOS")
     try:
         for did2, lvl, mute in list_mics():
             mark = " [DEFAULT]" if did2 == dname else ""
-            extra = f"nivel {lvl}%" + (" mute ⚠️" if mute else "")
+            extra = f"nivel {lvl}%" + (" mute [!]" if mute else "")
             print(f"    {extra}{mark}  {did2[:64]}")
     except Exception as e:
         print(f"    (no enumerable: {e})")
@@ -447,7 +447,7 @@ def main():
     print(f"\n[4] PRUEBA DE SEÑAL")
     antes = test_signal(dur)
     print(f"    duración {antes['dur']:.1f}s | piso {antes['piso']:.4f} | p90(voz) {antes['p90']:.4f} | peak {antes['peak']:.3f}")
-    print(f"    → {antes['veredicto']}")
+    print(f"    -> {antes['veredicto']}")
 
     if not do_apply:
         print("\n" + "=" * 62)
@@ -466,32 +466,32 @@ def main():
     print("  APLICANDO OPTIMIZACIÓN")
     print("=" * 62)
     ok1, err1 = apply_mic_level(dev, 100)
-    print(f"  [{'OK ' if ok1 else 'NO '}] nivel del microfono → 100% + desmute  {err1}")
+    print(f"  [{'OK ' if ok1 else 'NO '}] nivel del microfono -> 100% + desmute  {err1}")
     ok2, msg2 = apply_boost(dev)
     print(f"  [{'OK ' if ok2 else 'NO '}] boost del nodo de volumen  {msg2}")
 
     time.sleep(0.5)
     st2 = get_mic_state(dev)
     if st2:
-        print(f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ ⚠️' if st2[1] else 'No'}")
+        print(f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ [!]' if st2[1] else 'No'}")
 
     print("\n[5] PRUEBA DE SEÑAL POST-OPTIMIZACIÓN")
     despues = test_signal(dur)
     print(f"    duración {despues['dur']:.1f}s | piso {despues['piso']:.4f} | p90(voz) {despues['p90']:.4f} | peak {despues['peak']:.3f}")
-    print(f"    → {despues['veredicto']}")
+    print(f"    -> {despues['veredicto']}")
 
     print("\n" + "=" * 62)
     mejo = despues["p90"] / max(antes["p90"], 1e-6)
-    print(f"  RESUMEN: p90(voz) {antes['p90']:.4f} → {despues['p90']:.4f}  (x{mejo:.1f})")
+    print(f"  RESUMEN: p90(voz) {antes['p90']:.4f} -> {despues['p90']:.4f}  (x{mejo:.1f})")
     if despues["veredicto"] == "OK":
-        print("  ✅ El microfono quedó optimizado. La app ya capturará tu voz.")
+        print("  El microfono quedó optimizado. La app ya capturará tu voz.")
     elif despues["veredicto"] == "DÉBIL":
-        print("  ⚠️ Sigue débil. Si NO hablaste en la prueba, repitela hablando:")
+        print("  Sigue débil. Si NO hablaste en la prueba, repitela hablando:")
         print("      python optimizar_mic.py --test")
         print("  Si hablaste y sigue débil: acércate al microfono, revisa el boost en")
         print("     Realtek Audio Console o desactiva la supresión de ruido agresiva.")
     else:
-        print("  ❌ Sigue sin señal: revisa que el microfono no esté físicamente")
+        print("  Sigue sin señal: revisa que el microfono no esté físicamente")
         print("     desactivado y que el dispositivo por defecto sea el correcto.")
     print("=" * 62)
     return 0

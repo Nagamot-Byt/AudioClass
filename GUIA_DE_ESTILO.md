@@ -1,4 +1,4 @@
-# 🎓 AudioClass — Guía de Estilo (v9.2 "Académica Profesional")
+# AudioClass — Guía de Estilo (v9.2 "Académica Profesional")
 
 Sistema de diseño para **AudioClass**: grabación de audio y transcripción automática con IA
 para estudiantes, investigadores y profesionales. El objetivo es transmitir **rigor académico**:
@@ -34,10 +34,10 @@ dorado `#D4AF37` sobre azul marino ≈ 7:1; `#B8860B` sobre blanco ≈ 4.6:1).
 
 | Rol | Familia (orden de búsqueda) | Peso | Tamaño / Interlineado |
 |---|---|---|---|
-| Encabezados (H1/H2/H3) | **Merriweather** → Georgia → Cambria | 600/700 | 28 / 22 / 18 px · 1.3 |
-| Título de app (header) | Merriweather → Georgia | 700 | 21 px |
-| Cuerpo y menús | **Inter** → Segoe UI → Tahoma | 400/500 | 16 px · 1.5 |
-| Transcripción / código | **Source Code Pro** → Consolas → Courier New | 400 | 14 px (11 pt en UI) |
+| Encabezados (H1/H2/H3) | **Merriweather** -> Georgia -> Cambria | 600/700 | 28 / 22 / 18 px · 1.3 |
+| Título de app (header) | Merriweather -> Georgia | 700 | 21 px |
+| Cuerpo y menús | **Inter** -> Segoe UI -> Tahoma | 400/500 | 16 px · 1.5 |
+| Transcripción / código | **Source Code Pro** -> Consolas -> Courier New | 400 | 14 px (11 pt en UI) |
 
 Las fuentes DejaVu empaquetadas (`assets/DejaVuSans.ttf` y `-Bold`) se registran con
 `ctk.FontManager.load_font` para acentos y glifos unicode en el .exe.
@@ -57,12 +57,12 @@ tarjetas: **10–16 px** · altura de botón estándar: **40 px** · radio de es
 
 ## 4. Layout
 
-- **Header (56 px):** azul marino, logo 🎓 + título serif, estado de conexión (motor local/cloud)
-  y toggle de tema 🌙/☀️. Subrayado dorado institucional.
+- **Header (56 px):** azul marino, logo + título serif, estado de conexión (motor local/cloud)
+  y toggle de tema /. Subrayado dorado institucional.
 - **Sidebar (300 px):** "Historial de Clases", lista de grabaciones tipo tarjeta, acciones
   (Reproducir, Transcribir, Eliminar, Guía, Configuración).
-- **Panel principal:** grabación (botón circular + VU meter + cronómetro) → configuración →
-  progreso → waveform → adaptación IA → transcripción → barra inferior.
+- **Panel principal:** grabación (botón circular + VU meter + cronómetro) -> configuración ->
+  progreso -> waveform -> adaptación IA -> transcripción -> barra inferior.
 - **Barra inferior (48 px):** ruta de guardado, atajos de teclado, temporizador.
 
 ## 5. Componentes y estados
@@ -71,11 +71,11 @@ tarjetas: **10–16 px** · altura de botón estándar: **40 px** · radio de es
 |---|---|---|---|---|
 | Botón primario (dorado) | `#D4AF37`, texto blanco | `#B8860B` | escala 0.95 | `#9CA3AF` opacidad 0.5 |
 | Botón secundario | `#12264E` (dark) / `#E2E8F0` (light) | `#1E3A6E` / `#E5E7EB` | — | igual primario |
-| Botón grabar (64 px circular) | `#D4AF37` 🎙️ | `#B8860B` | — | — |
-| Botón detener | `#EF4444` 🛑 | `#DC2626` | — | — |
+| Botón grabar (64 px circular) | `#D4AF37` | `#B8860B` | — | — |
+| Botón detener | `#EF4444` | `#DC2626` | — | — |
 | VU meter | pista `#1E293B`, relleno `#D4AF37` | — | — | — |
-| Recorte de nivel | relleno `#EF4444` + etiqueta "⚠ RECORTE" | — | — | — |
-| Micro bajo | relleno ámbar + etiqueta "⚡ Bajo" | — | — | — |
+| Recorte de nivel | relleno `#EF4444` + etiqueta "RECORTE" | — | — | — |
+| Micro bajo | relleno ámbar + etiqueta "Bajo" | — | — | — |
 
 **Transiciones:** 200 ms ease-out en todos los cambios de estado (pulso del botón grabar 450 ms,
 toast: desliza + pulso + fade).
@@ -84,7 +84,7 @@ toast: desliza + pulso + fade).
 
 - **Transcribiendo:** resaltado dorado en vivo en el área de transcripción + barra de progreso
   dorada + ticker de segundos + estimación por chunk (media móvil).
-- **Éxito:** toast verde `✓ Transcripción completada` + insignia **"✓ Revisado por IA"**.
+- **Éxito:** toast verde `[OK] Transcripción completada` + insignia **"Revisado por IA"**.
 - **Error:** toast rojo con botón **"Reintentar"**.
 - **Grabación lista:** toast verde.
 

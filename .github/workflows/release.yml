@@ -1,13 +1,13 @@
 name: Release (exe + zips)
 
-# #11 — Post-producción automática (el equivalente desktop de "push → deploy").
+# #11 — Post-producción automática (el equivalente desktop de "push -> deploy").
 # Al pushear un tag v* (p. ej. `git tag v9.1 && git push --tags`) este workflow:
 #   1. Compila los DOS ejecutables (onefile + onedir) con PyInstaller en un
 #      runner Windows, igual que desplegar_produccion.sh local.
 #   2. Corre los selftests reales (--selftest-transcribe), el E2E de UI headless
 #      (--e2e-ui wizard/config/widgets) y el WCAG empaquetado.
 #   3. Genera los zips con los documentos legales dentro (EULA, privacidad, ...).
-#   4. Crea un GitHub Release con todo adjunto → rollback = desplegar un tag
+#   4. Crea un GitHub Release con todo adjunto -> rollback = desplegar un tag
 #      anterior (los releases son inmutables y versionados por tag).
 # Disparo manual (workflow_dispatch): compila y valida sin crear release; los
 # entregables quedan como artifacts del run.

@@ -202,7 +202,7 @@ def main():
     ok = (base_med + MARGIN_PP) < tiny_med
     print(f"\nmediana base ({base_med:.1f}%±{base_std:.1f}) vs mediana tiny "
           f"({tiny_med:.1f}%±{tiny_std:.1f}): "
-          f"{'supera ✅' if base_med < tiny_med else 'NO supera ❌'} "
+          f"{'supera [OK]' if base_med < tiny_med else 'NO supera [X]'} "
           f"(margen exigido {MARGIN_PP} pp sobre la mediana)")
     print("BENCH_MODELS_OK" if ok else "BENCH_MODELS_FAIL")
     return 0 if ok else 1
