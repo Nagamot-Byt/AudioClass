@@ -1078,25 +1078,37 @@ class LocalWhisperEngine:
             # siguen corriendo (media movil del tiempo por chunk). max(last_num)
             # sujeta el avance para que la barra NUNCA retroceda.
             while not stop.is_set():
+                # TODO el ciclo (lectura de done/running, calculo de num y la
+                # EMISION del mensaje) ocurre bajo el MISMO lock: el bucle
+                # principal escribe results y last_num bajo este lock, asi que
+                # done/num son coherentes con el estado real en el momento de
+                # emitir. Antes la emision iba FUERA del lock y habia una
+                # carrera (detectada por el test de estres A3, ultimo progreso
+                # 0.9953): el bucle podia completar el ultimo chunk entre el
+                # calculo del reporter y su emision, dejando una estimacion
+                # vieja (< 100%) como ULTIMO mensaje tras el "chunks listos"
+                # final. El callback (q.put / list.append) es no-bloqueante y
+                # no reintenta este lock -> sin deadlock.
                 with lock:
                     done = len(results)
                     running = [(i, t0) for i, t0 in started.items() if i not in results]
-                now = time.time()
-                frac_sum = 0.0
-                for _i, t0 in running:
-                    frac_sum += min((now - t0) / est[0], 0.99) if est[0] > 0 else 0.0
-                # Lectura/escritura de last_num bajo lock: ambos hilos (este y
-                # el bucle principal) la comparten, y asi la monotonia es
-                # estricta sin micro-carreras. min(total) evita que la suma de
-                # fracciones estimadas supere el 100% por redondeo.
-                with lock:
+                    now = time.time()
+                    frac_sum = 0.0
+                    for _i, t0 in running:
+                        frac_sum += min((now - t0) / est[0], 0.99) if est[0] > 0 else 0.0
+                    # min(total) evita que la suma de fracciones estimadas
+                    # supere el 100% por redondeo.
                     num = min(total, max(last_num[0], done + frac_sum))
                     last_num[0] = num
-                pct = int(num / total * 100)
-                rem = max(0, int((total - done) / workers * est[0]))
-                if progress_callback:
-                    progress_callback(num, total,
-                                      f"⚡ {workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest")
+                    pct = int(num / total * 100)
+                    rem = max(0, int((total - done) / workers * est[0]))
+                    if progress_callback:
+                        if done >= total:
+                            progress_callback(total, total,
+                                              f"{total}/{total} chunks listos")
+                        else:
+                            progress_callback(num, total,
+                                              f"⚡ {workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest")
                 stop.wait(0.25)
 
         def _transcribe_one(idx, chunk):
