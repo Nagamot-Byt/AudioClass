@@ -431,6 +431,58 @@ def is_digital_silence(stats, min_sec=1.0, sample_rate=SAMPLE_RATE):
     return stats.get("zero_frac", 0.0) > 0.5 or stats.get("rms", 0.0) < 5e-5
 
 
+_HALLUC_PHRASES = (
+    "transcribe faithfully",      # el prompt academico filtrado (patron mas comun)
+    "thank you very much for watching this video",  # alucinacion clasica #1 de whisper en silencio
+    "thank you for watching",
+    "thanks for watching",
+    "i hope you enjoyed this video",
+    "the speaker thanks you",
+    "thank you for listening",
+    "thanks for listening",
+    "please like and subscribe",
+    "for more information, visit our website",
+    "subtitles by the amara.org community",
+)
+
+
+def detect_hallucination(text, segments=None):
+    """Detecta alucinaciones tipicas de whisper sobre audio debil/vacio.
+
+    Cuando el microfono capta casi solo ruido (o la sala esta en silencio),
+    whisper no devuelve texto vacio: ALUCINA repitiendo frases (la mas comun
+    es "Transcribe faithfully only what the main speaker said", el prompt
+    academico que se filtra) y el usuario cree que "la transcripcion no
+    funciona" porque recibe basura repetida. Este detector distingue ese caso
+    de una transcripcion real:
+      * frases conocidas de alucinacion presentes en el texto, o
+      * el MISMO segmento repetido dos veces seguidas (whisper en bucle).
+    Devuelve un mensaje de advertencia legible o None si el texto parece real."""
+    t = (text or "").strip()
+    if not t:
+        return None
+    low = t.lower()
+    hits = [k for k in _HALLUC_PHRASES if k in low]
+
+    rep = False
+    if segments:
+        texts = [(s.get("text") or "").strip() for s in segments]
+        for i in range(len(texts) - 1):
+            if texts[i] and texts[i] == texts[i + 1]:
+                rep = True
+                break
+
+    if not hits and not rep:
+        return None
+    why = ("contiene frases repetidas que whisper produce sobre audio casi vacio"
+           if hits else "repite el mismo segmento (whisper en bucle)")
+    return (
+        "El audio parece demasiado debil o sin voz clara: la transcripcion "
+        f"{why} (ej. \"{t[:80]}...\"). Revisa el microfono, el nivel de "
+        "entrada o el cable, y vuelve a grabar la clase."
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MOTORES DE TRANSCRIPCIÓN
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -936,8 +988,10 @@ class LocalWhisperEngine:
                     "omitidos por timeout (whisper colgado). Revisa el modelo y el log."
                 )
 
-            return {
-                "text": " ".join(parts),
+            _text = " ".join(parts)
+            _hall = detect_hallucination(_text, segs)
+            _res = {
+                "text": _text,
                 "segments": segs,
                 "model": self.model_name,
                 "device": "cpu",
@@ -947,6 +1001,10 @@ class LocalWhisperEngine:
                 "backend": self.backend,
                 "chunks_omitidos": chunks_omitidos
             }
+            if _hall:
+                _res["hallucination"] = True
+                _res["hallucination_msg"] = _hall
+            return _res
 
         # ── Camino PARALELO: un modelo Whisper POR WORKER (thread-local) ──────
         # Nota: faster-whisper (CTranslate2) no soporta deepcopy y ya limita
@@ -1228,8 +1286,10 @@ class LocalWhisperEngine:
                     sc["end"] += starts[i]
                     segs.append(sc)
 
-        return {
-            "text": " ".join(parts),
+        _text = " ".join(parts)
+        _hall = detect_hallucination(_text, segs)
+        _res = {
+            "text": _text,
             "segments": segs,
             "model": self.model_name,
             "device": "cpu",
@@ -1239,6 +1299,10 @@ class LocalWhisperEngine:
             "backend": self.backend,
             "chunks_omitidos": len(skipped)
         }
+        if _hall:
+            _res["hallucination"] = True
+            _res["hallucination_msg"] = _hall
+        return _res
 
 
 class CloudColabEngine:

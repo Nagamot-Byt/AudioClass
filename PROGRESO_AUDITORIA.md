@@ -693,3 +693,21 @@ Notas:
   su micrófono en la PRIMERA ejecución y todos los flujos de captura ya lo
   usan. Escenario E2E `wizard` ampliado a 19/19 (selector presente + micrófono
   persistido en disco).
+- ✅ **DETECCIÓN DE ALUCINACIÓN DE WHISPER (fix del fallo de transcripción)**:
+  **escenario exacto del fallo reproducido** — con un micrófono casi silencioso
+  (p90=0.0016 en esta máquina) el pipeline amplifica el ruido (RMS 0.002 →
+  0.18) y whisper no devuelve vacío: ALUCINA frases (reproducción real:
+  "Thank you very much for watching this video", 44 chars de basura) y el
+  usuario cree que "la transcripción no funciona". Fix: nueva
+  `detect_hallucination()` en `audioclass_core.py` (frases conocidas de
+  alucinación — incluida la clásica de whisper en silencio "thank you very
+  much for watching this video" que el despliegue ya detectaba como patrón —
+  y repetición exacta de segmentos), conectada en los DOS caminos del motor
+  (secuencial y paralelo): el resultado marca `hallucination=True` +
+  `hallucination_msg` legible. En la UI (`_trans_local_worker`) se muestra el
+  aviso visible en el log/status y NO se guarda/exporta el texto basura (mismo
+  patrón que el silencio digital). Verificado: reproducción real `HALLUC_DETECT_OK`
+  (detección del caso exacto) · `MEJORAS_V10_OK` con el nuevo test H1 (frase
+  conocida + repetición detectadas, texto real intacto, vacío/None nunca
+  marcan) · `E2E_TRANS_OK` (la voz real NO se marca falsamente) · E2E-UI 4
+  escenarios + 8 tests rápidos en verde vía suite.

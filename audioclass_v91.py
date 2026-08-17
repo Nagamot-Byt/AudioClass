@@ -3970,6 +3970,17 @@ CONSEJOS:
                 self.q.put(("enable", None))
                 return
 
+            # Deteccion de alucinacion de whisper (audio debil/casi vacio): el
+            # motor devolvio texto pero son frases repetidas que whisper
+            # inventa sobre ruido (ej. el prompt academico filtrado). Se avisa
+            # de forma visible y NO se guarda/exporta el texto basura, igual
+            # que con el silencio digital.
+            if result.get("hallucination"):
+                self.q.put(("log", f"\n⚠ {result.get('hallucination_msg', 'Posible audio debil')}\n"))
+                self.q.put(("status", "Audio debil: revisa el microfono"))
+                self.q.put(("enable", None))
+                return
+
             if "error" in result:
                 raise Exception(result["error"])
 

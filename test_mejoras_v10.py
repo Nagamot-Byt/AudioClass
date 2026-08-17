@@ -179,6 +179,48 @@ def test_faster_paralelo_consistente():
           f"{r.get('chunks')} chunks) idioma={r.get('language')}")
 
 
+def test_detecta_alucinacion_por_frase_y_repeticion():
+    """Deteccion de alucinacion de whisper sobre audio debil.
+
+    El fallo real reportado por el usuario: con un microfono casi silencioso,
+    whisper ALUCINA repitiendo el prompt academico ("Transcribe faithfully
+    only what the main speaker said") y la transcripcion parece "rota". El
+    detector debe marcar la frase conocida Y el segmento repetido, y NO marcar
+    una transcripcion real."""
+    # Frase conocida de alucinacion (el prompt academico filtrado)
+    m = core.detect_hallucination(
+        "Transcribe faithfully only what the main speaker said. "
+        "Transcribe faithfully only what the main speaker said."
+    )
+    assert m, "la frase del prompt academico debe detectarse"
+    assert "debil" in m.lower(), m
+
+    # Repeticion exacta de segmentos (whisper en bucle) sin frase conocida
+    m2 = core.detect_hallucination(
+        "la celula es la unidad basica",
+        segments=[
+            {"text": "la celula es la unidad basica"},
+            {"text": "la celula es la unidad basica"},
+            {"text": "la celula es la unidad basica"},
+        ],
+    )
+    assert m2, "la repeticion de segmentos debe detectarse"
+    assert "bucle" in m2.lower() or "repite" in m2.lower(), m2
+
+    # Texto real (una sola mencion) NO se marca
+    m3 = core.detect_hallucination(
+        "Hoy hablaremos de la celula. La membrana regula el paso de moleculas.",
+        segments=[{"text": "Hoy hablaremos de la celula."},
+                  {"text": "La membrana regula el paso de moleculas."}],
+    )
+    assert m3 is None, m3
+
+    # Vacio / None nunca marca
+    assert core.detect_hallucination("") is None
+    assert core.detect_hallucination(None) is None
+    print("  H1 OK: frase conocida + repeticion detectadas, texto real intacto")
+
+
 def main():
     print("== Mejoras v10 ==")
     test_silencio_digital_detectado()
@@ -186,6 +228,7 @@ def main():
     test_streaming_secuencial_y_paralelo()
     test_faster_backend_funciona_y_detecta_idioma()
     test_faster_paralelo_consistente()
+    test_detecta_alucinacion_por_frase_y_repeticion()
     print("\nMEJORAS_V10_OK")
     return 0
 
