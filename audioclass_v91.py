@@ -2064,6 +2064,17 @@ CONSEJOS:
                                                     dropdown_text_color=C["text"])
                     except Exception:
                         pass
+            # Cuerpo desplazable del dialogo de Configuracion (creado directo,
+            # no via _frame, por eso necesita remapeo explicito como el asistente).
+            if hasattr(self, "cfg_body"):
+                try:
+                    if CTK:
+                        self.cfg_body.configure(fg_color=C["bg"],
+                                                scrollbar_button_color=C["border"])
+                    else:
+                        self.cfg_body.configure(bg=C["bg"])
+                except Exception:
+                    pass
             # Pills de pasos: re-colorear segun el paso actual (el remapeo por
             # clave no cubre estos CTkLabel crudos creados fuera de _lbl).
             if getattr(self, "_cur_step", None) is not None and getattr(self, "step_lbls", None):
@@ -2623,11 +2634,49 @@ CONSEJOS:
     def _open_config(self):
         top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
         top.title("Configuracion de AudioClass")
-        top.geometry("650x1060")
+        # Altura adaptativa: el dialogo tiene mas secciones de las que caben en
+        # pantallas pequenas (768 px), donde antes se recortaba a ~749 px y la
+        # seccion de microfono y Guardar Cambios quedaban inaccesibles.
+        try:
+            _sh = top.winfo_screenheight()
+            top.geometry("650x%d" % min(1060, max(560, _sh - 80)))
+        except Exception:
+            top.geometry("650x680")
         top.transient(self)
         top.grab_set()
+        top.grid_rowconfigure(0, weight=1)
+        top.grid_columnconfigure(0, weight=1)
 
-        f1 = self._frame(top, fg_color=C["card"])
+        # Cuerpo DESPLAZABLE (CTK: CTkScrollableFrame; fallback tk: Canvas+Scrollbar):
+        # mismo patron que el asistente — todas las secciones viven dentro del
+        # scroll y la barra de acciones queda SIEMPRE visible fuera de el.
+        if CTK:
+            body = ctk.CTkScrollableFrame(top, fg_color=C["bg"], corner_radius=0,
+                                          scrollbar_button_color=C["border"])
+            body.grid(row=0, column=0, sticky="nsew")
+        else:
+            from tkinter import Canvas, Scrollbar
+            canvas = Canvas(top, bg=C["bg"], highlightthickness=0)
+            sbar = Scrollbar(top, orient="vertical", command=canvas.yview)
+            canvas.configure(yscrollcommand=sbar.set)
+            canvas.grid(row=0, column=0, sticky="nsew")
+            sbar.grid(row=0, column=1, sticky="ns")
+            body = ctk.Frame(canvas, bg=C["bg"])
+            body_id = canvas.create_window((0, 0), window=body, anchor="nw")
+
+            def _on_body_conf(_e):
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            body.bind("<Configure>", _on_body_conf)
+
+            def _on_canvas_conf(e):
+                canvas.itemconfigure(body_id, width=e.width)
+            canvas.bind("<Configure>", _on_canvas_conf)
+            canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+            body.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        self.cfg_body = body
+        body.grid_columnconfigure(0, weight=1)
+
+        f1 = self._frame(body, fg_color=C["card"])
         f1.pack(fill="x", padx=20, pady=10)
         self._lbl(f1, "🤖 Proveedor de IA para el análisis", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f1, "Elige con qué servicio analizar tus clases (resúmenes, guías, exámenes):",
@@ -2712,7 +2761,7 @@ CONSEJOS:
         elif self.config.get("gemini_api_key"):
             self.after(400, lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"))
 
-        f2 = self._frame(top, fg_color=C["card"])
+        f2 = self._frame(body, fg_color=C["card"])
         f2.pack(fill="x", padx=20, pady=10)
         self._lbl(f2, "Google Colab (Cloud GPU)", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f2, "URL de ngrok desde tu servidor de Colab:", font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
@@ -2724,7 +2773,7 @@ CONSEJOS:
         colab_key.pack(anchor="w", padx=15, pady=(0, 12))
         colab_key.insert(0, self.config.get("colab_key", "audioclass"))
 
-        fm = self._frame(top, fg_color=C["card"])
+        fm = self._frame(body, fg_color=C["card"])
         fm.pack(fill="x", padx=20, pady=10)
         self._lbl(fm, "🎤 Micrófono de grabación", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(fm, "Elige con qué micrófono grabar y medir el nivel. Con 'Predeterminado del sistema' se usa el que Windows tenga activo.",
@@ -2751,7 +2800,7 @@ CONSEJOS:
             except Exception:
                 pass
 
-        f0 = self._frame(top, fg_color=C["card"])
+        f0 = self._frame(body, fg_color=C["card"])
         f0.pack(fill="x", padx=20, pady=10)
         self._lbl(f0, "🎤 Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f0, "Graba 8 segundos y comprueba que tu microfono capta bien tu voz.",
@@ -2759,7 +2808,7 @@ CONSEJOS:
         self._btn(f0, "🎙️ Abrir prueba de microfono", self._test_mic, width=240, height=36,
                   fg_color=C["err"], hover_color=C["err"]).pack(anchor="w", padx=15, pady=(0, 12))
 
-        f3 = self._frame(top, fg_color=C["card"])
+        f3 = self._frame(body, fg_color=C["card"])
         f3.pack(fill="x", padx=20, pady=10)
         self._lbl(f3, "Estado de Conexiones", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
 
@@ -2785,7 +2834,7 @@ CONSEJOS:
         self._lbl(status_frame, "Configurado" if has_oai else "Sin Key", 
                   font=(self.FB, 11), text_color=C["ok"] if has_oai else C["err"]).pack(side="left", padx=5)
 
-        f4 = self._frame(top, fg_color=C["card"])
+        f4 = self._frame(body, fg_color=C["card"])
         f4.pack(fill="x", padx=20, pady=10)
         self._lbl(f4, "Google Docs (exportar transcripciones)", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
         self._lbl(f4, "1. Crea credenciales OAuth en console.cloud.google.com (tipo 'App de escritorio') y habilita la Docs API",
@@ -2872,8 +2921,12 @@ CONSEJOS:
             top.destroy()
             self._msg("info", "Guardado", "Configuracion actualizada correctamente.")
 
-        self._btn(top, "Guardar Cambios", save, width=200, height=40, 
-                  fg_color=C["accent"]).pack(pady=20)
+        # Barra de acciones SIEMPRE visible (fuera del scroll): Guardar Cambios
+        # queda accesible en cualquier pantalla, igual que el boton del asistente.
+        bar = self._frame(top, fg_color=C["card"], border_width=1, border_color=C["border"])
+        bar.grid(row=1, column=0, sticky="ew")
+        self._btn(bar, "Guardar Cambios", save, width=200, height=40,
+                  fg_color=C["accent"]).pack(pady=12)
 
     def _loadhist(self):
         try:

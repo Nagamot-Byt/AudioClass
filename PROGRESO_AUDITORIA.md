@@ -675,6 +675,16 @@ Notas:
   fuente · integrado en `test_e2e_ui.py` (4 escenarios → `E2E_UI_OK`) y en la
   fase [4b] de `desplegar_produccion.sh` (wizard/config/widgets/**mic**, onefile
   y onedir).
+- ✅ **DIÁLOGO DE CONFIGURACIÓN DESPLAZABLE (fix pantallas de 768 px)**: el
+  diálogo se definía a 650×1060 y Windows lo recortaba a ~749 px en pantallas
+  de 768, dejando la sección de micrófono y Guardar Cambios inaccesibles
+  (hallazgo de la verificación visual por capturas). Ahora la altura es
+  adaptativa (`min(1060, pantalla-80)`) y el cuerpo es un `CTkScrollableFrame`
+  (fallback Canvas+Scrollbar sin CTK, mismo patrón del asistente) con la barra
+  de **Guardar Cambios SIEMPRE visible** fuera del scroll. Verificado: geometría
+  650×688 en esta máquina, contenido 1416 px desplazable hasta yview=1.0,
+  sección de micrófono alcanzable, E2E `config`/`mic`/`wizard`/`widgets` en
+  verde y remapeo de tema del cuerpo en `_apply_palette`.
 - ✅ **SELECTOR DE MICRÓFONO EN EL ASISTENTE DE PRIMER ARRANQUE**: nueva
   sección "3. ¿Con qué micrófono grabarás?" en el wizard (las siguientes se
   renumeraron: API Key 4, transcripción 5, privacidad 6). El selector
