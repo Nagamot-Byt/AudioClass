@@ -2381,9 +2381,18 @@ CONSEJOS:
         hii, hoo = band(raw, 7100, 7900), band(proc, 7100, 7900)
         pk = float(np.max(np.abs(proc))) if len(proc) else 0.0
         snr = speech_p / max(floor_p, 1e-12)
+        # Heuristica del propio VAD (_agc_vad_limiter): el ruido de fondo
+        # amplificado por el AGC tiene p90/p10 ~1.5 (sin estructura de voz),
+        # mientras que la voz real da >2.0. Sin esto, el ruido puro
+        # normalizado por el AGC puede cruzar el umbral de 0.02 y etiquetarse
+        # "Voz detectada" (depende de la plataforma/numpy; se midio 0.009 en
+        # local y >0.02 en el runner de CI).
+        spread_r = speech_r / max(floor_r, 1e-12)
         lines = []
-        if speech_p > 0.02:
+        if speech_p > 0.02 and spread_r >= 2.0:
             lines.append(f"[OK] Voz detectada (nivel de habla {speech_p:.3f})")
+        elif speech_p > 0.02:
+            lines.append(f"Voz muy baja ({speech_p:.3f}) — sin estructura de voz (ruido amplificado); revisa el microfono")
         else:
             lines.append(f"Voz muy baja ({speech_p:.3f}) — acercate al microfono o habla mas alto")
         lines.append(f"Silencio recortado: {sil_r:.0f}% -> {sil_p:.0f}% (noise gate)")
