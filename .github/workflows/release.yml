@@ -240,10 +240,18 @@ jobs:
         shell: bash
         run: |
           chmod +x dist_onefile/AudioClass
-          timeout 180 dist_onefile/AudioClass \
-            --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
+          # macOS no tiene 'timeout' (GNU). Usar background + kill como fallback.
+          dist_onefile/AudioClass \
+            --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt &
+          SELFTEST_PID=$!
+          for i in $(seq 1 36); do
+            sleep 5
+            if ! kill -0 $SELFTEST_PID 2>/dev/null; then break; fi
+          done
+          kill $SELFTEST_PID 2>/dev/null || true
+          wait $SELFTEST_PID 2>/dev/null || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-          echo "Selftest exit: $?"
+          echo "Selftest done (pid=$SELFTEST_PID)"
 
       - name: Empaquetar zips macOS
         shell: bash
