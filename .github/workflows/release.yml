@@ -99,15 +99,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
+          # Las notas del Release vienen de NOTA_RELEASE.md (versionada en el
+          # repo): un solo cuerpo profesional y editable por PR, en vez de
+          # notas por defecto inline. gh lee el archivo como UTF-8.
           if ! gh release create "${{ github.ref_name }}" \
             AudioClass_v9.1_COMPLETA.zip AudioClass_v9.1_ONEDIR.zip \
             EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md \
             --title "AudioClass ${{ github.ref_name }}" \
-            --notes "Build automático desde el tag ${{ github.ref_name }}.
-          - Onefile + onedir con selftest, E2E de UI (--e2e-ui) y WCAG validados
-          - Soporte Gemini y OpenAI (selector de proveedor)
-          - Privacidad, consentimiento y seguridad endurecidas
-          - Documentos legales (EULA, privacidad, terceros) dentro de los zips" 2>&1 | tee /tmp/ghrel.log; then
+            --notes-file NOTA_RELEASE.md 2>&1 | tee /tmp/ghrel.log; then
             # El motivo del fallo queda como annotation del paso (los logs
             # completos requieren permisos de admin para descargarse).
             echo "::error::gh release create fallo:"
