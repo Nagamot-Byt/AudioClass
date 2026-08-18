@@ -53,3 +53,10 @@ _micwarn_exe_config.json
 _wcag_config.json
 _wcag_exe_config.json
 benchmark_results.json
+
+# ── Scratch de diagnóstico (nunca versionar) ──
+_captura_*
+_e2e_*
+_diag_*
+_geom_*
+_capturas_*
