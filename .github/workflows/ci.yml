@@ -41,6 +41,11 @@ jobs:
             audioclass_colab_server_v91.py grabar_prueba.py \
             bench_models.py optimizar_mic.py run_ci_suite.py \
             test_*.py && echo COMPILE_OK
+      # El import del núcleo necesita numpy/scipy/sounddevice: este job no
+      # tiene el paso de dependencias del job de tests, asi que se instalan
+      # aqui las minimas (antes el import fallaba siempre en el CI).
+      - name: Dependencias para el import del núcleo
+        run: pip install --quiet numpy scipy sounddevice
       - name: Import básico del núcleo (sin GUI)
         run: |
           python -c "import audioclass_core as c; print('CORE_IMPORT_OK', c.SAMPLE_RATE, c.OUTPUT_DIR)"
@@ -71,7 +76,7 @@ jobs:
           python - <<'EOF'
           import sys
           missing = []
-          for m in ("tkinter", "customtkinter", "matplotlib", "pypdf", "faster_whisper"):
+          for m in ("tkinter", "customtkinter", "matplotlib", "pypdf", "faster_whisper", "sounddevice"):
               try:
                   __import__(m)
               except Exception as e:
@@ -104,8 +109,13 @@ jobs:
           if [ -f prueba_voz_es.wav ] && [ ! -f tts_clase.wav ]; then cp prueba_voz_es.wav tts_clase.wav; fi
           ls -la prueba_voz_es.wav tts_clase.wav 2>/dev/null \
             || echo "AVISO: sin fixture de voz en el repo: test_stress fallara y el benchmark saltara"
-      - name: Instalar xvfb (si falta) para los tests GUI
-        run: command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
+      - name: Instalar dependencias de sistema (xvfb para GUI + PortAudio para sounddevice)
+        run: |
+          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
+          # sounddevice necesita PortAudio del sistema en Linux: el wheel NO lo
+          # trae (en Windows si). Sin libportaudio2, `import audioclass_v91`
+          # falla y todos los tests GUI mueren al instante.
+          sudo apt-get install -y libportaudio2 libsndfile1 >/dev/null 2>&1 || true
       - name: "Guard: pasos de CI == suite de run_ci_suite.py"
         run: |
           # run_ci_suite.py es la fuente de verdad de la lista y de la

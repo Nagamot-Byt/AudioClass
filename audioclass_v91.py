@@ -55,7 +55,14 @@ if sys.stderr is None:
 from audioclass_core import LOG_DIR, _setup_logger, log_exc, log_info
 
 import numpy as np
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception:
+    # Sin PortAudio disponible (p.ej. Linux sin libportaudio2, o maquina sin
+    # driver de audio): la GUI arranca igual y los tests GUI pasan; los
+    # flujos de grabar/medir microfono ya tienen try/except propios y daran
+    # un error claro en su contexto en vez de tumbar la app en el import.
+    sd = None
 from scipy import signal
 from scipy.io import wavfile
 

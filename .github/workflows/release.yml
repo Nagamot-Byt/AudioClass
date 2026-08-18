@@ -61,7 +61,12 @@ jobs:
 
       - name: Despliegue completo (onefile + onedir + selftests + WCAG + zips)
         shell: bash
-        run: bash desplegar_produccion.sh --with-onedir --skip-benchmark
+        run: |
+          bash desplegar_produccion.sh --with-onedir --skip-benchmark || {
+            echo "::error::El despliegue fallo. Ultimas lineas de despliegue.log:"
+            tail -80 despliegue.log 2>/dev/null || true
+            exit 1
+          }
         env:
           PYTHONUTF8: "1"
 
