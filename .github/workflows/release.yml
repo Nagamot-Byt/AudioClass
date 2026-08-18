@@ -90,10 +90,13 @@ jobs:
       - name: Dependencias del sistema
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            xvfb libportaudio2 libsndfile1 \
-            libgl1-mesa-glx libglib2.0-0 libegl1 libxkbcommon0 \
-            xdg-utils
+          # Instalar paquetes criticos primero, el resto con fallback
+          sudo apt-get install -y -qq xvfb libportaudio2 libsndfile1 libglib2.0-0
+          # OpenGL/EGL: nombres cambian entre versiones de Ubuntu
+          sudo apt-get install -y -qq libgl1 2>/dev/null || \
+            sudo apt-get install -y -qq libgl1-mesa-glx 2>/dev/null || true
+          sudo apt-get install -y -qq libegl1-mesa 2>/dev/null || \
+            sudo apt-get install -y -qq libegl1 2>/dev/null || true
 
       - name: Dependencias Python
         shell: bash
