@@ -133,4 +133,11 @@ for f in (SMOKE_CFG,):
         pass
 
 print(f"\nPRIVACY_SMOKE: {PASS} OK, {FAIL} fallos")
-sys.exit(0 if FAIL == 0 else 1)
+# Salir con os._exit (no sys.exit): en Linux, la destruccion estatica C++ de
+# libtorch (modelo cargado en el thread daemon del motor local) aborta el
+# proceso al apagar el interprete (SIGABRT, rc=134) aun habiendo pasado todos
+# los checks (observado en el runner de ubuntu: rc=134 tras '9 OK, 0 fallos').
+# Se vacian los buffers antes para que el driver lea la salida completa.
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(0 if FAIL == 0 else 1)

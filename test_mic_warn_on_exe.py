@@ -54,7 +54,18 @@ ac.App._fatal = lambda self, e: (_ for _ in ()).throw(RuntimeError(f"FATAL: {e}"
 ac.App._msg = lambda self, kind, title, msg: None
 ac.App._ask = lambda self, t, m: True
 
+# En runners de GitHub no hay hardware de audio: se detecta al inicio con el
+# propio enumerador de la app para saltar (SKIP) SOLO las aserciones que
+# requieren abrir la grabacion real (InputStream), manteniendo la validacion
+# de la logica del dialogo (niveles, barra, meta, running max, tendencia).
+try:
+    HAVE_MIC = len(ac._input_devices()) > 0
+except Exception:
+    HAVE_MIC = False
+print("MIC_DISPONIBLE:", "si" if HAVE_MIC else "NO -> SKIP de la grabacion real")
+
 failures = []
+skips = 0
 
 
 def check(name, cond, detail=""):
@@ -155,10 +166,14 @@ if getattr(app, "mic_warn_top", None) is not None:
     # Pulsar 'Continuar grabando' (mismo callback del boton)
     app._mic_warn_decide(True)
     pump(app)
-    check("Continuar arranca la grabacion", getattr(app, "recording", False) is True)
-    check("status GRABANDO", "GRABANDO" in str(app.lstatus.cget("text")),
-          str(app.lstatus.cget("text")))
-    check("boton Detener visible", bool(app.bstop.winfo_ismapped()))
+    if HAVE_MIC:
+        check("Continuar arranca la grabacion", getattr(app, "recording", False) is True)
+        check("status GRABANDO", "GRABANDO" in str(app.lstatus.cget("text")),
+              str(app.lstatus.cget("text")))
+        check("boton Detener visible", bool(app.bstop.winfo_ismapped()))
+    else:
+        skips += 1
+        print("SKIP Continuar arranca la grabacion / GRABANDO / Detener (sin microfono)")
     soft_stop(app)
 
 app.destroy()
@@ -168,8 +183,13 @@ pump(app)
 app2 = ac.App()
 pump(app2)
 app2.q.put(("mic_probe", 0.05))
-ok = wait_until(app2, lambda: getattr(app2, "recording", False))
-check("nivel OK graba directo (sin dialogo)", ok)
+if HAVE_MIC:
+    ok = wait_until(app2, lambda: getattr(app2, "recording", False))
+    check("nivel OK graba directo (sin dialogo)", ok)
+else:
+    skips += 1
+    pump(app2, n=6)
+    print("SKIP nivel OK graba directo (sin microfono en este runner)")
 check("no abre dialogo con nivel OK",
       getattr(app2, "mic_warn_top", None) is None
       or not app2.mic_warn_top.winfo_exists())
@@ -180,4 +200,6 @@ print()
 if failures:
     print(f"RESULTADO: MIC_WARN_ON_EXE FAIL ({len(failures)} fallos)")
     sys.exit(1)
+if skips:
+    print(f"SKIPS: {skips} (sin microfono en este runner)")
 print("RESULTADO: MIC_WARN_ON_EXE_OK")

@@ -5520,14 +5520,22 @@ if __name__ == "__main__":
             i = sys.argv.index("--e2e-ui")
             scenario = sys.argv[i + 1] if len(sys.argv) > i + 1 else "widgets"
             out_path = sys.argv[i + 2] if len(sys.argv) > i + 2 else "e2e_ui_result.txt"
-            sys.exit(_run_e2e_ui(scenario, out_path))
+            rc = _run_e2e_ui(scenario, out_path)
         except Exception:
             try:
                 with open("e2e_ui_error.txt", "w", encoding="utf-8") as f:
                     f.write(traceback.format_exc())
             except Exception:
                 pass
-            sys.exit(1)
+            rc = 1
+        # Salir con os._exit (no sys.exit): en Linux, la destruccion estatica
+        # C++ de libtorch al apagar el interprete aborta el proceso (SIGABRT,
+        # rc=134) aun cuando el escenario ya escribio su informe PASS — y el
+        # padre (test_e2e_ui) exige rc==0. El informe ya esta en disco; se
+        # vacian los buffers antes de salir.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(rc)
     # Modo headless de autotest (valida la transcripcion local del .exe sin GUI):
     #   AudioClass.exe --selftest-transcribe <audio.wav> <salida.txt> [progreso.txt]
     # Registra ademas los mensajes de progreso (porcentaje + tiempo restante)

@@ -129,3 +129,11 @@ if not _ok_gdoc:
 app.update()
 app.destroy()
 print("SMOKE_OK")
+# Salir con os._exit (no sys.exit): en Linux, la destruccion estatica C++ de
+# libtorch (modelo cargado en el thread daemon del motor local) aborta el
+# proceso al apagar el interprete (SIGABRT, rc=134) aun habiendo pasado todos
+# los checks (igual que en test_export_docx_pdf). Se vacian los buffers antes
+# para que el driver lea la salida completa del archivo de log.
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(0)

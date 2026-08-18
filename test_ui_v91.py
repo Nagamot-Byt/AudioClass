@@ -134,3 +134,11 @@ if failures:
     print("RESULTADO: FALLARON", len(failures), ":", ", ".join(failures))
     sys.exit(1)
 print("RESULTADO: TODO OK")
+# Salir con os._exit (no sys.exit): en Linux, la destruccion estatica C++ de
+# libtorch (modelo cargado en el thread daemon del motor local) aborta el
+# proceso al apagar el interprete (SIGABRT, rc=134) aun habiendo pasado todos
+# los checks. Se vacian los buffers antes para que el driver lea la salida
+# completa del archivo de log.
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(0)
