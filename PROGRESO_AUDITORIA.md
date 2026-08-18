@@ -805,3 +805,22 @@ Notas:
   diferencia de tamaño (~111 KB y ~317 KB) es coherente con distintos
   compiladores. Los zips locales NO reemplazan los del Release (son
   equivalentes funcionales); se mantienen como backup local verificado.
+- **PIPELINE COMPLETO EN VERDE + RELEASE v9.1-final PUBLICADO CON NOTAS
+  (18 agosto 2026)**: cierre de la版本 definitiva. (1) **Fix de force-push**:
+  `release.yml` ahora ejecuta `gh release delete --yes` antes de `gh release
+  create` para que un push --force del tag no falle con "already exists".
+  Commit `efd7307`. (2) **CI en ubuntu** (run 32177232951): **13/13 tests verdes**
+  (compile, ui_smoke, ui_v91, wcag_contrast, privacy_consent, colab_server,
+  parallel, export_docx_pdf, e2e_ui, stress, mejoras_v10, lang_auto,
+  watchdog, benchmark_models). (3) **Release en Windows** (run 32177245455):
+  suite + onefile + onedir + selftests + E2E-UI + WCAG + zips — **success**,
+  Release `v9.1-final` publicado con las 5 notas de NOTA_RELEASE.md (3,911
+  caracteres, sin emojis) y 5 assets: COMPLETA 597.4 MB, ONEDIR 601.4 MB,
+  EULA, AVISO_DE_PRIVACIDAD, TERCEROS_Y_LICENCIAS. (4) **Compilación local**
+  desde `500ab79`: `PRODUCCIÓN LISTA` (34 OK · 0 fallos) — suite 13/13 en
+  611s, onefile 599.8 MB (selftest 70s), onedir 52.5 MB (selftest 46s),
+  E2E-UI 8/8, WCAG OK, MIC_WARN OK, integridad SHA-256. **Estado final**:
+  `main` en `efd7307`, tag `v9.1-final` apuntando al mismo commit, Release
+  publicado en GitHub con notas profesionales. La app está lista para
+  producción por dos vías: zips locales validados y pipeline automático de
+  GitHub que publica Releases por tag.
