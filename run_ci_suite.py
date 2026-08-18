@@ -121,6 +121,13 @@ def run_one_test(name, pattern):
         print(f"OK   {name} ({secs:.0f}s)")
     else:
         print(f"FAIL {name} (rc={rc}, {secs:.0f}s, sin patrón {pattern!r}; último: {tail})")
+        # Emitir el fallo como ::error:: para que quede visible en las
+        # annotations del run de GitHub (accesibles sin permisos de descarga
+        # de logs; util en ci.yml y en la fase [1] de desplegar_produccion.sh).
+        lines = [ln for ln in out.strip().splitlines() if ln.strip()][-8:]
+        print(f"::error::FAIL {name} (rc={rc}, {secs:.0f}s, sin patrón {pattern!r})")
+        for ln in lines:
+            print(f"::error::  {ln[:200]}")
     return ok, rc, out, secs
 
 
