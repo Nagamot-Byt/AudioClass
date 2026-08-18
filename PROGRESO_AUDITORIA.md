@@ -740,3 +740,68 @@ Notas:
   que no son código del proyecto y tocarlas rompería la app. Repo: master en
   `2c1405c`, working tree limpio, tag `v9.1-final` en el mismo commit.
   Pendiente solo el push (sin remoto configurado).
+- **PIPELINE AUTOMÁTICO VALIDADO EN LA NUBE (17-18 agosto 2026)**: el CI y el
+  Release de GitHub Actions quedaron verdes de punta a punta tras una serie de
+  fixes de entorno del runner (no del código): (1) los pasos del CI ahora
+  ejecutan `run_ci_suite.py` directo (antes capturaban la salida con `$(...)`
+  y la re-emitían con `echo`, lo que descartaba las annotations `::error::`
+  de GitHub y dejaba los fallos ciegos); (2) los tests GUI que instancian
+  App() abortaban al apagar el intérprete en Linux (SIGABRT rc=134,
+  "terminate called without an active exception") por la destrucción estática
+  C++ de libtorch cuando el modelo local alcanza a cargarse en el thread
+  daemon del motor — fix: salida con `os._exit()` tras vaciar buffers en
+  smoke/ui_v91/wcag/privacy/export y en el modo `--e2e-ui` de la app;
+  (3) `test_mic_warn_on_exe` detecta la ausencia de micrófono del runner
+  (`ac._input_devices()`) y salta solo las aserciones de grabación real;
+  (4) `gh release create` necesitaba `permissions: contents: write` (el token
+  por defecto de repos nuevos es read-only). Resultado: **CI 13/13 en ubuntu**
+  (run 32090789323) y **Release v9.1.9 publicado** en Windows (run
+  32093217748) con los 5 assets (2 zips + EULA + AVISO + TERCEROS). El tag
+  `v9.1-final` se movió a `304a36e` (push --force) y su Release quedó en
+  curso. `main` en `6af22d3`, working tree limpio.
+- **VERIFICACIÓN DE INTEGRIDAD DEL RELEASE v9.1.9 (18 agosto 2026)**: se
+  descargaron los dos zips publicados y se verificó el entregable de punta a
+  punta: bytes descargados **exactos** contra el tamaño del asset de la API
+  (COMPLETA 597.380.209 / ONEDIR 601.422.912) · `unzip -t` sin errores de CRC
+  en ambos · los 5 documentos legales dentro de ambos zips (LEEME, LICENCIA,
+  EULA, AVISO_DE_PRIVACIDAD, TERCEROS_Y_LICENCIAS) · **selftest funcional**
+  del exe onefile descargado (`--selftest-transcribe prueba_voz_es.wav`):
+  exit 0 con transcripción coherente en español. SHA-256 de los exes:
+  GH COMPLETA `7affa27f…44309` (599.724.861 B) y GH ONEDIR `a35bf5f0…5456e`
+  (52.066.510 B) vs locales COMPLETA `1e8d4730…ccca6d6` (599.835.697 B) y
+  ONEDIR `3281b5ce…fc7086` (52.523.894 B). **Los SHAs difieren de los zips
+  locales — esperado y correcto**: los locales contienen exes compilados de
+  `2c1405c` y los del Release v9.1.9 de `304a36e` (con los fixes de CI/AGC/
+  e2e-ui); la diferencia de tamaño (~111 KB y ~317 KB) es el orden exacto de
+  ese cambio. Conclusión: los zips del Release son los entregables MÁS nuevos
+  y quedan íntegros y funcionales (los zips locales quedaron desactualizados).
+- **NOTAS DE RELEASE DESDE `NOTA_RELEASE.md` (18 agosto 2026)**: el paso
+  `gh release create` de `release.yml` ya no lleva las notas por defecto
+  inline: usa `--notes-file NOTA_RELEASE.md`, el cuerpo profesional de la
+  nota de v9.1-final versionado en el repo (novedades, correcciones,
+  seguridad/privacidad, docs legales, validación de calidad y descarga;
+  ortografía correcta y **0 emojis**, estándar del repo). Editable por PR en
+  vez de texto incrustado en el workflow. Commit `6af22d3` (2 archivos).
+  Nota: el Release v9.1-final en curso (run 32095096103) arrancó antes de
+  este cambio y usará las notas por defecto; para que publique la nota nueva
+  hay que re-disparar el tag o editar el cuerpo en la web.
+- **RECOMPILACIÓN LOCAL DESDE `6af22d3` (18 agosto 2026)**: onefile y onedir
+  recompilados desde el commit que añade NOTA_RELEASE.md (el código de la app
+  es idéntico a `304a36e`; `6af22d3` solo añade la nota y el workflow nuevo).
+  Despliegue completo `desplegar_produccion.sh --with-onedir --skip-benchmark`
+  en worktree limpio: **`PRODUCCIÓN LISTA` (35 OK · 0 fallos · 0
+  advertencias)**. Fase [1] suite del fuente `CI_SUITE_OK (12/12)` en 466s
+  (benchmark omitido); onefile 599.833.732 bytes + zip COMPLETA 597.449.749
+  bytes; onedir selftest exit 0 (77s para 139s de audio) + zip ONEDIR
+  601.504.959 bytes; E2E-UI 4 escenarios = 8/8 exit=0; WCAG TODO OK;
+  MIC_WARN_ON_EXE_OK; integridad SHA-256 zip == raíz. **Por qué los SHAs
+  locales difieren de los del Release de GitHub** (COMPLETA GH `7affa27f…`
+  599.724.861 B vs local `67a30387…` 599.833.732 B; ONEDIR GH `a35bf5f0…`
+  52.066.510 B vs local `a10d19c2…` 52.524.138 B): el código fuente es
+  idéntico (`6af22d3` == `304a36e` en lógica de app), pero el binario lo
+  produce el entorno de build — versión de PyInstaller, bootloader, Python,
+  compiladores C del runner (Windows Server 2022, Python 3.12.10) vs los de
+  la máquina local (Python 3.12.10, posibles diferencias en torch/numpy). La
+  diferencia de tamaño (~111 KB y ~317 KB) es coherente con distintos
+  compiladores. Los zips locales NO reemplazan los del Release (son
+  equivalentes funcionales); se mantienen como backup local verificado.
