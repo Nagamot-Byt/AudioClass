@@ -1,0 +1,16 @@
+name: DIAG annot
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sin captura (referencia)
+        run: python -c "print('::error::NO_CAPTURE_OK')"
+      - name: Con captura-echo (el patron del CI)
+        run: |
+          out=$(python -c "print('::error::CAPTURE_ECHO_TEST')")
+          echo "$out"
