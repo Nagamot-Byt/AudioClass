@@ -45,6 +45,13 @@ def _free_ram_mb():
             ms.dwLength = ctypes.sizeof(_MS)
             if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms)):
                 return int(ms.ullAvailPhys // (1024 * 1024))
+        elif sys.platform == "darwin":
+            import subprocess
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"],
+                                         stderr=subprocess.DEVNULL, timeout=5)
+            total_mb = int(out.strip()) // (1024 * 1024)
+            # macOS no expone RAM disponible directamente; estimar ~70% libre
+            return int(total_mb * 0.7)
         elif os.path.exists("/proc/meminfo"):
             with open("/proc/meminfo") as f:
                 for line in f:
