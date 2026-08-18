@@ -107,11 +107,16 @@ find_python() {
     for c in "${cands[@]}"; do
         [ -x "$c" ] && { PY="$c"; return 0; }
     done
-    if command -v py >/dev/null 2>&1; then
-        PY="$(py -3 -c "import sys; print(sys.executable)" 2>/dev/null)" && [ -n "$PY" ] && return 0
-    fi
+    # Preferir el 'python' del PATH ANTES que el launcher 'py': en los runners
+    # de GitHub, 'py -3' resuelve al Python por defecto del sistema (p.ej.
+    # 3.14 del toolcache) y NO al que instalo setup-python (3.12, que es el
+    # que tiene PyInstaller y las dependencias). Con 'python' primero se
+    # usa siempre el entorno del workflow/local correcto.
     if command -v python >/dev/null 2>&1; then
         PY="$(python -c "import sys; print(sys.executable)" 2>/dev/null)" && [ -n "$PY" ] && return 0
+    fi
+    if command -v py >/dev/null 2>&1; then
+        PY="$(py -3 -c "import sys; print(sys.executable)" 2>/dev/null)" && [ -n "$PY" ] && return 0
     fi
     return 1
 }
