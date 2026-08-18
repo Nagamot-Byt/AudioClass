@@ -8,9 +8,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Sin captura (referencia)
-        run: python -c "print('::error::NO_CAPTURE_OK')"
-      - name: Con captura-echo (el patron del CI)
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf requests customtkinter openai-whisper faster-whisper
+      - name: sistema
+        run: sudo apt-get install -y xvfb libportaudio2 libsndfile1 >/dev/null 2>&1 || true
+      # A: patron identico al CI (captura + echo + grep que falla)
+      - name: A captura-echo con paso fallido
         run: |
-          out=$(python -c "print('::error::CAPTURE_ECHO_TEST')")
-          echo "$out"
+          out=$(python -u run_ci_suite.py test_ui_smoke 2>&1); echo "$out"
+          echo "$out" | grep -q CI_SUITE_OK
+      # B: salida directa del test real como ::error:: (sin captura)
+      - name: B test_ui_v91 salida directa
+        run: |
+          python -u run_ci_suite.py test_ui_v91 2>&1 | sed 's/^/::error::/' | tail -12
