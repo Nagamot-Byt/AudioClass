@@ -141,44 +141,33 @@ jobs:
       # ── Pasos nombrados por test ───────────────────────────────────────────
       # Cada paso ejecuta el driver en modo test único: la lógica (patrón de
       # éxito, timeout, xvfb automático para GUI) vive SOLO en run_ci_suite.py.
-      # Se captura la salida y se exige CI_SUITE_OK explícitamente (el
-      # pipeline | tail enmascara el exit code: bug histórico de exportación).
+      # Se ejecuta el driver DIRECTAMENTE (sin capturar a variable): su exit
+      # code decide el paso y sus lineas ::error:: se convierten en annotations
+      # del run. (Capturar con $(...) y re-emitir con echo DESCARTABA las
+      # annotations: el fallo de test_export_docx_pdf quedo invisible en v9.1.7.)
       - name: "Test UI smoke (test_ui_smoke)"
-        run: |
-          out=$(python -u run_ci_suite.py test_ui_smoke 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_ui_smoke
       - name: "Test UI v91 (test_ui_v91)"
-        run: |
-          out=$(python -u run_ci_suite.py test_ui_v91 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_ui_v91
       - name: "Test contraste WCAG AA (test_wcag_contrast)"
-        run: |
-          out=$(python -u run_ci_suite.py test_wcag_contrast 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_wcag_contrast
       - name: "Test privacidad/consentimiento (test_privacy_consent)"
-        run: |
-          out=$(python -u run_ci_suite.py test_privacy_consent 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_privacy_consent
       - name: "Test seguridad servidor Colab (test_colab_server_security)"
-        run: |
-          out=$(python -u run_ci_suite.py test_colab_server_security 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_colab_server_security
       - name: "Test motor paralelo (test_parallel_transcribe)"
-        run: |
-          out=$(python -u run_ci_suite.py test_parallel_transcribe 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_parallel_transcribe
       - name: "Test exportación DOCX/PDF (test_export_docx_pdf)"
-        run: |
-          out=$(python -u run_ci_suite.py test_export_docx_pdf 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_export_docx_pdf
       - name: "Test E2E de UI headless (test_e2e_ui)"
-        run: |
-          out=$(python -u run_ci_suite.py test_e2e_ui 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_e2e_ui
       - name: "Test estrés (test_stress_transcripcion)"
-        run: |
-          out=$(python -u run_ci_suite.py test_stress_transcripcion 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_stress_transcripcion
       - name: "Test mejoras v10 (test_mejoras_v10)"
-        run: |
-          out=$(python -u run_ci_suite.py test_mejoras_v10 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_mejoras_v10
       - name: "Test idioma auto (test_lang_auto)"
-        run: |
-          out=$(python -u run_ci_suite.py test_lang_auto 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_lang_auto
       - name: "Test watchdog anti-cuelgue (test_watchdog)"
-        run: |
-          out=$(python -u run_ci_suite.py test_watchdog 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_watchdog
       - name: "Test benchmark de modelos (test_benchmark_models)"
-        run: |
-          out=$(python -u run_ci_suite.py test_benchmark_models 2>&1); echo "$out"; echo "$out" | grep -q CI_SUITE_OK
+        run: python -u run_ci_suite.py test_benchmark_models
