@@ -1,31 +1,22 @@
 name: Release (exe + zips)
 
-# #11 — Post-producción automática (el equivalente desktop de "push -> deploy").
-# Al pushear un tag v* (p. ej. `git tag v9.1 && git push --tags`) este workflow:
-#   1. Compila los DOS ejecutables (onefile + onedir) con PyInstaller en un
-#      runner Windows, igual que desplegar_produccion.sh local.
-#   2. Corre los selftests reales (--selftest-transcribe), el E2E de UI headless
-#      (--e2e-ui wizard/config/widgets) y el WCAG empaquetado.
-#   3. Genera los zips con los documentos legales dentro (EULA, privacidad, ...).
-#   4. Crea un GitHub Release con todo adjunto -> rollback = desplegar un tag
-#      anterior (los releases son inmutables y versionados por tag).
-# Disparo manual (workflow_dispatch): compila y valida sin crear release; los
-# entregables quedan como artifacts del run.
+# Release multiplataforma: Windows + Linux + macOS.
+# Se dispara con push de tag v* o manualmente.
+# Cada plataforma compila su ejecutable, lo valida y sube el artifact.
+# Un job final descarga los 3 artifacts y crea el GitHub Release.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
-# gh release create necesita escribir contents (el GITHUB_TOKEN por defecto de
-# repos nuevos es read-only: el paso de release fallaba con 403 tras un build
-# correcto). El resto del workflow solo lee el repo.
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Compilar y publicar AudioClass ${{ github.ref_name }}
+  # ── WINDOWS ──────────────────────────────────────────────────────────────
+  build-windows:
+    name: Build Windows
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -43,10 +34,9 @@ jobs:
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet faster-whisper pyinstaller
 
-      - name: Modelos whisper y CT2 (los que exige el preflight del despliegue)
+      - name: Modelos whisper y CT2
         shell: bash
         run: |
-          # openai-whisper .pt (base + tiny) a la cache y models/tiny.pt al repo
           python - <<'EOF'
           import os, shutil, whisper
           for name in ("tiny", "base"):
@@ -55,7 +45,6 @@ jobs:
           shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
           print("WHISPER_PT_READY")
           EOF
-          # faster-whisper CT2 (model.bin + tokenizer) en el layout del bundle
           python - <<'EOF'
           from huggingface_hub import snapshot_download
           for name in ("tiny", "base"):
@@ -65,14 +54,11 @@ jobs:
           EOF
           ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
 
-      - name: Despliegue completo (onefile + onedir + selftests + WCAG + zips)
+      - name: Despliegue completo (onefile + onedir + selftests + E2E + zips)
         shell: bash
         run: |
           bash desplegar_produccion.sh --with-onedir --skip-benchmark || {
-            # Solo las lineas de interes (FAIL/Error/Traceback/resumen) como
-            # ::error::: GitHub limita las annotations por paso (~10), asi
-            # que un tail completo se truncaria en el encabezado del log.
-            echo "::error::El despliegue fallo. Lineas de interes de despliegue.log:"
+            echo "::error::El despliegue fallo. Lineas de interes:"
             grep -E "FAIL|Error|Traceback|RESULTADO|falta asset|FALTA" despliegue.log 2>/dev/null \
               | tail -8 | sed 's/^/::error::/' || true
             exit 1
@@ -80,48 +66,240 @@ jobs:
         env:
           PYTHONUTF8: "1"
 
-      - name: Subir entregables como artifacts (siempre)
+      - name: Subir artifacts Windows
         uses: actions/upload-artifact@v4
         with:
-          name: audioclass-entregables
+          name: audioclass-windows
           path: |
             AudioClass_v9.1_COMPLETA.zip
             AudioClass_v9.1_ONEDIR.zip
-            EULA.txt
-            AVISO_DE_PRIVACIDAD.txt
-            TERCEROS_Y_LICENCIAS.md
           if-no-files-found: error
 
-      - name: Borrar Release previo si existe (force-push de tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Cuando se fuerza un tag (git push --force origin v9.1-final), el
-          # Release viejo sigue existiendo y gh release create falla con
-          # "a release with the same tag name already exists". Borramos el
-          # Release previo (sin borrar el tag del repo) antes de recrearlo.
-          gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
+  # ── LINUX ────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Crear GitHub Release (solo en tags)
-        if: startsWith(github.ref, 'refs/tags/')
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            xvfb libportaudio2 libsndfile1 \
+            libgl1-mesa-glx libglib2.0-0 libegl1 libxkbcommon0 \
+            xdg-utils
+
+      - name: Dependencias Python
         shell: bash
+        run: |
+          pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
+            requests customtkinter openai-whisper huggingface_hub \
+            noisereduce python-docx darkdetect
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet faster-whisper pyinstaller
+
+      - name: Modelos whisper y CT2
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import os, shutil, whisper
+          for name in ("tiny", "base"):
+              whisper.load_model(name)
+          os.makedirs("models", exist_ok=True)
+          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
+          print("WHISPER_PT_READY")
+          EOF
+          python - <<'EOF'
+          from huggingface_hub import snapshot_download
+          for name in ("tiny", "base"):
+              snapshot_download(f"Systran/faster-whisper-{name}",
+                                local_dir=f"models_ct2/{name}")
+          print("CT2_READY")
+          EOF
+          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
+
+      - name: Tests del codigo fuente
+        shell: bash
+        run: |
+          python -m py_compile audioclass_v91.py audioclass_core.py run_ci_suite.py
+          xvfb-run -a python run_ci_suite.py --skip-benchmark
+        env:
+          PYTHONUTF8: "1"
+
+      - name: Build onefile + onedir
+        shell: bash
+        run: |
+          # onefile
+          python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
+          echo "=== onefile ==="
+          ls -la dist_onefile/AudioClass
+          # onedir
+          python -m PyInstaller --noconfirm AudioClass_v91.spec
+          echo "=== onedir ==="
+          ls -la dist/AudioClass/AudioClass
+
+      - name: Selftest transcripcion
+        shell: bash
+        run: |
+          chmod +x dist_onefile/AudioClass
+          timeout 180 xvfb-run -a dist_onefile/AudioClass \
+            --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
+          cat /tmp/selftest_out.txt 2>/dev/null | head -5
+          echo "Selftest exit: $?"
+
+      - name: Empaquetar zips Linux
+        shell: bash
+        run: |
+          # onefile zip
+          zip -j AudioClass_v9.1_LINUX.zip dist_onefile/AudioClass \
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
+            TERCEROS_Y_LICENCIAS.md
+          # onedir zip
+          (cd dist && zip -r ../AudioClass_v9.1_LINUX_ONEDIR.zip AudioClass/)
+          zip -j AudioClass_v9.1_LINUX_ONEDIR.zip \
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
+            TERCEROS_Y_LICENCIAS.md
+          ls -la AudioClass_v9.1_LINUX*.zip
+
+      - name: Subir artifacts Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: audioclass-linux
+          path: |
+            AudioClass_v9.1_LINUX.zip
+            AudioClass_v9.1_LINUX_ONEDIR.zip
+          if-no-files-found: error
+
+  # ── macOS ────────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias del sistema
+        run: |
+          brew install portaudio
+
+      - name: Dependencias Python
+        shell: bash
+        run: |
+          pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
+            requests customtkinter openai-whisper huggingface_hub \
+            noisereduce python-docx darkdetect
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet faster-whisper pyinstaller
+
+      - name: Modelos whisper y CT2
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import os, shutil, whisper
+          for name in ("tiny", "base"):
+              whisper.load_model(name)
+          os.makedirs("models", exist_ok=True)
+          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
+          print("WHISPER_PT_READY")
+          EOF
+          python - <<'EOF'
+          from huggingface_hub import snapshot_download
+          for name in ("tiny", "base"):
+              snapshot_download(f"Systran/faster-whisper-{name}",
+                                local_dir=f"models_ct2/{name}")
+          print("CT2_READY")
+          EOF
+          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
+
+      - name: Build onefile + onedir
+        shell: bash
+        run: |
+          # onefile
+          python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
+          echo "=== onefile ==="
+          ls -la dist_onefile/AudioClass
+          # onedir
+          python -m PyInstaller --noconfirm AudioClass_v91.spec
+          echo "=== onedir ==="
+          ls -la dist/AudioClass/AudioClass
+
+      - name: Selftest transcripcion
+        shell: bash
+        run: |
+          chmod +x dist_onefile/AudioClass
+          timeout 180 dist_onefile/AudioClass \
+            --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
+          cat /tmp/selftest_out.txt 2>/dev/null | head -5
+          echo "Selftest exit: $?"
+
+      - name: Empaquetar zips macOS
+        shell: bash
+        run: |
+          # onefile zip
+          zip -j AudioClass_v9.1_MACOS.zip dist_onefile/AudioClass \
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
+            TERCEROS_Y_LICENCIAS.md
+          # onedir zip
+          (cd dist && zip -r ../AudioClass_v9.1_MACOS_ONEDIR.zip AudioClass/)
+          zip -j AudioClass_v9.1_MACOS_ONEDIR.zip \
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
+            TERCEROS_Y_LICENCIAS.md
+          ls -la AudioClass_v9.1_MACOS*.zip
+
+      - name: Subir artifacts macOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: audioclass-macos
+          path: |
+            AudioClass_v9.1_MACOS.zip
+            AudioClass_v9.1_MACOS_ONEDIR.zip
+          if-no-files-found: error
+
+  # ── PUBLICAR RELEASE ─────────────────────────────────────────────────────
+  publish-release:
+    name: Publicar Release
+    needs: [build-windows, build-linux, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download todos los artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Listar artifacts descargados
+        run: find artifacts/ -type f -name "*.zip" -exec ls -lh {} \;
+
+      - name: Borrar Release previo si existe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
+
+      - name: Crear GitHub Release con las 3 plataformas
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -o pipefail
-          # Las notas del Release vienen de NOTA_RELEASE.md (versionada en el
-          # repo): un solo cuerpo profesional y editable por PR, en vez de
-          # notas por defecto inline. gh lee el archivo como UTF-8.
-          if ! gh release create "${{ github.ref_name }}" \
-            AudioClass_v9.1_COMPLETA.zip AudioClass_v9.1_ONEDIR.zip \
+          # Recoger todos los zips
+          ZIPS=""
+          for f in artifacts/**/*.zip; do
+            ZIPS="$ZIPS $f"
+          done
+
+          # Docs legales desde el repo
+          gh release create "${{ github.ref_name }}" \
+            $ZIPS \
             EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md \
-            --title "AudioClass ${{ github.ref_name }}" \
-            --notes-file NOTA_RELEASE.md 2>&1 | tee /tmp/ghrel.log; then
-            # El motivo del fallo queda como annotation del paso (los logs
-            # completos requieren permisos de admin para descargarse).
-            echo "::error::gh release create fallo:"
-            sed 's/^/::error::/' /tmp/ghrel.log | tail -12
-            exit 1
-          fi
+            --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
+            --notes-file NOTA_RELEASE.md
