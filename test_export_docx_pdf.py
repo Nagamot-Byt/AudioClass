@@ -169,4 +169,13 @@ try:
         os.remove(SMOKE_CFG)
 except Exception:
     pass
-sys.exit(0 if all_ok else 1)
+# Salida con os._exit() (no sys.exit): en Linux, la destruccion estatica C++
+# de libtorch al apagar el interprete aborta el proceso (SIGABRT, "terminate
+# called without an active exception") aunque TODOS los checks hayan pasado
+# (observado en el runner de ubuntu: rc=134 tras imprimir EXPORT_OK). El test
+# ya valido el contenido; el crash es del harness al salir, no de la app.
+# os._exit() omite esa destruccion; se vacian los buffers antes para que el
+# driver lea la salida completa (EXPORT_OK) del archivo de log.
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(0 if all_ok else 1)
