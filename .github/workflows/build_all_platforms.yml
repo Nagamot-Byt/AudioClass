@@ -1,0 +1,172 @@
+# build_all_platforms.yml — Build AudioClass para Windows, macOS y Linux
+# Se dispara manualmente (workflow_dispatch) o con un tag v*.
+# Genera artifacts por plataforma que se pueden descargar o publicar en Release.
+
+name: Build Multi-Plataforma
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Plataformas a compilar (comma-separated: windows,macos,linux)"
+        required: false
+        default: "windows,macos,linux"
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            exe_name: "AudioClass.exe"
+            zip_name: "AudioClass_v9.1_WINDOWS.zip"
+          - os: macos-latest
+            platform: macos
+            exe_name: "AudioClass"
+            zip_name: "AudioClass_v9.1_MACOS.zip"
+          - os: ubuntu-latest
+            platform: linux
+            exe_name: "AudioClass"
+            zip_name: "AudioClass_v9.1_LINUX.zip"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias del sistema (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libportaudio2 libsndfile1 \
+            libgl1-mesa-glx libglib2.0-0
+
+      - name: Dependencias del sistema (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install portaudio
+
+      - name: Dependencias Python
+        shell: bash
+        run: |
+          pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
+            requests customtkinter openai-whisper huggingface_hub \
+            noisereduce python-docx darkdetect
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet faster-whisper pyinstaller
+
+      - name: Modelos whisper y CT2
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import os, shutil, whisper
+          for name in ("tiny", "base"):
+              whisper.load_model(name)
+          os.makedirs("models", exist_ok=True)
+          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
+          print("WHISPER_PT_READY")
+          EOF
+          python - <<'EOF'
+          from huggingface_hub import snapshot_download
+          for name in ("tiny", "base"):
+              snapshot_download(f"Systran/faster-whisper-{name}",
+                                local_dir=f"models_ct2/{name}")
+          print("CT2_READY")
+          EOF
+          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
+
+      - name: Build PyInstaller
+        shell: bash
+        run: |
+          pyinstaller --noconfirm AudioClass_v91_crossplatform.spec
+          echo "=== Build output ==="
+          ls -la dist/ 2>/dev/null || ls -la dist_onefile/ 2>/dev/null
+
+      - name: Selftest (transcripcion local)
+        shell: bash
+        run: |
+          EXE="dist/AudioClass${{ matrix.platform == 'windows' && '.exe' || '' }}"
+          if [ ! -f "$EXE" ]; then
+            EXE="dist_onefile/AudioClass${{ matrix.platform == 'windows' && '.exe' || '' }}"
+          fi
+          echo "Selftest: $EXE"
+          chmod +x "$EXE" 2>/dev/null || true
+          timeout 120 "$EXE" --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
+          cat /tmp/selftest_out.txt 2>/dev/null | head -5
+          echo "EXIT: $?"
+
+      - name: Empaquetar artifact
+        shell: bash
+        run: |
+          DIST_DIR="dist"
+          if [ ! -d "$DIST_DIR/AudioClass" ] && [ ! -f "$DIST_DIR/AudioClass${{ matrix.platform == 'windows' && '.exe' || '' }}" ]; then
+            DIST_DIR="dist_onefile"
+          fi
+          
+          # Crear zip con el ejecutable + docs
+          zip -j "${{ matrix.zip_name }}" \
+            "$DIST_DIR/AudioClass${{ matrix.platform == 'windows' && '.exe' || '' }}" \
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
+            TERCEROS_Y_LICENCIAS.md NOTA_RELEASE.md \
+            instalar_audioclass.bat desinstalar_audioclass.bat \
+            2>/dev/null || \
+          zip -j "${{ matrix.zip_name }}" \
+            "$DIST_DIR/AudioClass" \
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
+            TERCEROS_Y_LICENCIAS.md NOTA_RELEASE.md \
+            2>/dev/null || true
+          
+          ls -la "${{ matrix.zip_name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audioclass-${{ matrix.platform }}
+          path: "*.zip"
+          if-no-files-found: error
+
+  publish-release:
+    name: Publicar Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List artifacts
+        run: ls -la artifacts/*/
+
+      - name: Borrar Release previo si existe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
+
+      - name: Crear GitHub Release con las 3 plataformas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Recoger todos los zips
+          ZIPS=""
+          for f in artifacts/**/*.zip; do
+            ZIPS="$ZIPS $f"
+          done
+          
+          gh release create "${{ github.ref_name }}" \
+            $ZIPS \
+            --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
+            --notes-file NOTA_RELEASE.md
