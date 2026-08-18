@@ -71,6 +71,13 @@ jobs:
           # auto-elige en desarrollo; lo ejercitan test_mejoras_v10 y
           # test_benchmark_models (en CI descargan sus modelos CT2 de HF).
           pip install --quiet faster-whisper
+      - name: Instalar dependencias de sistema (xvfb para GUI + PortAudio para sounddevice)
+        run: |
+          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
+          # sounddevice necesita PortAudio del sistema en Linux: el wheel NO lo
+          # trae (en Windows si). Sin libportaudio2, `import sounddevice` falla
+          # (el preflight de abajo lo detecta con mensaje claro).
+          sudo apt-get install -y libportaudio2 libsndfile1 >/dev/null 2>&1 || true
       - name: Preflight (GUI + faster_whisper importables)
         run: |
           python - <<'EOF'
@@ -109,13 +116,6 @@ jobs:
           if [ -f prueba_voz_es.wav ] && [ ! -f tts_clase.wav ]; then cp prueba_voz_es.wav tts_clase.wav; fi
           ls -la prueba_voz_es.wav tts_clase.wav 2>/dev/null \
             || echo "AVISO: sin fixture de voz en el repo: test_stress fallara y el benchmark saltara"
-      - name: Instalar dependencias de sistema (xvfb para GUI + PortAudio para sounddevice)
-        run: |
-          command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb >/dev/null 2>&1
-          # sounddevice necesita PortAudio del sistema en Linux: el wheel NO lo
-          # trae (en Windows si). Sin libportaudio2, `import audioclass_v91`
-          # falla y todos los tests GUI mueren al instante.
-          sudo apt-get install -y libportaudio2 libsndfile1 >/dev/null 2>&1 || true
       - name: "Guard: pasos de CI == suite de run_ci_suite.py"
         run: |
           # run_ci_suite.py es la fuente de verdad de la lista y de la

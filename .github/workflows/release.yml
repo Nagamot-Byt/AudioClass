@@ -63,8 +63,11 @@ jobs:
         shell: bash
         run: |
           bash desplegar_produccion.sh --with-onedir --skip-benchmark || {
+            # El log se emite como ::error:: linea a linea: asi las ultimas
+            # lineas del despliegue quedan visibles en las annotations del
+            # run (accesibles sin permisos de descarga de logs).
             echo "::error::El despliegue fallo. Ultimas lineas de despliegue.log:"
-            tail -80 despliegue.log 2>/dev/null || true
+            tail -120 despliegue.log 2>/dev/null | sed 's/^/::error::/' || true
             exit 1
           }
         env:
