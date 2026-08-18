@@ -92,6 +92,18 @@ jobs:
             TERCEROS_Y_LICENCIAS.md
           if-no-files-found: error
 
+      - name: Borrar Release previo si existe (force-push de tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Cuando se fuerza un tag (git push --force origin v9.1-final), el
+          # Release viejo sigue existiendo y gh release create falla con
+          # "a release with the same tag name already exists". Borramos el
+          # Release previo (sin borrar el tag del repo) antes de recrearlo.
+          gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
+
       - name: Crear GitHub Release (solo en tags)
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
