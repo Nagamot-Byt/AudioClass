@@ -3,7 +3,7 @@
 Instancia la app sin wizard, ejercita el nuevo sistema de diseño
 (tema claro/oscuro, gutter, tags en vivo, toasts con Reintentar, atajos,
 estado de conexion) y cierra. Requiere pantalla (se abre una ventana ~1s)."""
-import os, sys, json
+import os, sys, json, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -36,6 +36,15 @@ ac.App._msg = lambda self, kind, title, msg: print("MSG:", kind, title, msg)
 app = ac.App()
 for _ in range(6):
     app.update()
+# Bajo xvfb (CI) la ventana tarda en mapearse: sin espera, los widgets
+# pueden reportar tamano 0 y el chequeo de contraste produce falsos fallos
+# flaky. Se espera hasta que la raiz este mapeada o un maximo de 3 s.
+app.update_idletasks()
+for _ in range(60):
+    app.update()
+    if app.winfo_ismapped():
+        break
+    time.sleep(0.05)
 
 # Helpers de transcripcion (gutter + tags + copiar)
 app._apptxt("Linea de prueba con acentos aeiou n\n")

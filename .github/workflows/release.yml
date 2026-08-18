@@ -63,11 +63,12 @@ jobs:
         shell: bash
         run: |
           bash desplegar_produccion.sh --with-onedir --skip-benchmark || {
-            # El log se emite como ::error:: linea a linea: asi las ultimas
-            # lineas del despliegue quedan visibles en las annotations del
-            # run (accesibles sin permisos de descarga de logs).
-            echo "::error::El despliegue fallo. Ultimas lineas de despliegue.log:"
-            tail -120 despliegue.log 2>/dev/null | sed 's/^/::error::/' || true
+            # Solo las lineas de interes (FAIL/Error/Traceback/resumen) como
+            # ::error::: GitHub limita las annotations por paso (~10), asi
+            # que un tail completo se truncaria en el encabezado del log.
+            echo "::error::El despliegue fallo. Lineas de interes de despliegue.log:"
+            grep -E "FAIL|Error|Traceback|RESULTADO|falta asset|FALTA" despliegue.log 2>/dev/null \
+              | tail -8 | sed 's/^/::error::/' || true
             exit 1
           }
         env:

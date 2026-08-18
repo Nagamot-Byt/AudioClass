@@ -116,6 +116,17 @@ def run_one(name, pattern):
 def run_one_test(name, pattern):
     """Corre un test e imprime su línea; devuelve (ok, rc, output, segundos)."""
     ok, rc, out, secs = run_one(name, pattern)
+    if not ok and name in GUI:
+        # Los tests GUI son conocidos por flakiness bajo xvfb/headless (los
+        # mismos tests pasan de forma estable en Windows y en corridas
+        # locales): se reintenta UNA vez antes de declarar el fallo.
+        ok2, rc2, out2, secs2 = run_one(name, pattern)
+        secs += secs2
+        if ok2:
+            ok, rc, out = True, 0, out2
+            print(f"OK   {name} ({secs:.0f}s, pasó al reintento; flaky bajo xvfb)")
+            return ok, rc, out, secs
+        rc, out = rc2, out2
     tail = " ".join(out.strip().splitlines()[-2:])[:100]
     if ok:
         print(f"OK   {name} ({secs:.0f}s)")

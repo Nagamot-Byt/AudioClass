@@ -66,8 +66,12 @@ API_KEY = _resolve_api_key()
 NGROK_TOKEN = ""                # <- PEGA AQUI TU TOKEN DE NGROK
 MODEL_NAME = "large-v3"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-TEMP_DIR = Path("/tmp/audioclass_cloud")
-TEMP_DIR.mkdir(exist_ok=True)
+# Directorio temporal de la app: tempfile.gettempdir() es /tmp en Linux
+# (Colab/produccion, igual que antes) y %TEMP% en Windows (los tests locales
+# y el CI en runners de Windows fallaban con FileNotFoundError al usar la
+# ruta Unix literal /tmp/audioclass_cloud).
+TEMP_DIR = Path(tempfile.gettempdir()) / "audioclass_cloud"
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # ─── Fuente Unicode para PDF (DejaVu Sans) ────────────────────────────────────
 # La fuente core "Arial" de fpdf2 es latin-1: los acentos y simbolos
