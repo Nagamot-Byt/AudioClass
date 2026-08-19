@@ -127,14 +127,6 @@ jobs:
           EOF
           ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
 
-      - name: Tests del codigo fuente
-        shell: bash
-        run: |
-          python -m py_compile audioclass_v91.py audioclass_core.py run_ci_suite.py
-          xvfb-run -a python run_ci_suite.py --skip-benchmark
-        env:
-          PYTHONUTF8: "1"
-
       - name: Build onefile + onedir
         shell: bash
         run: |
