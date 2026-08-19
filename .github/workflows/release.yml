@@ -315,13 +315,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -ex
+          echo '=== Buscar Linux ZIP ==='
+          find artifacts/ -type f -name '*.zip' -exec ls -lh {} \;
           ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_LINUX.zip' | head -1)
           if [ -n "$ZIP" ]; then
             echo "Uploading Linux: $ZIP ($(du -h "$ZIP" | cut -f1))"
             gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
             echo "Linux uploaded"
           else
-            echo "::warning::Linux ZIP not found"
+            echo '::warning::Linux ZIP not found in artifacts'
+            echo 'Available files:'
+            find artifacts/ -type f | head -20
           fi
 
       - name: Subir ZIP macOS
