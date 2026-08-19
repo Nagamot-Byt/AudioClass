@@ -302,29 +302,39 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -x
+          set -ex
+
           # Localizar zips onefile
+          find artifacts/ -type f -name '*.zip' | while read f; do
+            echo "  Found: $f ($(du -h "$f" | cut -f1))"
+          done
+
           WIN_ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
           LIN_ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_LINUX.zip' | head -1)
           MAC_ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_MACOS.zip' | head -1)
-          echo "Windows: $WIN_ZIP"
-          echo "Linux:   $LIN_ZIP"
-          echo "macOS:   $MAC_ZIP"
-          ls -lh "$WIN_ZIP" "$LIN_ZIP" "$MAC_ZIP" 2>&1
 
-          # Paso 1: Crear release con docs solamente (~30KB, rapido)
+          # Paso 1: Crear release vacio con notas
           gh release create "${{ github.ref_name }}" \
-            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md \
             --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
             --notes-file NOTA_RELEASE.md
-          echo "Release creado"
 
-          # Paso 2: Subir cada zip individualmente (timeout generoso)
-          echo "Subiendo Windows..."
-          gh release upload "${{ github.ref_name }}" "$WIN_ZIP" --clobber
-          echo "Subiendo Linux..."
-          gh release upload "${{ github.ref_name }}" "$LIN_ZIP" --clobber
-          echo "Subiendo macOS..."
-          gh release upload "${{ github.ref_name }}" "$MAC_ZIP" --clobber
-          echo "=== DONE ==="
-          gh release view "${{ github.ref_name }}" --json assets | python -c "import sys,json; [print(f'  {a[\"name\"]}: {a[\"size\"]/(1024*1024):.1f} MB') for a in json.load(sys.stdin)['assets']]"
+          # Paso 2: Subir docs
+          gh release upload "${{ github.ref_name }}" \
+            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md --clobber
+
+          # Paso 3: Subir zips uno a uno con manejo de error
+          for ZIP_FILE in "$WIN_ZIP" "$LIN_ZIP" "$MAC_ZIP"; do
+            if [ -z "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
+              echo "WARN: zip no encontrado: $ZIP_FILE"
+              continue
+            fi
+            NAME=$(basename "$ZIP_FILE")
+            SIZE=$(stat -c%s "$ZIP_FILE" 2>/dev/null || stat -f%z "$ZIP_FILE" 2>/dev/null)
+            echo "Subiendo $NAME ($(( SIZE / 1024 / 1024 )) MB)..."
+            gh release upload "${{ github.ref_name }}" "$ZIP_FILE" --clobber
+            echo "  $NAME subido"
+          done
+
+          echo "=== RESUMEN ==="
+          gh release view "${{ github.ref_name }}" --json assets \
+            | python -c "import sys,json; [print(f'  {a[\"name\"]}: {a[\"size\"]/(1024*1024):.1f} MB') for a in json.load(sys.stdin)['assets']]"
