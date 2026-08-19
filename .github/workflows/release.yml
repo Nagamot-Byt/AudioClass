@@ -2,8 +2,6 @@ name: Release (exe + zips)
 
 # Release multiplataforma: Windows + Linux + macOS.
 # Se dispara con push de tag v* o manualmente.
-# Cada plataforma compila su ejecutable, lo valida y sube el artifact.
-# Un job final descarga los 3 artifacts y crea el GitHub Release.
 
 on:
   push:
@@ -14,58 +12,33 @@ permissions:
   contents: write
 
 jobs:
-  # ── WINDOWS ──────────────────────────────────────────────────────────────
+  # -- WINDOWS --
   build-windows:
     name: Build Windows
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Dependencias (incl. PyInstaller + faster-whisper)
+      - name: Dependencias
         shell: bash
         run: |
           pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
             requests customtkinter openai-whisper huggingface_hub
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet faster-whisper pyinstaller
-
       - name: Modelos whisper y CT2
         shell: bash
         run: |
-          python - <<'EOF'
-          import os, shutil, whisper
-          for name in ("tiny", "base"):
-              whisper.load_model(name)
-          os.makedirs("models", exist_ok=True)
-          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
-          print("WHISPER_PT_READY")
-          EOF
-          python - <<'EOF'
-          from huggingface_hub import snapshot_download
-          for name in ("tiny", "base"):
-              snapshot_download(f"Systran/faster-whisper-{name}",
-                                local_dir=f"models_ct2/{name}")
-          print("CT2_READY")
-          EOF
-          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
-
-      - name: Despliegue completo (onefile + onedir + selftests + E2E + zips)
+          python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
+          python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
+      - name: Despliegue completo
         shell: bash
-        run: |
-          bash desplegar_produccion.sh --with-onedir --skip-benchmark || {
-            echo "::error::El despliegue fallo. Lineas de interes:"
-            grep -E "FAIL|Error|Traceback|RESULTADO|falta asset|FALTA" despliegue.log 2>/dev/null \
-              | tail -8 | sed 's/^/::error::/' || true
-            exit 1
-          }
+        run: bash desplegar_produccion.sh --with-onedir --skip-benchmark
         env:
           PYTHONUTF8: "1"
-
       - name: Subir artifacts Windows
         uses: actions/upload-artifact@v4
         with:
@@ -75,87 +48,51 @@ jobs:
             AudioClass_v9.1_ONEDIR.zip
           if-no-files-found: error
 
-  # ── LINUX ────────────────────────────────────────────────────────────────
+  # -- LINUX --
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Dependencias del sistema
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb libportaudio2 libsndfile1 libglib2.0-0
-          sudo apt-get install -y -qq libgl1 2>/dev/null || \
-            sudo apt-get install -y -qq libgl1-mesa-glx 2>/dev/null || true
-          sudo apt-get install -y -qq libegl1-mesa 2>/dev/null || \
-            sudo apt-get install -y -qq libegl1 2>/dev/null || true
-
+          sudo apt-get install -y -qq libgl1 2>/dev/null || sudo apt-get install -y -qq libgl1-mesa-glx 2>/dev/null || true
+          sudo apt-get install -y -qq libegl1-mesa 2>/dev/null || sudo apt-get install -y -qq libegl1 2>/dev/null || true
       - name: Dependencias Python
-        shell: bash
         run: |
           pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
             requests customtkinter openai-whisper huggingface_hub \
             noisereduce python-docx darkdetect
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet faster-whisper pyinstaller
-
       - name: Modelos whisper y CT2
-        shell: bash
         run: |
-          python - <<'EOF'
-          import os, shutil, whisper
-          for name in ("tiny", "base"):
-              whisper.load_model(name)
-          os.makedirs("models", exist_ok=True)
-          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
-          print("WHISPER_PT_READY")
-          EOF
-          python - <<'EOF'
-          from huggingface_hub import snapshot_download
-          for name in ("tiny", "base"):
-              snapshot_download(f"Systran/faster-whisper-{name}",
-                                local_dir=f"models_ct2/{name}")
-          print("CT2_READY")
-          EOF
-          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
-
+          python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
+          python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
       - name: Build onefile + onedir
-        shell: bash
         run: |
           python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
-          echo "=== onefile ==="
-          ls -la dist_onefile/AudioClass
           python -m PyInstaller --noconfirm AudioClass_v91.spec
-          echo "=== onedir ==="
-          ls -la dist/AudioClass/AudioClass
-
+          ls -la dist_onefile/AudioClass dist/AudioClass/AudioClass
       - name: Selftest transcripcion
-        shell: bash
         run: |
           chmod +x dist_onefile/AudioClass
           timeout 180 xvfb-run -a dist_onefile/AudioClass \
             --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-          echo "Selftest exit: $?"
-
       - name: Empaquetar zips Linux
-        shell: bash
         run: |
           zip -j AudioClass_v9.1_LINUX.zip dist_onefile/AudioClass \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
-            TERCEROS_Y_LICENCIAS.md
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
           (cd dist && zip -r ../AudioClass_v9.1_LINUX_ONEDIR.zip AudioClass/)
           zip -j AudioClass_v9.1_LINUX_ONEDIR.zip \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
-            TERCEROS_Y_LICENCIAS.md
-          ls -la AudioClass_v9.1_LINUX*.zip
-
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
       - name: Subir artifacts Linux
         uses: actions/upload-artifact@v4
         with:
@@ -165,89 +102,49 @@ jobs:
             AudioClass_v9.1_LINUX_ONEDIR.zip
           if-no-files-found: error
 
-  # ── macOS ────────────────────────────────────────────────────────────────
+  # -- macOS --
   build-macos:
     name: Build macOS
     runs-on: macos-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Dependencias del sistema
-        run: |
-          brew install portaudio
-
+        run: brew install portaudio
       - name: Dependencias Python
-        shell: bash
         run: |
           pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
             requests customtkinter openai-whisper huggingface_hub \
             noisereduce python-docx darkdetect
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet faster-whisper pyinstaller
-
       - name: Modelos whisper y CT2
-        shell: bash
         run: |
-          python - <<'EOF'
-          import os, shutil, whisper
-          for name in ("tiny", "base"):
-              whisper.load_model(name)
-          os.makedirs("models", exist_ok=True)
-          shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")
-          print("WHISPER_PT_READY")
-          EOF
-          python - <<'EOF'
-          from huggingface_hub import snapshot_download
-          for name in ("tiny", "base"):
-              snapshot_download(f"Systran/faster-whisper-{name}",
-                                local_dir=f"models_ct2/{name}")
-          print("CT2_READY")
-          EOF
-          ls -la models/tiny.pt models_ct2/tiny/model.bin models_ct2/base/model.bin
-
+          python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
+          python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
       - name: Build onefile + onedir
-        shell: bash
         run: |
           python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
-          echo "=== onefile ==="
-          ls -la dist_onefile/AudioClass
           python -m PyInstaller --noconfirm AudioClass_v91.spec
-          echo "=== onedir ==="
-          ls -la dist/AudioClass/AudioClass
-
+          ls -la dist_onefile/AudioClass dist/AudioClass/AudioClass
       - name: Selftest transcripcion
-        shell: bash
         run: |
           chmod +x dist_onefile/AudioClass
           dist_onefile/AudioClass \
             --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt &
-          SELFTEST_PID=$!
-          for i in $(seq 1 36); do
-            sleep 5
-            if ! kill -0 $SELFTEST_PID 2>/dev/null; then break; fi
-          done
-          kill $SELFTEST_PID 2>/dev/null || true
-          wait $SELFTEST_PID 2>/dev/null || true
+          PID=$!; for i in $(seq 1 36); do sleep 5; kill -0 $PID 2>/dev/null || break; done
+          kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-          echo "Selftest done (pid=$SELFTEST_PID)"
-
       - name: Empaquetar zips macOS
-        shell: bash
         run: |
           zip -j AudioClass_v9.1_MACOS.zip dist_onefile/AudioClass \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
-            TERCEROS_Y_LICENCIAS.md
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
           (cd dist && zip -r ../AudioClass_v9.1_MACOS_ONEDIR.zip AudioClass/)
           zip -j AudioClass_v9.1_MACOS_ONEDIR.zip \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt \
-            TERCEROS_Y_LICENCIAS.md
-          ls -la AudioClass_v9.1_MACOS*.zip
-
+            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
       - name: Subir artifacts macOS
         uses: actions/upload-artifact@v4
         with:
@@ -257,7 +154,7 @@ jobs:
             AudioClass_v9.1_MACOS_ONEDIR.zip
           if-no-files-found: error
 
-  # ── PUBLICAR RELEASE ─────────────────────────────────────────────────────
+  # -- PUBLICAR RELEASE --
   publish-release:
     name: Publicar Release
     needs: [build-windows, build-linux, build-macos]
@@ -265,22 +162,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Download todos los artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-
-      - name: Listar artifacts descargados
-        run: |
-          echo "=== Artifacts ==="
-          find artifacts/ -type f -name "*.zip" -exec ls -lh {} \;
-
+      - name: Listar artifacts
+        run: find artifacts/ -type f -name "*.zip" -exec ls -lh {} \;
       - name: Borrar Release previo si existe
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
-
       - name: Crear Release vacio
         env:
           GH_TOKEN: ${{ github.token }}
@@ -288,63 +179,11 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
             --notes-file NOTA_RELEASE.md
-          echo "Release created"
-
-      - name: Subir docs legales
+      - name: Subir assets via Python+curl
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ github.ref_name }}" \
-            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md --clobber
-          echo "Docs uploaded"
-
-      - name: Subir ZIP Windows
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
-          if [ -n "$ZIP" ]; then
-            echo "Uploading Windows: $ZIP ($(du -h "$ZIP" | cut -f1))"
-            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-            echo "Windows uploaded"
-          else
-            echo "::warning::Windows ZIP not found"
-          fi
-
-      - name: Subir ZIP Linux
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -ex
-          echo '=== Buscar Linux ZIP ==='
-          find artifacts/ -type f -name '*.zip' -exec ls -lh {} \;
-          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_LINUX.zip' | head -1)
-          if [ -n "$ZIP" ]; then
-            echo "Uploading Linux: $ZIP ($(du -h "$ZIP" | cut -f1))"
-            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-            echo "Linux uploaded"
-          else
-            echo '::warning::Linux ZIP not found in artifacts'
-            echo 'Available files:'
-            find artifacts/ -type f | head -20
-          fi
-
-      - name: Subir ZIP macOS
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_MACOS.zip' | head -1)
-          if [ -n "$ZIP" ]; then
-            echo "Uploading macOS: $ZIP ($(du -h "$ZIP" | cut -f1))"
-            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-            echo "macOS uploaded"
-          else
-            echo "::warning::macOS ZIP not found"
-          fi
-
+        run: python3 upload_release_assets.py
       - name: Verificar Release final
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          echo '=== Assets en Release ==='
-          gh release view "${{ github.ref_name }}"
+        run: gh release view "${{ github.ref_name }}"
