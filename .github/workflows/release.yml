@@ -302,26 +302,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Copiar solo zips onefile (onedir ~600MB c/u, total excede limites)
-          mkdir -p release_assets
-          find artifacts/ -type f -name '*.zip' | grep -iv onedir | while read f; do
-            cp "$f" release_assets/
-          done
-          echo '=== Zips onefile ==='
-          ls -lh release_assets/
+          set -x
+          # Localizar zips onefile por nombre conocido
+          WIN_ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
+          LIN_ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_LINUX.zip' | head -1)
+          MAC_ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_MACOS.zip' | head -1)
+          echo "Windows: $WIN_ZIP"
+          echo "Linux:   $LIN_ZIP"
+          echo "macOS:   $MAC_ZIP"
+          ls -lh "$WIN_ZIP" "$LIN_ZIP" "$MAC_ZIP" 2>&1
 
-          # Crear release vacio primero
+          # Crear release con los 3 zips + docs
           gh release create "${{ github.ref_name }}" \
+            "$WIN_ZIP" "$LIN_ZIP" "$MAC_ZIP" \
+            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md \
             --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
             --notes-file NOTA_RELEASE.md
-
-          # Subir zips y docs uno a uno (evita timeout con archivos grandes)
-          for f in release_assets/*.zip; do
-            echo "Subiendo $f..."
-            gh release upload "${{ github.ref_name }}" "$f"
-          done
-          for f in EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md; do
-            gh release upload "${{ github.ref_name }}" "$f"
-          done
-          echo '=== Release actualizado ==='
-          gh release view "${{ github.ref_name }}" --json assets | python -c "import sys,json; d=json.load(sys.stdin); [print(f'  {a[\"name\"]}: {a[\"size\"]/(1024*1024):.1f} MB') for a in d['assets']]"
