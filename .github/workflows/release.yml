@@ -302,13 +302,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Listar y recoger todos los zips
+          # Copiar todos los zips a un directorio plano
+          mkdir -p release_assets
+          find artifacts/ -type f -name '*.zip' -exec cp {} release_assets/ \;
           echo '=== Zips disponibles ==='
-          find artifacts/ -type f -name '*.zip' -exec ls -lh {} \;
+          ls -lh release_assets/
 
           # Crear el release con TODOS los zips + docs legales
           gh release create "${{ github.ref_name }}" \
-            $(find artifacts/ -type f -name '*.zip') \
+            release_assets/*.zip \
             EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md \
             --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
             --notes-file NOTA_RELEASE.md
