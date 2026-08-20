@@ -70,10 +70,11 @@ jobs:
         run: |
           python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
           python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
-      - name: Build onefile
+      - name: Build onefile (Linux-optimized)
         run: |
-          python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
+          python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile_linux.spec
           ls -la dist_onefile/AudioClass
+          echo "Binary size: $(du -h dist_onefile/AudioClass | cut -f1)"
       - name: Selftest transcripcion
         run: |
           chmod +x dist_onefile/AudioClass
@@ -85,6 +86,7 @@ jobs:
           zip -j AudioClass_v9.1_LINUX.zip dist_onefile/AudioClass \
             LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
           ls -lh AudioClass_v9.1_LINUX.zip
+          echo "ZIP size: $(stat --printf='%s' AudioClass_v9.1_LINUX.zip) bytes"
       - name: Subir artifacts Linux
         uses: actions/upload-artifact@v4
         with:
