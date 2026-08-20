@@ -1,8 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-AudioClass_v91_onefile_linux.spec — optimized for Linux CI builds.
-Same as AudioClass_v91_onefile.spec but excludes collect_data_files('faster_whisper')
-which pulls in large .so libraries and VAD data that bloat the binary to 3GB on Linux.
+AudioClass_v91_onefile_linux.spec — Ultra-lean for Linux CI builds.
+Goal: binary < 2 GB (GitHub release asset limit).
+
+Key differences from the standard spec:
+  - collect_data_files('faster_whisper') EXCLUDED (saves ~2GB of .so libs)
+  - strip=True on EXE (removes debug symbols from ELF)
+  - Aggressive excludes for modules the app never uses at runtime
 """
 import os, sys
 from PyInstaller.utils.hooks import collect_data_files
@@ -19,21 +23,17 @@ def _assets():
     if os.path.exists(src):
         datas.append((src, "assets"))
     # Modelo Whisper tiny
-    for f in ("tiny.pt",):
-        src = os.path.join("models", f)
-        if os.path.exists(src):
-            datas.append((src, "models"))
+    src = os.path.join("models", "tiny.pt")
+    if os.path.exists(src):
+        datas.append((src, "models"))
     # Modelos CT2 (tiny + base)
     for name in ("tiny", "base"):
         d = os.path.join("models_ct2", name)
         if os.path.isdir(d) and os.path.exists(os.path.join(d, "model.bin")):
             for f in os.listdir(d):
                 datas.append((os.path.join(d, f), os.path.join("models_ct2", name)))
-    # Whisper data files (mel_filters.npz, tiktoken) — needed for transcribe
+    # Whisper data files (mel_filters.npz, tiktoken)
     datas += collect_data_files('whisper')
-    # NOTE: collect_data_files('faster_whisper') EXCLUDED for Linux to avoid
-    # bloating the binary with .so libraries and silero VAD data (~2GB extra).
-    # The app uses CT2 models directly and doesn't need faster_whisper's data files.
     return datas
 
 a = Analysis(
@@ -69,12 +69,10 @@ a = Analysis(
         'faster_whisper.feature_extractor',
         'faster_whisper.tokenizer',
         'faster_whisper.utils',
-        'faster_whisper.vad',
         'ctranslate2',
         'av',
         'tokenizers',
         'tqdm',
-        'onnxruntime',
         'whisper',
         'whisper.tokenizer',
         'whisper.decoding',
@@ -96,6 +94,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        # Heavy modules NOT needed at runtime
         'torchaudio',
         'torch.utils.tensorboard',
         'matplotlib.pyplot',
@@ -110,6 +109,38 @@ a = Analysis(
         'PySide2',
         'PySide6',
         'tkinter.test',
+        # ONNX runtime (faster_whisper can use ctranslate2 without it for int8)
+        'onnxruntime',
+        'onnxruntime.capi',
+        # Unused heavy submodules
+        'numpy.f2py',
+        'numpy.distutils',
+        'scipy.spatial',
+        'scipy.optimize',
+        'scipy.integrate',
+        'scipy.interpolate',
+        'scipy.signal',
+        'scipy.stats',
+        'matplotlib.mlab',
+        'matplotlib.tri',
+        'matplotlib.contour',
+        'PIL.TiffImagePlugin',
+        'PIL.WmfImagePlugin',
+        'PIL.ImImagePlugin',
+        'PIL.MicImagePlugin',
+        'PIL.FliImagePlugin',
+        'PIL.GifImagePlugin',
+        'PIL.BlpImagePlugin',
+        'PIL.TgaImagePlugin',
+        'PIL.SunImagePlugin',
+        'PIL.PsdImagePlugin',
+        'PIL.MspImagePlugin',
+        'PIL.PcxImagePlugin',
+        'PIL.PpmImagePlugin',
+        'PIL.SgiImagePlugin',
+        'PIL.XbmImagePlugin',
+        'PIL.XpmImagePlugin',
+        'PIL.XvImagePlugin',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -128,7 +159,7 @@ exe = EXE(
     name='AudioClass',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=True,    # Strip debug symbols from ELF — saves hundreds of MB
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
