@@ -52,6 +52,18 @@ tar xJf AudioClass_v9.1_LINUX.tar.xz
 1. Descarga `AudioClass_v9.1_MACOS.zip` desde [Releases](https://github.com/Nagamot-Byt/AudioClass/releases/tag/v9.1-final)
 2. Descomprime y ejecuta el binario
 
+### Desarrollo (desde el codigo fuente)
+
+```bash
+# Windows
+doble-clic en quick_start.bat
+
+# Linux / macOS
+bash quick_start.sh
+```
+
+Estos scripts crean un entorno virtual, instalan dependencias y abren la app en un solo clic.
+
 ### Desde codigo fuente
 
 ```bash
