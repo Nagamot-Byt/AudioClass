@@ -145,59 +145,128 @@ jobs:
     needs: [build-windows, build-linux, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-      - name: Listar artifacts
+      - name: Listar artifacts descargados
         run: |
           echo "=== Disk ==="
           df -h /
-          echo "=== Zips ==="
-          find artifacts/ -type f -name '*.zip' -exec ls -lh {} \;
-      - name: Crear Release si no existe
+          echo "=== All files ==="
+          find artifacts/ -type f -exec ls -lh {} \;
+      - name: Crear Release (si no existe)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
-            gh release create "${{ github.ref_name }}" \
-              --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
+          TAG="${{ github.ref_name }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "AudioClass $TAG" \
               --notes-file NOTA_RELEASE.md
           else
-            echo "Release ya existe, actualizando notas"
-            gh release edit "${{ github.ref_name }}" \
-              --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
+            gh release edit "$TAG" \
+              --title "AudioClass $TAG" \
               --notes-file NOTA_RELEASE.md
           fi
-      - name: Upload Windows ZIP
+      - name: Subir todos los assets via Python
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
-          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
-          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
-          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-      - name: Upload Linux ZIP
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.zip' | head -1)
-          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
-          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-      - name: Upload macOS ZIP
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_MACOS.zip' | head -1)
-          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
-          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-      - name: Upload docs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ github.ref_name }}" \
-            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md --clobber
+          python3 << 'PYEOF'
+          import os, sys, json, time
+          import urllib.request, urllib.error, ssl
+
+          token = os.environ["GH_TOKEN"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          repo = "Nagamot-Byt/AudioClass"
+
+          # --- helpers ---
+          class NoTimeoutHTTPAdapter:
+              """Custom opener with long timeout for large uploads."""
+              pass
+
+          def api(method, url, data=None, timeout=120):
+              hdrs = {
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+              }
+              body = json.dumps(data).encode() if data else None
+              req = urllib.request.Request(url, headers=hdrs, data=body, method=method)
+              return urllib.request.urlopen(req, timeout=timeout)
+
+          # 1. Find release
+          resp = json.loads(api("GET", f"https://api.github.com/repos/{repo}/releases/tags/{tag}").read())
+          release_id = resp["id"]
+          upload_base = resp["upload_url"].split("{")[0]
+          existing = {a["name"] for a in resp.get("assets", [])}
+          print(f"Release {tag} (id={release_id}), existing assets: {existing}")
+
+          # 2. Collect files
+          import glob as g
+          files = []
+          # Docs first (quick smoke test)
+          for doc in ["EULA.txt", "AVISO_DE_PRIVACIDAD.txt", "TERCEROS_Y_LICENCIAS.md", "NOTA_RELEASE.md"]:
+              if os.path.exists(doc):
+                  files.append(doc)
+          # Zips
+          for pattern in ["AudioClass_v9.1_COMPLETA.zip", "AudioClass_v9.1_LINUX.zip", "AudioClass_v9.1_MACOS.zip"]:
+              matches = g.glob(f"artifacts/**/{pattern}", recursive=True)
+              if matches:
+                  files.append(matches[0])
+
+          if not files:
+              print("No files to upload")
+              sys.exit(0)
+
+          # 3. Upload each with retry (streaming, 5 min timeout per file)
+          failed = []
+          for filepath in files:
+              fname = os.path.basename(filepath)
+              size_mb = os.path.getsize(filepath) / (1024 * 1024)
+              print(f"\n--- {fname} ({size_mb:.1f} MB) ---")
+
+              if fname in existing:
+                  print(f"  Skipping (already uploaded)")
+                  continue
+
+              url = f"{upload_base}?name={fname}"
+              for attempt in range(3):
+                  try:
+                      # Stream upload in chunks
+                      with open(filepath, "rb") as f:
+                          data = f.read()
+                      req = urllib.request.Request(
+                          url, data=data, method="POST",
+                          headers={
+                              "Authorization": f"Bearer {token}",
+                              "Accept": "application/vnd.github+json",
+                              "Content-Type": "application/octet-stream",
+                          }
+                      )
+                      # Use a very long timeout for large files
+                      resp = urllib.request.urlopen(req, timeout=600)
+                      result = json.loads(resp.read())
+                      print(f"  OK (attempt {attempt+1}, id={result.get('id', '?')})")
+                      break
+                  except Exception as e:
+                      print(f"  Attempt {attempt+1} failed: {e}")
+                      if attempt < 2:
+                          time.sleep(10)
+                      else:
+                          failed.append(fname)
+
+          # 4. Report
+          print(f"\n=== RESULT: {len(files)-len(failed)}/{len(files)} uploaded ===")
+          if failed:
+              print(f"FAILED: {failed}")
+              sys.exit(1)
+          print("All assets uploaded successfully!")
+          PYEOF
       - name: Verificar Release
         env:
           GH_TOKEN: ${{ github.token }}
