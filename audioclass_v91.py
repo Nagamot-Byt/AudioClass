@@ -137,12 +137,22 @@ def _sweep_stale_temps(max_age=3600):
 
 # Importar config_manager (extraido para mantenibilidad)
 from config_manager import (
-    CONFIG_PATH, DEFAULT_CONFIG, _SECRET_FIELDS,
-    _encrypt_secret, _decrypt_secret, load_config, save_config,
+    DEFAULT_CONFIG, _SECRET_FIELDS,
+    _encrypt_secret, _decrypt_secret,
     OUTPUT_DIR as _CM_OUTPUT_DIR,
 )
 # Mantener OUTPUT_DIR del modulo original para backward compat
 OUTPUT_DIR = _CM_OUTPUT_DIR
+CONFIG_PATH = os.path.join(OUTPUT_DIR, "audioclass_config.json")
+
+# Wrappers que usan CONFIG_PATH de este namespace (los tests overridean
+# ac.CONFIG_PATH para redirigir la config a un archivo temporal).
+from config_manager import load_config as _cm_load_config
+def load_config(path=None):
+    return _cm_load_config(path=path or CONFIG_PATH)
+from config_manager import save_config as _cm_save_config
+def save_config(cfg, path=None):
+    return _cm_save_config(cfg, path=path or CONFIG_PATH)
 
 # ── Sistema de diseño (escala azul-gris-blanco-negro, WCAG AA) ─────────────
 # El acento es AZUL; fondos y superficies en escala de grises/azules pizarra;
