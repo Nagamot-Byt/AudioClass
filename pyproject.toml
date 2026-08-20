@@ -27,7 +27,7 @@ dependencies = [
     "customtkinter>=5.2",
     "fpdf2>=2.7",
     "pyaudio>=0.2.13",
-    "sounddevice>=0.4",
+    "sounddevice>=0.5.6",
     "faster-whisper>=1.0",
     "requests>=2.28",
 ]
