@@ -179,11 +179,40 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
             --notes-file NOTA_RELEASE.md
-      - name: Subir assets via Python+curl
+      - name: Subir docs legales
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 upload_release_assets.py
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md --clobber
+
+      - name: Subir ZIP Windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
+          echo "Windows ZIP: $ZIP ($(du -h "$ZIP" | cut -f1))"
+          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
+
+      - name: Subir ZIP Linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_LINUX.zip' | head -1)
+          echo "Linux ZIP: $ZIP ($(du -h "$ZIP" | cut -f1))"
+          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
+
+      - name: Subir ZIP macOS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_MACOS.zip' | head -1)
+          echo "macOS ZIP: $ZIP ($(du -h "$ZIP" | cut -f1))"
+          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
+
       - name: Verificar Release final
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release view "${{ github.ref_name }}"
+        run: |
+          echo '=== Assets ==='
+          gh release view "${{ github.ref_name }}"
