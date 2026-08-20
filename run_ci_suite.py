@@ -50,6 +50,7 @@ SUITE = [
     ("test_privacy_consent",   r"PRIVACY_SMOKE: \d+ OK, 0 fallos"),
     ("test_colab_server_security", r"COLAB_SERVER_SECURITY: \d+ OK, 0 fallos"),
     ("test_code_signing",       r"CODESIGN_OK"),
+    ("test_refactored_modules", r"REFACTORED_OK"),
     # Motor y exportación (voz real + modelos)
     ("test_parallel_transcribe", r"ALL_OK"),
     ("test_export_docx_pdf",   r"EXPORT_OK"),

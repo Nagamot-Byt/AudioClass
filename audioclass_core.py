@@ -172,6 +172,13 @@ class AudioPipeline:
     }
 
     def __init__(self, profile_name="Clase Universitaria", fast_mode=False, use_vad=True):
+        """Inicializa el pipeline de audio con un perfil de procesamiento.
+
+        Args:
+            profile_name: Nombre del perfil (ej: 'Clase Universitaria', 'Podcast').
+            fast_mode: True para pipeline rapido (menos pasos, n_fft menor).
+            use_vad: True para activar deteccion de actividad de voz (VAD).
+        """
         self.profile = self.PROFILES.get(profile_name, self.PROFILES["Clase Universitaria"])
         self.fast_mode = fast_mode
         self.use_vad = use_vad
@@ -182,6 +189,19 @@ class AudioPipeline:
         self.long_audio_sec = 1200.0
 
     def process(self, audio, progress_callback=None):
+        """Procesa audio crudo y devuelve audio mejorado.
+
+        Aplica la cadena completa: reduccion de ruido, normalizacion,
+        ecualizacion, compresion, noise gate, limiter. En modo rapido
+        usa n_fft menor y menos pasos.
+
+        Args:
+            audio: Array numpy float32 con el audio crudo.
+            progress_callback: Callable(step, total, name) para reportar progreso.
+
+        Returns:
+            Array numpy float64 con el audio procesado.
+        """
         audio = audio.astype(np.float64)
         steps = 9 if not self.fast_mode else 5
         step = 0

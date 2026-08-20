@@ -161,6 +161,18 @@ from theme import (
 )
 C = PALETTES["dark"].copy()
 
+# ── Modulos extraidos ──────────────────────────────────────────────────
+from recording_engine import RecordingMixin
+from transcription_engines import TRANSCRIPTION_ENGINES as _TE_ENGINES, select_engine as _select_engine
+from export_utils import (
+    fmt_timestamp as _fmt_ts_standalone,
+    export_lines as _export_lines_standalone,
+    docx_paragraph as _docx_p_standalone,
+    docx_heading as _docx_heading_standalone,
+    pdf_badge as _pdf_badge_standalone,
+    parse_adapt_sections as _parse_adapt_standalone,
+)
+
 # ── Tipografia ────────────────────────────────────────────────────────────────
 def _load_bundled_fonts():
     """Registra las fuentes DejaVu empaquetadas (assets/) para Tk/CTk."""
@@ -280,6 +292,23 @@ def _same_mic(a, b):
 
 
 class App(ctk.CTk if CTK else ctk.Tk):
+    """Aplicacion principal de AudioClass v9.1.
+
+    Interfaz grafica para grabar, transcribir y exportar clases universitarias.
+    Soporta transcripcion local (faster-whisper/openai-whisper) y remota
+    (Gemini/OpenAI API/Colab).
+
+    Hereda de RecordingMixin para la logica de grabacion y usa
+    export_utils para generacion de documentos.
+
+    Attributes:
+        config: Dict de configuracion persistente.
+        pipeline: AudioPipeline para procesamiento de audio.
+        recording: bool, True si esta grabando.
+        last_text: str, ultimo texto transcrito.
+        last_segments: list, ultimos segmentos con timestamps.
+        last_model: str, modelo utilizado en la ultima transcripcion.
+    """
     def __init__(self):
         try:
             if CTK:
@@ -3606,6 +3635,17 @@ CONSEJOS:
             save_config(self.config)
 
     def _procsave(self):
+        """Procesa y guarda el audio grabado.
+
+        Lee el archivo temporal .raw, aplica el pipeline de audio
+        profesional (reduccion de ruido, normalizacion, ecualizacion),
+        guarda WAV mejorado y metadata JSON. En Modo Facil, inicia
+        transcripcion automatica al terminar.
+
+        Flags:
+            _proc_active: True mientras este hilo corre (bloquea nueva grabacion).
+            _stop_done: Se resetea al final para reabrir el ciclo grabar-parar.
+        """
         # Flag activo: _close no debe borrar el temporal mientras este hilo lo
         # esta leyendo (el finally de aqui lo limpia al terminar, tambien en
         # error). Sin esto, cerrar justo tras detener daba un audio vacio.
@@ -3710,6 +3750,17 @@ CONSEJOS:
         wavfile.write(path, SAMPLE_RATE, np.int16(np.clip(arr, -1.0, 1.0) * 32767))
 
     def _starttrans(self, timestamps, auto_adapt=False):
+        """Inicia el proceso de transcripcion del audio grabado.
+
+        Selecciona el motor segun la configuracion (local, gemini,
+        openai, colab) y lanza la transcripcion en un hilo separado.
+        Muestra progreso en vivo con barra y ETA.
+
+        Args:
+            timestamps: True para incluir timestamps en la transcripcion.
+            auto_adapt: True para ejecutar adaptacion academica automatica
+                        despues de transcribir (solo en Modo Facil).
+        """
         if not self.last_path or not os.path.exists(self.last_path):
             self._msg("warning", "Sin audio", "Primero graba y deten una clase.")
             return
