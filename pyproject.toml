@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "audioclass"
+version = "9.1.0"
+description = "Aplicacion de escritorio para grabar, transcribir y exportar clases universitarias"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Daniel Perez"}
+]
+keywords = ["transcripcion", "audio", "whisper", "ia", "educacion"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "customtkinter>=5.2",
+    "fpdf2>=2.7",
+    "pyaudio>=0.2.13",
+    "sounddevice>=0.4",
+    "faster-whisper>=1.0",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pyinstaller>=6.0",
+]
+whisper = [
+    "openai-whisper>=20230918",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nagamot-Byt/AudioClass"
+Repository = "https://github.com/Nagamot-Byt/AudioClass"
+Issues = "https://github.com/Nagamot-Byt/AudioClass/issues"
+
+[tool.setuptools.packages.find]
+include = ["audioclass*", "config_manager*", "export_utils*"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
