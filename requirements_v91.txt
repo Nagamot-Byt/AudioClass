@@ -16,7 +16,7 @@ faster-whisper==1.2.1
 torch==2.13.0+cpu
 
 # Exportacion
-fpdf2==2.8.7
+fpdf2==2.8.8
 matplotlib==3.11.1
 
 # API / Red
