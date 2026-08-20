@@ -36,6 +36,29 @@ jobs:
         run: bash desplegar_produccion.sh --with-onedir --skip-benchmark
         env:
           PYTHONUTF8: "1"
+      - name: Self-signing (certificado temporal para integridad)
+        shell: powershell
+        run: |
+          # Crear certificado auto-firmado (no resuelve SmartScreen, pero garantiza integridad)
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=AudioClass OSS" -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(1)
+          $pwd = ConvertTo-SecureString -String "AudioClass2026" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath "$env:TEMP\audioclass_sign.pfx" -Password $pwd | Out-Null
+          # Buscar el exe onefile (no el onedir)
+          $exe = Get-ChildItem -Path "AudioClass_v91.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { $exe = Get-ChildItem -Path "dist_onefile\AudioClass.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if (-not $exe) { $exe = Get-ChildItem -Path "dist\AudioClass\AudioClass.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if ($exe) {
+            Write-Host "Signing: $($exe.FullName)"
+            Set-AuthenticodeSignature -FilePath $exe.FullName -Certificate $cert -TimestampServer "http://timestamp.digicert.com" -HashAlgorithm SHA256
+            # Verificar firma
+            $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
+            Write-Host "Signature status: $($sig.Status)"
+          } else {
+            Write-Warning "EXE not found for signing"
+          }
+          # Limpiar certificado del store
+          Remove-Item -Path "Cert:\CurrentUser\My\$($cert.Thumbprint)" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$env:TEMP\audioclass_sign.pfx" -Force -ErrorAction SilentlyContinue
       - name: Subir artifacts Windows
         uses: actions/upload-artifact@v4
         with:
