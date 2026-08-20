@@ -81,17 +81,18 @@ jobs:
           timeout 180 xvfb-run -a dist_onefile/AudioClass \
             --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-      - name: Empaquetar zip Linux
+      - name: Empaquetar tar.xz Linux (mejor compresion que zip)
         run: |
-          zip -j AudioClass_v9.1_LINUX.zip dist_onefile/AudioClass \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-          ls -lh AudioClass_v9.1_LINUX.zip
-          echo "ZIP size: $(stat --printf='%s' AudioClass_v9.1_LINUX.zip) bytes"
+          tar -cJf AudioClass_v9.1_LINUX.tar.xz \
+            -C dist_onefile AudioClass \
+            -C "$GITHUB_WORKSPACE" LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
+          ls -lh AudioClass_v9.1_LINUX.tar.xz
+          echo "TAR.XZ size: $(stat --printf='%s' AudioClass_v9.1_LINUX.tar.xz) bytes"
       - name: Subir artifacts Linux
         uses: actions/upload-artifact@v4
         with:
           name: audioclass-linux
-          path: AudioClass_v9.1_LINUX.zip
+          path: AudioClass_v9.1_LINUX.tar.xz
           if-no-files-found: error
 
   # -- macOS --
@@ -192,18 +193,16 @@ jobs:
           ZIP=$(find artifacts/ -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
           echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
           gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-      - name: Upload Linux ZIP
+      - name: Upload Linux tar.xz
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -x
-          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.zip' | head -1)
-          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
-          echo "File size bytes: $(stat --printf='%s' "$ZIP")"
-          echo "Available disk: $(df -h / | tail -1)"
+          FILE=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.tar.xz' | head -1)
+          echo "Uploading $FILE ($(du -h "$FILE" | cut -f1))"
           for attempt in 1 2 3; do
             echo "Attempt $attempt..."
-            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber && echo "SUCCESS on attempt $attempt" && break
+            gh release upload "${{ github.ref_name }}" "$FILE" --clobber && echo "SUCCESS on attempt $attempt" && break
             echo "Attempt $attempt FAILED, waiting 15s..."
             sleep 15
           done
