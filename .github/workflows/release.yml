@@ -93,13 +93,11 @@ jobs:
           (cd dist && zip -r ../AudioClass_v9.1_LINUX_ONEDIR.zip AudioClass/)
           zip -j AudioClass_v9.1_LINUX_ONEDIR.zip \
             LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-      - name: Subir artifacts Linux
+      - name: Subir artifacts Linux (solo onefile)
         uses: actions/upload-artifact@v4
         with:
           name: audioclass-linux
-          path: |
-            AudioClass_v9.1_LINUX.zip
-            AudioClass_v9.1_LINUX_ONEDIR.zip
+          path: AudioClass_v9.1_LINUX.zip
           if-no-files-found: error
 
   # -- macOS --
@@ -166,8 +164,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-      - name: Listar artifacts
-        run: find artifacts/ -type f -name "*.zip" -exec ls -lh {} \;
+      - name: Listar artifacts y espacio
+        run: |
+          echo '=== Disk space ==='
+          df -h /
+          echo '=== ZIP files ==='
+          find artifacts/ -type f -name '*.zip' -exec ls -lh {} \;
+          echo '=== All files ==='
+          find artifacts/ -type f | wc -l
+          echo 'Total artifact size:'
+          du -sh artifacts/
       - name: Borrar Release previo si existe
         env:
           GH_TOKEN: ${{ github.token }}
