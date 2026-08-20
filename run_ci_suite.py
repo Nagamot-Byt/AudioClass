@@ -13,13 +13,13 @@ Cada entrada es (nombre del test sin .py, patrón de éxito). Los tests GUI
 display (Linux/CI); en Windows el display es nativo y no hace falta.
 
 Uso:
-    python -u run_ci_suite.py                 # suite completa (13 tests)
+    python -u run_ci_suite.py                 # suite completa (14 tests)
     python -u run_ci_suite.py --skip-benchmark # omite test_benchmark_models (lento)
     python -u run_ci_suite.py --list          # imprime la lista (nombres, 1 por línea)
     python -u run_ci_suite.py <nombre>        # un solo test (pasos nombrados del CI)
 
 Salida por test:  "OK   nombre (Ns)"  /  "FAIL nombre (rc=N, sin patrón ...)"
-Resumen final:    "CI_SUITE_OK (13/13)"  /  "CI_SUITE_FAIL (11/13)"
+Resumen final:    "CI_SUITE_OK (14/14)"  /  "CI_SUITE_FAIL (12/14)"
 Exit code 0 si TODOS pasan, 1 si alguno falla, 2 si el nombre no existe.
 """
 import os
@@ -49,6 +49,7 @@ SUITE = [
     ("test_wcag_contrast",     r"RESULTADO: TODO OK"),
     ("test_privacy_consent",   r"PRIVACY_SMOKE: \d+ OK, 0 fallos"),
     ("test_colab_server_security", r"COLAB_SERVER_SECURITY: \d+ OK, 0 fallos"),
+    ("test_code_signing",       r"CODESIGN_OK"),
     # Motor y exportación (voz real + modelos)
     ("test_parallel_transcribe", r"ALL_OK"),
     ("test_export_docx_pdf",   r"EXPORT_OK"),
