@@ -1,8 +1,5 @@
 name: Release (exe + zips)
 
-# Release multiplataforma: Windows + Linux + macOS.
-# Se dispara con push de tag v* o manualmente.
-
 on:
   push:
     tags: ["v*"]
@@ -43,9 +40,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: audioclass-windows
-          path: |
-            AudioClass_v9.1_COMPLETA.zip
-            AudioClass_v9.1_ONEDIR.zip
+          path: AudioClass_v9.1_COMPLETA.zip
           if-no-files-found: error
 
   # -- LINUX --
@@ -75,25 +70,22 @@ jobs:
         run: |
           python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
           python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
-      - name: Build onefile + onedir
+      - name: Build onefile
         run: |
           python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
-          python -m PyInstaller --noconfirm AudioClass_v91.spec
-          ls -la dist_onefile/AudioClass dist/AudioClass/AudioClass
+          ls -la dist_onefile/AudioClass
       - name: Selftest transcripcion
         run: |
           chmod +x dist_onefile/AudioClass
           timeout 180 xvfb-run -a dist_onefile/AudioClass \
             --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-      - name: Empaquetar zips Linux
+      - name: Empaquetar zip Linux
         run: |
           zip -j AudioClass_v9.1_LINUX.zip dist_onefile/AudioClass \
             LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-          (cd dist && zip -r ../AudioClass_v9.1_LINUX_ONEDIR.zip AudioClass/)
-          zip -j AudioClass_v9.1_LINUX_ONEDIR.zip \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-      - name: Subir artifacts Linux (solo onefile)
+          ls -lh AudioClass_v9.1_LINUX.zip
+      - name: Subir artifacts Linux
         uses: actions/upload-artifact@v4
         with:
           name: audioclass-linux
@@ -123,11 +115,10 @@ jobs:
         run: |
           python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
           python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
-      - name: Build onefile + onedir
+      - name: Build onefile
         run: |
           python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
-          python -m PyInstaller --noconfirm AudioClass_v91.spec
-          ls -la dist_onefile/AudioClass dist/AudioClass/AudioClass
+          ls -la dist_onefile/AudioClass
       - name: Selftest transcripcion
         run: |
           chmod +x dist_onefile/AudioClass
@@ -136,20 +127,16 @@ jobs:
           PID=$!; for i in $(seq 1 36); do sleep 5; kill -0 $PID 2>/dev/null || break; done
           kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-      - name: Empaquetar zips macOS
+      - name: Empaquetar zip macOS
         run: |
           zip -j AudioClass_v9.1_MACOS.zip dist_onefile/AudioClass \
             LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-          (cd dist && zip -r ../AudioClass_v9.1_MACOS_ONEDIR.zip AudioClass/)
-          zip -j AudioClass_v9.1_MACOS_ONEDIR.zip \
-            LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
+          ls -lh AudioClass_v9.1_MACOS.zip
       - name: Subir artifacts macOS
         uses: actions/upload-artifact@v4
         with:
           name: audioclass-macos
-          path: |
-            AudioClass_v9.1_MACOS.zip
-            AudioClass_v9.1_MACOS_ONEDIR.zip
+          path: AudioClass_v9.1_MACOS.zip
           if-no-files-found: error
 
   # -- PUBLICAR RELEASE --
@@ -160,65 +147,58 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download todos los artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-      - name: Listar artifacts y espacio
+      - name: Listar artifacts
         run: |
-          echo '=== Disk space ==='
+          echo "=== Disk ==="
           df -h /
-          echo '=== ZIP files ==='
+          echo "=== Zips ==="
           find artifacts/ -type f -name '*.zip' -exec ls -lh {} \;
-          echo '=== All files ==='
-          find artifacts/ -type f | wc -l
-          echo 'Total artifact size:'
-          du -sh artifacts/
-      - name: Borrar Release previo si existe
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
-      - name: Crear Release vacio
+      - name: Crear Release si no existe
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
-            --notes-file NOTA_RELEASE.md
-      - name: Subir docs legales
+          if ! gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release create "${{ github.ref_name }}" \
+              --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
+              --notes-file NOTA_RELEASE.md
+          else
+            echo "Release ya existe, actualizando notas"
+            gh release edit "${{ github.ref_name }}" \
+              --title "AudioClass ${{ github.ref_name }} (Multi-Plataforma)" \
+              --notes-file NOTA_RELEASE.md
+          fi
+      - name: Upload Windows ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
+          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
+          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
+      - name: Upload Linux ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.zip' | head -1)
+          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
+          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
+      - name: Upload macOS ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP=$(find artifacts/ -name 'AudioClass_v9.1_MACOS.zip' | head -1)
+          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
+          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
+      - name: Upload docs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ github.ref_name }}" \
             EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md --clobber
-
-      - name: Subir ZIP Windows
+      - name: Verificar Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
-          echo "Windows ZIP: $ZIP ($(du -h "$ZIP" | cut -f1))"
-          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-
-      - name: Subir ZIP Linux
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_LINUX.zip' | head -1)
-          echo "Linux ZIP: $ZIP ($(du -h "$ZIP" | cut -f1))"
-          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-
-      - name: Subir ZIP macOS
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ZIP=$(find artifacts/ -type f -name 'AudioClass_v9.1_MACOS.zip' | head -1)
-          echo "macOS ZIP: $ZIP ($(du -h "$ZIP" | cut -f1))"
-          gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-
-      - name: Verificar Release final
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo '=== Assets ==='
-          gh release view "${{ github.ref_name }}"
+        run: gh release view "${{ github.ref_name }}"
