@@ -70,9 +70,9 @@ jobs:
         run: |
           python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
           python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
-      - name: Build onedir (Linux)
+      - name: Build onedir (Linux-optimized)
         run: |
-          python -m PyInstaller --noconfirm AudioClass_v91.spec
+          python -m PyInstaller --noconfirm AudioClass_v91_linux.spec
           ls -la dist/AudioClass/
           du -sh dist/AudioClass/
       - name: Selftest transcripcion
@@ -198,12 +198,18 @@ jobs:
           set -x
           FILE=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.tar.xz' | head -1)
           echo "Uploading $FILE ($(du -h "$FILE" | cut -f1))"
+          echo "File bytes: $(stat --printf='%s' "$FILE")"
+          UPLOADED=0
           for attempt in 1 2 3; do
             echo "Attempt $attempt..."
-            gh release upload "${{ github.ref_name }}" "$FILE" --clobber && echo "SUCCESS on attempt $attempt" && break
+            gh release upload "${{ github.ref_name }}" "$FILE" --clobber && UPLOADED=1 && echo "SUCCESS on attempt $attempt" && break
             echo "Attempt $attempt FAILED, waiting 15s..."
             sleep 15
           done
+          if [ "$UPLOADED" != "1" ]; then
+            echo "ERROR: All upload attempts failed for Linux tar.xz"
+            exit 1
+          fi
       - name: Upload macOS ZIP
         env:
           GH_TOKEN: ${{ github.token }}
@@ -211,12 +217,17 @@ jobs:
           set -x
           ZIP=$(find artifacts/ -name 'AudioClass_v9.1_MACOS.zip' | head -1)
           echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
+          UPLOADED=0
           for attempt in 1 2 3; do
             echo "Attempt $attempt..."
-            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber && echo "SUCCESS on attempt $attempt" && break
+            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber && UPLOADED=1 && echo "SUCCESS on attempt $attempt" && break
             echo "Attempt $attempt FAILED, waiting 15s..."
             sleep 15
           done
+          if [ "$UPLOADED" != "1" ]; then
+            echo "ERROR: All upload attempts failed for macOS ZIP"
+            exit 1
+          fi
       - name: Verify release
         env:
           GH_TOKEN: ${{ github.token }}
