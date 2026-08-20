@@ -43,7 +43,7 @@ jobs:
           path: AudioClass_v9.1_COMPLETA.zip
           if-no-files-found: error
 
-  # -- LINUX --
+  # -- LINUX (onedir — exec is 50MB, shared libs compress well with tar.xz) --
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
@@ -70,21 +70,21 @@ jobs:
         run: |
           python -c "import os, shutil, whisper; [whisper.load_model(n) for n in ('tiny','base')]; os.makedirs('models',exist_ok=True); shutil.copy(os.path.expanduser('~/.cache/whisper/tiny.pt'),'models/tiny.pt')"
           python -c "from huggingface_hub import snapshot_download; [snapshot_download(f'Systran/faster-whisper-{n}', local_dir=f'models_ct2/{n}') for n in ('tiny','base')]"
-      - name: Build onefile (Linux-optimized)
+      - name: Build onedir (Linux)
         run: |
-          python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile_linux.spec
-          ls -la dist_onefile/AudioClass
-          echo "Binary size: $(du -h dist_onefile/AudioClass | cut -f1)"
+          python -m PyInstaller --noconfirm AudioClass_v91.spec
+          ls -la dist/AudioClass/
+          du -sh dist/AudioClass/
       - name: Selftest transcripcion
         run: |
-          chmod +x dist_onefile/AudioClass
-          timeout 180 xvfb-run -a dist_onefile/AudioClass \
+          chmod +x dist/AudioClass/AudioClass
+          timeout 180 xvfb-run -a dist/AudioClass/AudioClass \
             --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-      - name: Empaquetar tar.xz Linux (mejor compresion que zip)
+      - name: Empaquetar tar.xz Linux
         run: |
           tar -cJf AudioClass_v9.1_LINUX.tar.xz \
-            -C dist_onefile AudioClass \
+            -C dist AudioClass \
             -C "$GITHUB_WORKSPACE" LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
           ls -lh AudioClass_v9.1_LINUX.tar.xz
           echo "TAR.XZ size: $(stat --printf='%s' AudioClass_v9.1_LINUX.tar.xz) bytes"
@@ -161,8 +161,6 @@ jobs:
           df -h /
           echo "=== All files ==="
           find artifacts/ -type f -exec ls -lh {} \;
-          echo "=== ZIP sizes ==="
-          find artifacts/ -name '*.zip' -exec sh -c 'echo "$(basename "$1"): $(stat --printf="%s" "$1") bytes"' _ {} \;
       - name: Delete existing release
         env:
           GH_TOKEN: ${{ github.token }}
