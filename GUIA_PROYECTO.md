@@ -158,7 +158,60 @@ c0c766e ci: Linux switched to onedir build (50MB exe + compressed shared libs)
 
 ---
 
-## 9. Proximos Pasos Sugeridos
+## 9. Edicion Rapida: Que Archivo Tocar
+
+| Quiero cambiar... | Edita... | Notas |
+|---|---|---|
+| **UI / Botones / Layout** | `audioclass_v91.py` | Clase `App` — casi todo esta ahi |
+| **Colores / Tema** | `assets/audioclass_theme.json` | Paleta CTk, cambio en caliente |
+| **Grabacion de audio** | `audioclass_v91.py` (metodo `_start_recording`) | Usa pyaudio |
+| **Transcripcion local** | `audioclass_core.py` | Pipeline faster_whisper |
+| **Transcripcion API** | `audioclass_v91.py` (metodo `_transcribe_gemini` / `_transcribe_openai`) | Endpoints Gemini y OpenAI |
+| **Exportacion PDF/DOCX** | `audioclass_v91.py` (metodo `_export_pdf`, `_export_docx`) | Usa fpdf2 y python-docx |
+| **Servidor Colab** | `audioclass_colab_server_v91.py` | Flask app |
+| **Optimizador de microfono** | `optimizar_mic.py` | Windows COM |
+| **Configuracion persistente** | `audioclass_v91.py` (constante `CONFIG_PATH`) | JSON en ~/AudioClass_Recordings |
+| **Modelos Whisper** | `models_ct2/tiny/` y `models_ct2/base/` | CT2 format |
+| **Tests** | `test_*.py` | 13 tests en suite |
+| **CI/CD** | `.github/workflows/ci.yml` y `release.yml` | GitHub Actions |
+| **Build Windows** | `desplegar_produccion.sh` + `AudioClass_v91_onefile.spec` | |
+| **Build Linux** | `build_linux.sh` + `AudioClass_v91_linux.spec` | |
+| **Build macOS** | `build_mac.sh` + `AudioClass_v91_onefile.spec` | |
+| **Documentos legales** | `LICENCIA.txt`, `EULA.txt`, `AVISO_DE_PRIVACIDAD.txt` | |
+
+### Flujo tipico de edicion
+
+```bash
+# 1. Clonar / abrir la carpeta
+cd "AudioClass"
+
+# 2. Instalar dependencias
+pip install -r requirements_v91.txt
+
+# 3. Editar el codigo
+# ... (ver tabla arriba)
+
+# 4. Probar en vivo (sin compilar)
+python audioclass_v91.py
+
+# 5. Correr tests para no romper nada
+python run_ci_suite.py
+
+# 6. Compilar exe (opcional)
+bash desplegar_produccion.sh --skip-tests
+
+# 7. Commitear
+git add -A && git commit -m "descripcion"
+git push origin main
+```
+
+### Arquitectura en una linea
+
+`audioclass_v91.py` es la app GUI que orquesta todo. `audioclass_core.py` es el motor de audio/transcripcion. El server Flask (`audioclass_colab_server_v91.py`) es independiente y corre por separado. Los specs PyInstaller empaquetan todo en un exe autocontenido.
+
+---
+
+## 10. Proximos Pasos Sugeridos
 
 1. **Firma de codigo**: Requiere certificado OV/EV (~200-400 USD/ano)
 2. **Auto-arranque**: Implementar en Windows (registry) y macOS (Login Items)
@@ -168,7 +221,7 @@ c0c766e ci: Linux switched to onedir build (50MB exe + compressed shared libs)
 
 ---
 
-## 10. Comandos Rapidos
+## 11. Comandos Rapidos
 
 ```bash
 # Ver ultimo commit
