@@ -44,7 +44,14 @@ build_linux.sh                 # Build Linux
 build_mac.sh                   # Build macOS
 build.bat                      # Build Windows (doble clic)
 
-run_ci_suite.py                # Suite de tests (13 tests)
+run_ci_suite.py                # Suite de tests (14 tests)
+quick_start.bat                # Inicio rapido Windows (doble clic)
+quick_start.sh                 # Inicio rapido Linux/macOS
+FIRMA_CODIGO.md                # Guia de firma de codigo + SignPath
+CODE_SIGNING_POLICY.md         # Politica de firma (req. SignPath)
+test_code_signing.py           # Test de firma authenticode
+config_manager.py              # Config persistente (extraido)
+theme.py                       # Tema y paletas WCAG (extraido)
 ```
 
 ---
@@ -229,9 +236,54 @@ gh run view <run-id> --log > ci_logs.txt
 
 ---
 
-## 10. Proximos Pasos Sugeridos
+## 10. Firma de Codigo
 
-1. **Firma de codigo**: Requiere certificado OV/EV (~200-400 USD/ano)
+### Estado actual
+
+- **Self-signing**: Implementado en `release.yml` (certificado temporal por build)
+- **SignPath Foundation**: Pendiente de solicitud (gratis para open source)
+- Docs: `FIRMA_CODIGO.md`, `CODE_SIGNING_POLICY.md`
+
+### Self-signing (ya funciona)
+
+El pipeline de release genera un certificado auto-firmado y firma el exe Windows:
+
+```
+release.yml > Build Windows > Self-signing (certificado temporal)
+```
+
+Esto **NO** elimina SmartScreen pero garantiza integridad del binario.
+
+### SignPath Foundation (RECOMENDADO)
+
+| Requisito | AudioClass | Estado |
+|---|---|---|
+| Licencia OSI (MIT) | MIT | OK |
+| Sin codigo propietario | Solo OSS | OK |
+| Proyecto activo | Commits recientes | OK |
+| Release publicada | v9.1-final | OK |
+| Documentacion | README + GUIA | OK |
+| MFA en GitHub | Configurar | PENDIENTE |
+| Code signing policy | `CODE_SIGNING_POLICY.md` | OK |
+| Teams GitHub | Crear | PENDIENTE |
+
+### Pasos para aplicar a SignPath
+
+1. **Habilitar MFA** en GitHub (Settings > Password > 2FA)
+2. **Crear organizacion** en GitHub (si `Nagamot-Byt` es cuenta personal)
+3. **Crear teams**: `maintainers` (authors + reviewers) y `approvers`
+4. **Ir a** https://signpath.org > Apply
+5. **Vincular repositorio** `Nagamot-Byt/AudioClass`
+6. **Esperar** 2-3 semanas de revision
+7. **Integrar** `SignPath/signpath-action@v1` en `release.yml`
+
+Ver `FIRMA_CODIGO.md` para instrucciones detalladas.
+
+---
+
+## 11. Proximos Pasos Sugeridos
+
+1. **SignPath Foundation**: Aplicar (gratis) para firma EV real
 2. **Auto-arranque**: Implementar en Windows (registry) y macOS (Login Items)
 3. **Notificaciones**: Push notifications para updates
 4. **Mas idiomas**: Interface en ingles/frances
