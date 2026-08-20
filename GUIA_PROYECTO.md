@@ -1,7 +1,7 @@
 # AudioClass v9.1 - Guia del Proyecto
 
 > **Estado actual**: PRODUCCION (Release v9.1-final publicada)
-> **Ultimo commit**: fc25a94 en main
+> **Ultimo commit**: 23c9a47 en main
 > **Remoto**: https://github.com/Nagamot-Byt/AudioClass
 
 ---
@@ -146,14 +146,11 @@ tar xJf AudioClass_v9.1_LINUX.tar.xz
 ## 8. Commits Recientes (orden cronologico)
 
 ```
+23c9a47 doc: enhance GUIA_PROYECTO.md with quick-edit guide and architecture map
+5024c38 doc: add GUIA_PROYECTO.md for easy project re-engagement
 fc25a94 ci: split Linux tar.xz into 1GB parts for GitHub 2GB asset limit
 ce7c809 ci: Linux onedir with lean spec + fix retry loop exit code
 c0c766e ci: Linux switched to onedir build (50MB exe + compressed shared libs)
-39bf405 ci: Linux uses tar.xz instead of zip (60-70% better compression on ELF)
-91c4988 ci: aggressive Linux size reduction - exclude onnx, heavy scipy/matplotlib/PIL
-7a6150b ci: fix Linux build - use lean spec excluding faster_whisper data files
-4b7efa0 ci: retry loop for Linux/macOS ZIP uploads, verbose size debug
-4349289 ci: fix publish-release - delete+recreate, single-file gh upload steps
 ```
 
 ---
@@ -205,6 +202,27 @@ git add -A && git commit -m "descripcion"
 git push origin main
 ```
 
+### Agregar un nuevo proveedor de IA
+
+1. Busca en `audioclass_v91.py` el patron `_transcribe_gemini` / `_transcribe_openai`
+2. Duplica uno de esos metodos y adapta el endpoint + payload
+3. Registra el proveedor en el diccionario `TRANSCRIPTION_ENGINES` (seccion de configuracion)
+4. Añade el toggle en Configuracion (metodo `_build_config_dialog`)
+5. Agrega un test en `test_adapt_engines.py`
+
+### Leer logs de CI cuando falla
+
+```bash
+# Ver el ultimo run
+gh run list --limit 3
+
+# Ver logs de un run
+gh run view <run-id> --log-failed
+
+# Descargar logs completos
+gh run view <run-id> --log > ci_logs.txt
+```
+
 ### Arquitectura en una linea
 
 `audioclass_v91.py` es la app GUI que orquesta todo. `audioclass_core.py` es el motor de audio/transcripcion. El server Flask (`audioclass_colab_server_v91.py`) es independiente y corre por separado. Los specs PyInstaller empaquetan todo en un exe autocontenido.
@@ -235,6 +253,12 @@ bash desplegar_produccion.sh --with-onedir
 
 # Correr tests
 python run_ci_suite.py
+
+# Selftest del exe (transcripcion real)
+./"AudioClass COMPLETA v9.1.exe" --selftest-transcribe tts_clase.wav salida.txt progreso.txt
+
+# Ver CI en GitHub
+git log --oneline -3 && gh run list --limit 3
 
 # Ver Release en GitHub
 # https://github.com/Nagamot-Byt/AudioClass/releases/tag/v9.1-final
