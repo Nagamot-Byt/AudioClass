@@ -1,17 +1,29 @@
-customtkinter>=5.2.0
-numpy>=1.24.0
-scipy>=1.10.0
-sounddevice>=0.4.6
-openai-whisper>=20231117
-# faster-whisper (CTranslate2 int8, ~2-5x mas rapido en CPU) se usa en modo
-# DESARROLLO (backend auto). El exe compilado fuerza openai (empaqueta .pt).
-faster-whisper>=1.0.0
-torch>=2.0.0
-noisereduce>=3.0.0
-matplotlib>=3.7.0
-fpdf2>=2.7.0
-pyinstaller>=6.0
-requests>=2.31.0
+# AudioClass v9.1 - Dependencias pinned para reproducibilidad
+# Actualizado: 2026-08-20
+
+# UI
+customtkinter==6.0.0
+
+# Audio / DSP
+numpy==2.4.6
+scipy==1.18.0
+sounddevice==0.5.5
+noisereduce==3.0.3
+
+# Transcripcion
+openai-whisper==20250625
+faster-whisper==1.2.1
+torch==2.13.0+cpu
+
+# Exportacion
+fpdf2==2.8.7
+matplotlib==3.11.1
+
+# API / Red
+requests==2.34.2
+google-auth>=2.20.0
 google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.100.0
-google-auth>=2.20.0
+
+# Build
+pyinstaller==6.21.0
