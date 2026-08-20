@@ -43,7 +43,7 @@ jobs:
           path: AudioClass_v9.1_COMPLETA.zip
           if-no-files-found: error
 
-  # -- LINUX (onedir — exec is 50MB, shared libs compress well with tar.xz) --
+  # -- LINUX (onedir, split into <1GB parts) --
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
@@ -56,7 +56,7 @@ jobs:
       - name: Dependencias del sistema
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libportaudio2 libsndfile1 libglib2.0-0
+          sudo apt-get install -y -qq xvfb libportaudio2 libsndfile1 libglib2.0-0 bc
           sudo apt-get install -y -qq libgl1 2>/dev/null || sudo apt-get install -y -qq libgl1-mesa-glx 2>/dev/null || true
           sudo apt-get install -y -qq libegl1-mesa 2>/dev/null || sudo apt-get install -y -qq libegl1 2>/dev/null || true
       - name: Dependencias Python
@@ -81,18 +81,31 @@ jobs:
           timeout 180 xvfb-run -a dist/AudioClass/AudioClass \
             --selftest-transcribe tts_clase.wav /tmp/selftest_out.txt /tmp/selftest_progress.txt || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-      - name: Empaquetar tar.xz Linux
+      - name: Empaquetar tar.xz Linux (split <1GB parts)
         run: |
           tar -cJf AudioClass_v9.1_LINUX.tar.xz \
             -C dist AudioClass \
             -C "$GITHUB_WORKSPACE" LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-          ls -lh AudioClass_v9.1_LINUX.tar.xz
-          echo "TAR.XZ size: $(stat --printf='%s' AudioClass_v9.1_LINUX.tar.xz) bytes"
+          FULL_SIZE=$(stat --printf='%s' AudioClass_v9.1_LINUX.tar.xz)
+          echo "Full tar.xz: $FULL_SIZE bytes ($(echo "$FULL_SIZE / 1048576" | bc)MB)"
+          # GitHub limit is 2GB per asset. Split if >1GB.
+          THRESHOLD=1073741824
+          if [ "$FULL_SIZE" -gt "$THRESHOLD" ]; then
+            echo "Splitting into 1GB parts..."
+            split -b 1073741824 -d AudioClass_v9.1_LINUX.tar.xz AudioClass_v9.1_LINUX_part_
+            ls -lh AudioClass_v9.1_LINUX_part_*
+            echo "PARTS=1"
+          else
+            echo "No split needed (<1GB)"
+            echo "PARTS=0"
+          fi
       - name: Subir artifacts Linux
         uses: actions/upload-artifact@v4
         with:
           name: audioclass-linux
-          path: AudioClass_v9.1_LINUX.tar.xz
+          path: |
+            AudioClass_v9.1_LINUX.tar.xz
+            AudioClass_v9.1_LINUX_part_*
           if-no-files-found: error
 
   # -- macOS --
@@ -191,24 +204,42 @@ jobs:
           ZIP=$(find artifacts/ -name 'AudioClass_v9.1_COMPLETA.zip' | head -1)
           echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
           gh release upload "${{ github.ref_name }}" "$ZIP" --clobber
-      - name: Upload Linux tar.xz
+      - name: Upload Linux (tar.xz or split parts)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -x
-          FILE=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.tar.xz' | head -1)
-          echo "Uploading $FILE ($(du -h "$FILE" | cut -f1))"
-          echo "File bytes: $(stat --printf='%s' "$FILE")"
-          UPLOADED=0
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt..."
-            gh release upload "${{ github.ref_name }}" "$FILE" --clobber && UPLOADED=1 && echo "SUCCESS on attempt $attempt" && break
-            echo "Attempt $attempt FAILED, waiting 15s..."
-            sleep 15
-          done
-          if [ "$UPLOADED" != "1" ]; then
-            echo "ERROR: All upload attempts failed for Linux tar.xz"
-            exit 1
+          # Check if split parts exist
+          PARTS=$(find artifacts/ -name 'AudioClass_v9.1_LINUX_part_*' | sort)
+          if [ -n "$PARTS" ]; then
+            echo "Uploading split parts:"
+            echo "$PARTS"
+            UPLOADED=0
+            for attempt in 1 2 3; do
+              echo "Attempt $attempt..."
+              gh release upload "${{ github.ref_name }}" $PARTS --clobber && UPLOADED=1 && echo "SUCCESS on attempt $attempt" && break
+              echo "Attempt $attempt FAILED, waiting 15s..."
+              sleep 15
+            done
+            if [ "$UPLOADED" != "1" ]; then
+              echo "ERROR: All upload attempts failed for Linux parts"
+              exit 1
+            fi
+          else
+            # Single tar.xz file
+            FILE=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.tar.xz' | head -1)
+            echo "Uploading $FILE ($(du -h "$FILE" | cut -f1))"
+            UPLOADED=0
+            for attempt in 1 2 3; do
+              echo "Attempt $attempt..."
+              gh release upload "${{ github.ref_name }}" "$FILE" --clobber && UPLOADED=1 && echo "SUCCESS on attempt $attempt" && break
+              echo "Attempt $attempt FAILED, waiting 15s..."
+              sleep 15
+            done
+            if [ "$UPLOADED" != "1" ]; then
+              echo "ERROR: All upload attempts failed for Linux tar.xz"
+              exit 1
+            fi
           fi
       - name: Upload macOS ZIP
         env:
