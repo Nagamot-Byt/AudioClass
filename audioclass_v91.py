@@ -70,6 +70,14 @@ except Exception:
 from scipy import signal
 from scipy.io import wavfile
 
+# --- Verificacion de calidad de audio y solucionador de errores de sonido ---
+try:
+    from audio_quality_checker import check_audio_quality, check_wav_file, format_report_text
+    from sound_error_solver import solve_audio_issues, suggest_manual_actions, format_fix_report
+    AUDIO_QA = True
+except ImportError:
+    AUDIO_QA = False
+
 # ─── UI ─────────────────────────────────────────────────────────────────────
 import tkinter as tk
 try:
@@ -3483,18 +3491,70 @@ CONSEJOS:
 
             if getattr(self, "_audio_overflows", 0) > 0:
                 self.q.put(("log", f"Se detectaron {self._audio_overflows} desbordamientos de audio.\n"
-                                   "Puede haber cortes o estática. Cierra programas pesados y vuelve a grabar si es necesario.\n"))
+                                   "Puede haber cortes o estatica. Cierra programas pesados y vuelve a grabar si es necesario.\n"))
             if getattr(self, "vu_clips", 0) > 0:
-                self.q.put(("log", f"Se detectaron {self.vu_clips} momentos de recorte (volumen al límite).\n"
-                                   "Baja el volumen del micrófono o aléjate un poco para mejor calidad.\n"))
-            # Umbral minimo (5 lecturas ≈ 0.4s) para evitar falsos positivos
+                self.q.put(("log", f"Se detectaron {self.vu_clips} momentos de recorte (volumen al limite).\n"
+                                   "Baja el volumen del microfono o alejate un poco para mejor calidad.\n"))
+            # Umbral minimo (5 lecturas = 0.4s) para evitar falsos positivos
             if getattr(self, "vu_low", 0) > 5:
                 self.q.put(("log", f"Nivel de micro muy bajo detectado ({self.vu_low} lecturas).\n"
-                                   "Acerca el micrófono o sube el volumen de entrada para mejor transcripción.\n"))
+                                   "Acerca el microfono o sube el volumen de entrada para mejor transcripcion.\n"))
             # Audio sin voz (estatica): nivel casi constante -> no hay voz real
             if getattr(self, "vu_static", False):
-                self.q.put(("log", "Audio sin voz detectada (nivel constante / estática).\n"
-                                   "La transcripción saldrá vacía. Revisa el micrófono, el cable o el nivel de entrada, y vuelve a grabar.\n"))
+                self.q.put(("log", "Audio sin voz detectada (nivel constante / estatica).\n"
+                                   "La transcripcion saldra vacia. Revisa el microfono, el cable o el nivel de entrada, y vuelve a grabar.\n"))
+
+            # --- VERIFICACION DE CALIDAD DE AUDIO (anti-fallo) ---
+            if AUDIO_QA:
+                try:
+                    # Verificar calidad del audio crudo (antes del pipeline)
+                    qa_report = check_audio_quality(raw, sr=SAMPLE_RATE, config=self.config)
+                    self.q.put(("log", f"\n--- Verificacion de calidad de audio ---\n"))
+                    self.q.put(("log", format_report_text(qa_report) + "\n"))
+
+                    # Aplicar correcciones automaticas si hay problemas
+                    if qa_report.auto_fixable or qa_report.verdict != "OK":
+                        fixes, raw_fixed = solve_audio_issues(raw, sr=SAMPLE_RATE,
+                                                             report=qa_report,
+                                                             config=self.config)
+                        if fixes:
+                            self.q.put(("log", format_fix_report(fixes) + "\n"))
+                            # Re-procesar con el audio corregido
+                            raw = raw_fixed
+                            rp_fixed = os.path.join(OUTPUT_DIR, f"clase_{ts}_corregido.wav")
+                            self._savewav(rp_fixed, raw)
+                            # Re-ejecutar pipeline con audio corregido
+                            proc = self.pipeline.process(raw, progress_callback=progress)
+                            pp = os.path.join(OUTPUT_DIR, f"clase_{ts}_mejorado.wav")
+                            self._savewav(pp, proc)
+                            self.last_path = pp
+                            self.q.put(("log", "Audio corregido y re-procesado.\n"))
+
+                    # Mostrar acciones manuales si hay problemas no auto-fixeables
+                    if qa_report.verdict != "OK":
+                        manual = suggest_manual_actions(qa_report)
+                        if manual and manual[0] != "El audio esta en buen estado. No se requieren acciones adicionales.":
+                            self.q.put(("log", "\nAcciones recomendadas:\n"))
+                            for act in manual:
+                                self.q.put(("log", f"  {act}\n"))
+
+                    # Guardar reporte de calidad en metadata
+                    try:
+                        meta["quality"] = {
+                            "verdict": qa_report.verdict,
+                            "rms_p90": round(qa_report.rms_p90, 4),
+                            "peak": round(qa_report.peak, 4),
+                            "snr_db": round(qa_report.snr_db, 1),
+                            "clipping_pct": round(qa_report.clipping_pct, 2),
+                            "silence_ratio": round(qa_report.silence_ratio, 2),
+                            "issues": qa_report.issues,
+                        }
+                    except Exception:
+                        pass
+                except Exception as e_qa:
+                    log_exc("audio quality check")
+                    self.q.put(("log", f"Verificacion de calidad: error interno ({e_qa})\n"))
+
             self.q.put(("status", "Listo para transcribir"))
             self.q.put(("enable_rec", None))
             self.q.put(("addhist", pp))
@@ -3552,6 +3612,27 @@ CONSEJOS:
         if mode == "cloud" and not self.config.get("colab_url"):
             self._msg("warning", "Cloud", "Configura la URL de Colab en Configuracion.")
             return
+
+        # --- GATE DE CALIDAD: verificar audio antes de transcribir ---
+        if AUDIO_QA:
+            try:
+                qa = check_wav_file(self.last_path, sr=SAMPLE_RATE, config=self.config)
+                if qa.verdict == "FAIL":
+                    self._apptxt(f"\nAudio insuficiente para transcribir:\n{qa.message}\n\n")
+                    for s in qa.suggestions:
+                        self._apptxt(f"  {s}\n")
+                    self._msg("error", "Calidad de audio insuficiente",
+                              f"{qa.message}\n\n{" | ".join(qa.suggestions[:2])}")
+                    self.q.put(("status", "Audio insuficiente para transcribir"))
+                    self.q.put(("enable", None))
+                    return
+                if qa.verdict == "WARN":
+                    self._apptxt(f"\nAdvertencia de calidad: {qa.message}\n")
+                    for s in qa.suggestions[:2]:
+                        self._apptxt(f"  {s}\n")
+                    self.q.put(("status", f"Calidad: {qa.verdict} - {qa.issues[0] if qa.issues else 'advertencia'}"))
+            except Exception:
+                log_exc("qa gate")
 
         self.cancel = False
         self._last_trans_req = (timestamps, auto_adapt)
