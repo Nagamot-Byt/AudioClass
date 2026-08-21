@@ -64,6 +64,7 @@ SUITE = [
     ("test_api_integration",   r"API_INTEGRATION_OK"),
     ("test_mic_detection",     r"MIC_DETECTION_OK"),
     ("test_audio_quality_solver", r"Todos los tests pasaron."),
+    ("test_quality_gate_e2e", r"QUALITY_GATE_E2E_OK"),
     # Benchmark lento (opcional con --skip-benchmark)
     ("test_benchmark_models",  r"BENCH_MODELS_OK"),
 ]
