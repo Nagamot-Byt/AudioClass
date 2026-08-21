@@ -234,12 +234,26 @@ class RecordingMixin:
         El callback es lo mas ligero posible: solo copia el bloque a
         la lista. El buffer visual se reconstruye en el hilo principal
         (_updviz) y un flusher lo va volcando a disco en paralelo.
+        Si el microfono es debil (config mic_gain > 1), aplica boost
+        de ganancia automaticamente para mejorar la senal.
         """
+        # Ganancia configurable (1.0 = sin boost, 2.0-5.0 para mics debiles)
+        gain = 1.0
+        try:
+            cfg_gain = (getattr(self, "config", None) or {}).get("mic_gain", 1.0)
+            gain = max(1.0, min(10.0, float(cfg_gain)))
+        except Exception:
+            pass
+
         def cb(indata, frames, ti, status):
             if status and status.input_overflow:
                 self._audio_overflows += 1
             if self.recording:
-                self.buffer.append(indata.flatten())
+                data = indata.flatten()
+                # Aplicar ganancia si es mayor que 1.0
+                if gain > 1.0:
+                    data = np.clip(data * gain, -1.0, 1.0).astype(np.float32)
+                self.buffer.append(data)
 
         try:
             with sd.InputStream(

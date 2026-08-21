@@ -278,6 +278,57 @@ def _mic_device_id_for(cfg):
     return None
 
 
+def _find_best_mic():
+    """Busca automaticamente el microfono con mejor senal entre todos los
+    dispositivos de entrada. Prueba multiples sample rates y selecciona
+    el dispositivo que tenga mayor RMS p90 sin ser corrupto (< 10.0).
+    Devuelve (device_id, p90) o (None, 0.0) si ninguno tiene senal."""
+    try:
+        import sounddevice as sd
+        import numpy as _np
+        devs = sd.query_devices()
+        best_id = None
+        best_p90 = 0.0
+        SR = 16000
+        DUR = 0.5
+        # Sample rates a probar (en orden de preferencia)
+        SR_TO_TRY = [SR, 44100, 48000]
+        for i, d in enumerate(devs):
+            if d["max_input_channels"] < 1:
+                continue
+            if "Altavoz" in str(d["name"]) or "output" in str(d["name"]).lower():
+                continue
+            for sr in SR_TO_TRY:
+                try:
+                    rec = sd.rec(int(DUR * sr), samplerate=sr, channels=1,
+                                 dtype="float32", device=i)
+                    sd.wait()
+                    flat = rec.flatten().astype(_np.float64)
+                    if len(flat) == 0:
+                        continue
+                    # Verificar que no sea datos corruptos (WDM-KS puede
+                    # devolver enteros enormes en vez de float32)
+                    peak_val = float(_np.max(_np.abs(flat)))
+                    if peak_val > 10.0:
+                        continue  # Datos corruptos, skip
+                    win = int(0.1 * sr)
+                    frames = []
+                    for j in range(0, len(flat) - win, win // 2):
+                        chunk = flat[j:j+win]
+                        rms = float(_np.sqrt(_np.mean(chunk ** 2)))
+                        frames.append(rms)
+                    if frames:
+                        p90 = float(_np.percentile(frames, 90))
+                        if p90 > best_p90:
+                            best_p90 = p90
+                            best_id = i
+                except Exception:
+                    continue
+        return best_id, best_p90
+    except Exception:
+        return None, 0.0
+
+
 def _same_mic(a, b):
     """True si dos nombres de microfono se refieren al mismo dispositivo:
     coincidencia exacta (case-insensitive) o comparten la parte del driver
@@ -2280,6 +2331,68 @@ CONSEJOS:
                 self.mic_menu.configure(state="disabled")
             except Exception:
                 pass
+        # Boton de auto-deteccion del mejor microfono
+        self._mic_search_lbl = self._lbl(mic_row, "", font=(self.FB, 10), text_color=C["muted"])
+        self._mic_search_lbl.pack(side="left", padx=(8, 4))
+        def _auto_find_mic():
+            """Busca automaticamente el microfono con mejor senal."""
+            try:
+                import sounddevice as _sd
+                self._mic_search_lbl.configure(text="Buscando...", text_color=C["warn"])
+                self.update_idletasks()
+                best_id, best_p90 = _find_best_mic()
+                if best_id is not None:
+                    devs = _sd.query_devices()
+                    if best_id < len(devs):
+                        found_name = str(devs[best_id]["name"])
+                        self.config["mic_device"] = found_name
+                        _cm_save_config(self.config)
+                        # Actualizar el menu
+                        if hasattr(self, "mic_menu"):
+                            try:
+                                self.mic_menu.set(found_name)
+                            except Exception:
+                                pass
+                        self._mic_search_lbl.configure(
+                            text=f"Encontrado: {found_name[:30]} (p90={best_p90:.4f})",
+                            text_color=C["ok"])
+                    else:
+                        self._mic_search_lbl.configure(text="No se encontro mic activo", text_color=C["err"])
+                else:
+                    self._mic_search_lbl.configure(text="No hay microfonos con senal", text_color=C["err"])
+            except Exception as ex:
+                self._mic_search_lbl.configure(text=f"Error: {str(ex)[:40]}", text_color=C["err"])
+        self._btn(mic_row, "Auto-detectar", _auto_find_mic, width=120, height=28,
+                  fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="left", padx=(4, 0))
+
+        # Control de ganancia del microfono (boost para mics debiles)
+        gain_row = self._frame(fm, fg_color="transparent")
+        gain_row.pack(fill="x", padx=15, pady=(0, 8))
+        self._lbl(gain_row, "Ganancia del microfono:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
+        gain_var = ctk.DoubleVar(value=float(self.config.get("mic_gain", 1.0)))
+        gain_lbl = self._lbl(gain_row, "1.0x", font=(self.FB, 10), text_color=C["muted"])
+        gain_lbl.pack(side="right", padx=(8, 0))
+        def _on_gain_change(val):
+            """Actualiza la ganancia y el label."""
+            try:
+                v = float(val)
+                gain_lbl.configure(text=f"{v:.1f}x")
+                self.config["mic_gain"] = v
+            except Exception:
+                pass
+        if CTK:
+            gain_slider = ctk.CTkSlider(gain_row, from_=1.0, to=5.0, number_of_steps=40,
+                                         variable=gain_var, command=_on_gain_change,
+                                         width=200, progress_color=C["accent"])
+            gain_slider.pack(side="left", padx=(0, 8))
+        else:
+            from tkinter import Scale as _Scale
+            gain_slider = _Scale(gain_row, from_=1.0, to=5.0, resolution=0.1,
+                                 orient="horizontal", variable=gain_var,
+                                 command=_on_gain_change, length=200)
+            gain_slider.pack(side="left", padx=(0, 8))
+        self._lbl(gain_row, "(si tu microfono es muy subido, sube la ganancia)",
+                  font=(self.FB, 9), text_color=C["muted"]).pack(side="left")
 
         f0 = self._frame(body, fg_color=C["card"])
         f0.pack(fill="x", padx=20, pady=10)
@@ -2582,19 +2695,46 @@ CONSEJOS:
         """Hilo del pre-check: captura ~1.5 s y calcula el p90 del RMS de
         tramos de 100 ms (misma metrica que optimizar_mic.py). Envia el nivel
         por la cola; None si el microfono no se puede abrir (entonces NO se
-        bloquea la grabacion: el flujo real ya reporta el error si existe)."""
+        bloquea la grabacion: el flujo real ya reporta el error si existe).
+        Si el mic configurado produce silencio, intenta auto-detectar el mejor
+        micrófono disponible."""
         try:
             win = int(0.1 * SAMPLE_RATE)
             buf = []
+            configured_dev = _mic_device_id_for(getattr(self, "config", None) or {})
 
             def cb(indata, frames, ti, status):
                 """Metodo interno: cb."""
                 buf.append(indata.copy().flatten())
 
-            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                                blocksize=win, callback=cb,
-                                device=_mic_device_id_for(getattr(self, "config", None) or {})):
-                time.sleep(MIC_PROBE_SECONDS)
+            # Intentar con el mic configurado primero
+            try:
+                with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
+                                    blocksize=win, callback=cb, device=configured_dev):
+                    time.sleep(MIC_PROBE_SECONDS)
+            except Exception:
+                pass
+
+            # Si el mic configurado produce silencio, auto-detectar el mejor
+            if not buf or all(np.max(np.abs(b)) < 0.001 for b in buf):
+                buf = []
+                self.q.put(("status", "Buscando microfono activo..."))
+                best_id, best_p90 = _find_best_mic()
+                if best_id is not None and best_p90 > 0.005:
+                    # Encontramos un mic con senal, usarlo
+                    try:
+                        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
+                                            blocksize=win, callback=cb, device=best_id):
+                            time.sleep(MIC_PROBE_SECONDS)
+                        # Actualizar config con el mic encontrado
+                        devs = sd.query_devices()
+                        if best_id < len(devs):
+                            found_name = str(devs[best_id]["name"])
+                            self.config["mic_device"] = found_name
+                            self.q.put(("status", f"Mic auto-detectado: {found_name}"))
+                    except Exception:
+                        pass
+
             if not buf:
                 self.q.put(("mic_probe", None))
                 return

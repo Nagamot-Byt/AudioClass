@@ -51,6 +51,8 @@ DEFAULT_CONFIG = {
     # la app pide permiso antes del primer uso y nunca envia nada.
     "ia_consent": False,
     "rec_consent_ack": False,
+    # Ganancia del microfono: 1.0 = sin boost, 2.0-5.0 para mics debiles.
+    "mic_gain": 1.0,
 }
 
 
