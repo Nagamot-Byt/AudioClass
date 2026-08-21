@@ -65,6 +65,7 @@ SUITE = [
     ("test_mic_detection",     r"MIC_DETECTION_OK"),
     ("test_audio_quality_solver", r"Todos los tests pasaron."),
     ("test_quality_gate_e2e", r"QUALITY_GATE_E2E_OK"),
+    ("test_exe_has_modules", r"EXE_MODULES_OK"),
     # Benchmark lento (opcional con --skip-benchmark)
     ("test_benchmark_models",  r"BENCH_MODELS_OK"),
 ]
