@@ -13,13 +13,13 @@ Cada entrada es (nombre del test sin .py, patrón de éxito). Los tests GUI
 display (Linux/CI); en Windows el display es nativo y no hace falta.
 
 Uso:
-    python -u run_ci_suite.py                 # suite completa (16 tests)
+    python -u run_ci_suite.py                 # suite completa (17 tests)
     python -u run_ci_suite.py --skip-benchmark # omite test_benchmark_models (lento)
     python -u run_ci_suite.py --list          # imprime la lista (nombres, 1 por línea)
     python -u run_ci_suite.py <nombre>        # un solo test (pasos nombrados del CI)
 
 Salida por test:  "OK   nombre (Ns)"  /  "FAIL nombre (rc=N, sin patron ...)"
-Resumen final:    "CI_SUITE_OK (16/16)"  /  "CI_SUITE_FAIL (N/16)"
+Resumen final:    "CI_SUITE_OK (17/17)"  /  "CI_SUITE_FAIL (N/17)"
 Exit code 0 si TODOS pasan, 1 si alguno falla, 2 si el nombre no existe.
 """
 import os
@@ -62,6 +62,7 @@ SUITE = [
     # Tests de integracion y unitarios de modulos extraidos
     ("test_config_manager",    r"CONFIG_MANAGER_OK"),
     ("test_api_integration",   r"API_INTEGRATION_OK"),
+    ("test_mic_detection",     r"MIC_DETECTION_OK"),
     # Benchmark lento (opcional con --skip-benchmark)
     ("test_benchmark_models",  r"BENCH_MODELS_OK"),
 ]
