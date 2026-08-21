@@ -1,8 +1,9 @@
 # AudioClass v9.1 - Guia del Proyecto
 
 > **Estado actual**: PRODUCCION (Release v9.1-final publicada)
-> **Ultimo commit**: 23c9a47 en main
+> **Ultimo commit**: 2ae36c1 en main
 > **Remoto**: https://github.com/Nagamot-Byt/AudioClass
+> **Modulos extraidos**: ui_builder, config_manager, theme, recording_engine, transcription_engines, export_utils
 
 ---
 
@@ -18,40 +19,60 @@ Soporta transcripcion local (faster-whisper/openai-whisper) y remota (Gemini/Ope
 ## 2. Estructura del Proyecto
 
 ```
-audioclass_v91.py              # App principal (GUI customtkinter)
+# === MODULOS PRINCIPALES ===
+audioclass_v91.py              # App principal (GUI customtkinter, ~5100 lineas)
 audioclass_core.py             # Nucleo: pipeline de audio, DSP, modelos
 audioclass_colab_server_v91.py # Servidor Flask para Colab
 optimizar_mic.py               # Optimizador de microfono (Windows COM)
 
+# === MODULOS EXTRAIDOS (refactor v9.2) ===
+ui_builder.py                  # Construccion de UI (11 builder functions)
+config_manager.py              # Config persistente (load/save/encrypt)
+theme.py                       # Tema y paletas WCAG (claro/oscuro)
+recording_engine.py            # Mixin de grabacion (audio capture + flush)
+transcription_engines.py       # Registro de motores (local/cloud/API)
+export_utils.py                # Helpers PDF/DOCX (fmt_timestamp, docx_paragraph)
+
+# === ASSETS ===
 assets/
   audioclass_theme.json        # Tema CTk
   DejaVuSans.ttf               # Fuentes para PDF
 
+# === MODELOS ===
 models_ct2/tiny/               # Modelo Whisper tiny (CT2)
 models_ct2/base/               # Modelo Whisper base (CT2)
 
+# === CI/CD ===
 .github/workflows/
-  ci.yml                       # CI: 13 tests en ubuntu
-  release.yml                  # Release: builds 3 plataformas + publish
+  ci.yml                       # CI: 16 tests en ubuntu
+  release.yml                  # Release: builds 3 plataformas + AppImage
 
+# === SPECS PYINSTALLER ===
 AudioClass_v91.spec            # PyInstaller onedir (Windows)
 AudioClass_v91_onefile.spec    # PyInstaller onefile (Windows/macOS)
 AudioClass_v91_linux.spec      # PyInstaller onedir Linux (lean)
 AudioClass_v91_onefile_linux.spec # PyInstaller onefile Linux (lean)
 
+# === BUILD SCRIPTS ===
 desplegar_produccion.sh        # Build completo Windows
 build_linux.sh                 # Build Linux
 build_mac.sh                   # Build macOS
 build.bat                      # Build Windows (doble clic)
+build_appimage.sh              # Build AppImage Linux
 
-run_ci_suite.py                # Suite de tests (14 tests)
+# === TESTS (16 en suite) ===
+run_ci_suite.py                # Suite de tests (16 tests)
+test_api_integration.py        # Tests mocked API (Gemini/OpenAI)
+test_config_manager.py         # Tests config manager
+test_refactored_modules.py     # Tests modulos extraidos
+test_code_signing.py           # Test firma authenticode
+
+# === UTILIDADES ===
 quick_start.bat                # Inicio rapido Windows (doble clic)
 quick_start.sh                 # Inicio rapido Linux/macOS
+apply_signpath.sh              # Asistente para aplicar a SignPath
 FIRMA_CODIGO.md                # Guia de firma de codigo + SignPath
 CODE_SIGNING_POLICY.md         # Politica de firma (req. SignPath)
-test_code_signing.py           # Test de firma authenticode
-config_manager.py              # Config persistente (extraido)
-theme.py                       # Tema y paletas WCAG (extraido)
 ```
 
 ---
@@ -89,13 +110,15 @@ pip install pyinstaller
 ## 4. Tests
 
 ```bash
-# Suite completa (13 tests)
+# Suite completa (16 tests)
 python run_ci_suite.py
 
 # Test individual
 python -m pytest test_privacy_consent.py
 python -m pytest test_wcag_contrast.py
 python -m pytest test_e2e_ui.py
+python -m pytest test_api_integration.py
+python -m pytest test_config_manager.py
 
 # E2E headless (4 escenarios)
 xvfb-run -a python audioclass_v91.py --e2e-ui wizard
@@ -110,12 +133,13 @@ xvfb-run -a python audioclass_v91.py --e2e-ui mic
 
 ### ci.yml (ubuntu)
 - Corre en cada push/PR
-- 13 tests: compile, ui_smoke, wcag, privacy, colab, parallel, export, e2e_ui, stress, v10, lang_auto, watchdog, benchmark
+- 16 tests: ui_smoke, ui_v91, wcag, privacy, colab, code_signing, refactored_modules, parallel, export, e2e_ui, stress, v10, lang_auto, watchdog, config_manager, api_integration
 
-### release.yml (3 plataformas)
+### release.yml (3 plataformas + AppImage)
 - Se dispara con tag `v*`
-- Builds: Windows (onedir+onefile), Linux (onedir split), macOS (onefile)
-- Publica Release en GitHub con los 3 zips + docs legales
+- Builds: Windows (onedir+onefile), Linux (onedir split + AppImage), macOS (onefile)
+- Publica Release en GitHub con los zips + AppImage + docs legales
+- SignPath Foundation: listo para integrar (comentado en workflow)
 
 ---
 
@@ -153,11 +177,12 @@ tar xJf AudioClass_v9.1_LINUX.tar.xz
 ## 8. Commits Recientes (orden cronologico)
 
 ```
-23c9a47 doc: enhance GUIA_PROYECTO.md with quick-edit guide and architecture map
-5024c38 doc: add GUIA_PROYECTO.md for easy project re-engagement
-fc25a94 ci: split Linux tar.xz into 1GB parts for GitHub 2GB asset limit
-ce7c809 ci: Linux onedir with lean spec + fix retry loop exit code
-c0c766e ci: Linux switched to onedir build (50MB exe + compressed shared libs)
+2ae36c1 feat: AppImage build, mocked API tests, SignPath integration, CI suite expanded
+95f92cf refactor: extract ui_builder.py and add docstrings to 100% of functions
+5871429 feat: add SignPath Foundation application helper script
+eb17696 refactor: extract recording_engine, transcription_engines, export_utils
+40fbef8 feat: theme.py extraction, dependabot, pinned deps, AppImage, code signing
+710a2a7 fix: load_config/save_config wrappers use local CONFIG_PATH
 ```
 
 ---
@@ -166,17 +191,17 @@ c0c766e ci: Linux switched to onedir build (50MB exe + compressed shared libs)
 
 | Quiero cambiar... | Edita... | Notas |
 |---|---|---|
-| **UI / Botones / Layout** | `audioclass_v91.py` | Clase `App` — casi todo esta ahi |
-| **Colores / Tema** | `assets/audioclass_theme.json` | Paleta CTk, cambio en caliente |
-| **Grabacion de audio** | `audioclass_v91.py` (metodo `_start_recording`) | Usa pyaudio |
+| **UI / Botones / Layout** | `ui_builder.py` + `audioclass_v91.py` | 11 builder functions en ui_builder.py |
+| **Colores / Tema** | `theme.py` + `assets/audioclass_theme.json` | Paletas WCAG, cambio en caliente |
+| **Grabacion de audio** | `recording_engine.py` | Mixin: grabacion, streaming, flusher |
 | **Transcripcion local** | `audioclass_core.py` | Pipeline faster_whisper |
-| **Transcripcion API** | `audioclass_v91.py` (metodo `_transcribe_gemini` / `_transcribe_openai`) | Endpoints Gemini y OpenAI |
-| **Exportacion PDF/DOCX** | `audioclass_v91.py` (metodo `_export_pdf`, `_export_docx`) | Usa fpdf2 y python-docx |
+| **Transcripcion API** | `audioclass_v91.py` + `transcription_engines.py` | Gemini + OpenAI + registro de motores |
+| **Exportacion PDF/DOCX** | `export_utils.py` | Helpers: fmt_timestamp, docx_paragraph |
 | **Servidor Colab** | `audioclass_colab_server_v91.py` | Flask app |
 | **Optimizador de microfono** | `optimizar_mic.py` | Windows COM |
-| **Configuracion persistente** | `audioclass_v91.py` (constante `CONFIG_PATH`) | JSON en ~/AudioClass_Recordings |
+| **Configuracion persistente** | `config_manager.py` | load/save/encrypt (DPAPI) |
 | **Modelos Whisper** | `models_ct2/tiny/` y `models_ct2/base/` | CT2 format |
-| **Tests** | `test_*.py` | 13 tests en suite |
+| **Tests** | `test_*.py` | 16 tests en suite |
 | **CI/CD** | `.github/workflows/ci.yml` y `release.yml` | GitHub Actions |
 | **Build Windows** | `desplegar_produccion.sh` + `AudioClass_v91_onefile.spec` | |
 | **Build Linux** | `build_linux.sh` + `AudioClass_v91_linux.spec` | |
@@ -232,7 +257,7 @@ gh run view <run-id> --log > ci_logs.txt
 
 ### Arquitectura en una linea
 
-`audioclass_v91.py` es la app GUI que orquesta todo. `audioclass_core.py` es el motor de audio/transcripcion. El server Flask (`audioclass_colab_server_v91.py`) es independiente y corre por separado. Los specs PyInstaller empaquetan todo en un exe autocontenido.
+`audioclass_v91.py` es la app GUI que orquesta todo, delegando la construccion de widgets a `ui_builder.py` (11 builder functions). `audioclass_core.py` es el motor de audio/transcripcion. Los modulos extraidos (`config_manager.py`, `theme.py`, `recording_engine.py`, `transcription_engines.py`, `export_utils.py`) manejan responsabilidades especificas. El server Flask (`audioclass_colab_server_v91.py`) es independiente. Los specs PyInstaller empaquetan todo en un exe autocontenido.
 
 ---
 
