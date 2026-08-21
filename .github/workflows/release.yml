@@ -120,8 +120,28 @@ jobs:
             echo "PARTS=1"
           else
             echo "No split needed (<1GB)"
-            echo "PARTS=0"
-          fi
+            echo "PARTS=0"          fi
+      - name: Build AppImage Linux
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          cp dist/AudioClass/AudioClass AppDir/usr/bin/AudioClass
+          cp LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md AppDir/usr/bin/
+          cat > AppDir/AudioClass.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=AudioClass
+          Comment=Grabacion y transcripcion academica con IA
+          Exec=AudioClass
+          Icon=AudioClass
+          Terminal=false
+          Type=Application
+          Categories=Audio;Education;
+          DESKTOP
+          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#D4AF37"/><text x="32" y="44" text-anchor="middle" font-size="32" font-weight="bold" fill="white">AC</text></svg>' > AppDir/usr/share/icons/hicolor/256x256/apps/AudioClass.svg
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/AudioClass.svg AppDir/AudioClass.svg
+          curl -sL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          ARCH=x86_64 /tmp/appimagetool AppDir AudioClass_v9.1_LINUX.AppImage || echo 'AppImage build skipped'
+          ls -lh AudioClass_v9.1_LINUX.AppImage 2>/dev/null || echo 'No AppImage produced'
       - name: Subir artifacts Linux
         uses: actions/upload-artifact@v4
         with:
@@ -129,6 +149,7 @@ jobs:
           path: |
             AudioClass_v9.1_LINUX.tar.xz
             AudioClass_v9.1_LINUX_part_*
+            AudioClass_v9.1_LINUX.AppImage
           if-no-files-found: error
 
   # -- macOS --
@@ -282,6 +303,17 @@ jobs:
             echo "ERROR: All upload attempts failed for macOS ZIP"
             exit 1
           fi
+      - name: Upload AppImage (if exists)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APPIMAGE=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.AppImage' | head -1)
+          if [ -n "$APPIMAGE" ]; then
+            echo "Uploading $APPIMAGE"
+            gh release upload "${{ github.ref_name }}" "$APPIMAGE" --clobber
+          else
+            echo "No AppImage found, skipping"
+          fi
       - name: Verify release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -290,3 +322,13 @@ jobs:
           gh release view "${{ github.ref_name }}"
           echo "=== Assets ==="
           gh release view "${{ github.ref_name }}" --json assets --jq '.assets[] | "\(.name) \(.size/1048576|floor)MB"'
+      # SignPath Foundation: auto-sign Windows exe (when configured)
+      # See FIRMA_CODIGO.md and CODE_SIGNING_POLICY.md
+      # Uncomment below after SignPath Foundation approval:
+      # - name: Sign Windows exe with SignPath
+      #   uses: SignPath/signpath-action@v1
+      #   with:
+      #     apiUrl: https://app.signpath.io
+      #     artifactDropPath: artifacts/build-windows/
+      #     signingPolicyId: <your-policy-id>
+      #     waitForCompletion: true

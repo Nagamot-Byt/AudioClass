@@ -175,3 +175,13 @@ class TestLoadSaveConfig:
         assert "adapt_provider" in loaded
         assert "openai_api_key" in loaded
         assert "ia_consent" in loaded
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import pytest
+    rc = pytest.main([__file__, "-v", "--tb=line", "-q"])
+    if rc == 0:
+        print("CONFIG_MANAGER_OK")
+    sys.exit(rc)
