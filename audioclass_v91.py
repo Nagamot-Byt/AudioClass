@@ -71,12 +71,9 @@ from scipy import signal
 from scipy.io import wavfile
 
 # --- Verificacion de calidad de audio y solucionador de errores de sonido ---
-try:
-    from audio_quality_checker import check_audio_quality, check_wav_file, format_report_text
-    from sound_error_solver import solve_audio_issues, suggest_manual_actions, format_fix_report
-    AUDIO_QA = True
-except ImportError:
-    AUDIO_QA = False
+from audio_quality_checker import check_audio_quality, check_wav_file, format_report_text
+from sound_error_solver import solve_audio_issues, suggest_manual_actions, format_fix_report
+AUDIO_QA = True
 
 # ─── UI ─────────────────────────────────────────────────────────────────────
 import tkinter as tk

@@ -104,6 +104,16 @@ a = Analysis(
         'tiktoken_ext',
         # #9: nucleo separado de la UI
         'audioclass_core',
+        # Modulos extraidos del monolito (refactor v9.2)
+        'config_manager',
+        'theme',
+        'recording_engine',
+        'transcription_engines',
+        'export_utils',
+        'ui_builder',
+        # Anti-fallo de calidad de audio
+        'audio_quality_checker',
+        'sound_error_solver',
     ],
     hookspath=[],
     hooksconfig={},
