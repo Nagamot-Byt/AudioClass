@@ -1,7 +1,7 @@
 # AudioClass v9.1 - Guia del Proyecto
 
 > **Estado actual**: PRODUCCION (Release v9.1-final publicada)
-> **Ultimo commit**: 2ae36c1 en main
+> **Ultimo commit**: 3a0be3b en main
 > **Remoto**: https://github.com/Nagamot-Byt/AudioClass
 > **Modulos extraidos**: ui_builder, config_manager, theme, recording_engine, transcription_engines, export_utils
 
@@ -178,6 +178,11 @@ tar xJf AudioClass_v9.1_LINUX.tar.xz
 
 ```
 2ae36c1 feat: AppImage build, mocked API tests, SignPath integration, CI suite expanded
+3a0be3b fix(pyinstaller): move QA imports out of try/except and rewrite test for PyInstaller 6.x
+83fac1d test(exe): verify audio_quality_checker and sound_error_solver in bundled exe
+08b1116 test(audio): E2E quality gate - 37 checks for audio quality and transcription blocking
+eaa9b8a feat(audio): anti-fallo de calidad y solucionador de errores de sonido
+a1b82fd test(mic): add test_mic_detection to CI suite (22 checks)
 95f92cf refactor: extract ui_builder.py and add docstrings to 100% of functions
 5871429 feat: add SignPath Foundation application helper script
 eb17696 refactor: extract recording_engine, transcription_engines, export_utils
