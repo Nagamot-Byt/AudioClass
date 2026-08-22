@@ -672,7 +672,86 @@ ls -la models_ct2/base/ 2>/dev/null || echo "Base no disponible"
 
 ---
 
-## 11. CI/CD en Linux
+## 11. Ejecutar con Docker (sin instalar nada)
+
+Si no quieres instalar dependencias en tu sistema, usa Docker.
+
+### 11.1 Construir la imagen
+```bash
+git clone https://github.com/Nagamot-Byt/AudioClass.git
+cd AudioClass
+
+docker build -t audioclass:v9.1 .
+```
+
+### 11.2 Ejecutar (sin audio real)
+```bash
+docker run -it --rm \
+  -e DISPLAY=:99 \
+  -v audioclass_config:/root/.config/audioclass \
+  -v audioclass_recordings:/root/AudioClass_Recordings \
+  audioclass:v9.1
+```
+
+### 11.3 Ejecutar con microfono real
+```bash
+# Linux: acceder al microfono del host
+docker run -it --rm \
+  --device /dev/snd \
+  --group-add audio \
+  -e PULSE_SERVER=unix:/run/user/$(id -u)/pulse/native \
+  -v /run/user/$(id -u)/pulse:/run/user/$(id -u)/pulse \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -v audioclass_config:/root/.config/audioclass \
+  -v audioclass_recordings:/root/AudioClass_Recordings \
+  audioclass:v9.1
+```
+
+### 11.4 Usar docker-compose
+```bash
+# Ejecutar con audio virtual
+docker-compose up
+
+# Con microfono real
+docker-compose -f docker-compose.yml -f docker-compose.mic.yml up
+
+# Con API keys
+gemini_api_key=TU_KEY docker-compose up
+openai_api_key=TU_KEY docker-compose up
+```
+
+### 11.5 Archivos Docker creados
+
+| Archivo | Funcion |
+|---|---|
+| `Dockerfile` | Imagen multi-stage con todas las dependencias |
+| `docker-compose.yml` | Orquestacion basica (GUI + audio virtual) |
+| `docker-compose.mic.yml` | Override para microfono real del host |
+| `docker_entrypoint.sh` | Inicia Xvfb + PulseAudio antes de la app |
+| `.dockerignore` | Excluye tests y artifacts del build |
+
+### 11.6 Comandos utiles de Docker
+```bash
+# Ver logs
+docker logs audioclass
+
+# Entrar al contenedor
+docker exec -it audioclass bash
+
+# Copiar grabaciones del contenedor al host
+docker cp audioclass:/root/AudioClass_Recordings ./grabaciones
+
+# Detener todo
+docker-compose down
+
+# Limpiar imagenes
+docker rmi audioclass:v9.1
+```
+
+---
+
+## 12. CI/CD en Linux
 
 El workflow `ci.yml` ya corre en ubuntu. Para verificar:
 
@@ -688,7 +767,7 @@ Para compilar el exe de Linux en CI, el workflow `release.yml` maneja:
 
 ---
 
-## 12. Comandos rapidos de referencia
+## 13. Comandos rapidos de referencia
 
 ```bash
 # Iniciar desde cero
@@ -709,7 +788,7 @@ rm -rf build/ dist/ *.spec.bak
 
 ---
 
-## 13. Notas para el asistente AI (Buffy/Codebuff)
+## 14. Notas para el asistente AI (Buffy/Codebuff)
 
 Cuando retomes este proyecto en Linux, busca:
 - `GUIA_PROYECTO.md` para la estructura completa

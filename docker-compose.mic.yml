@@ -1,0 +1,27 @@
+# docker-compose.mic.yml — Override para acceso al microfono real del host
+#
+# Uso:
+#   docker-compose -f docker-compose.yml -f docker-compose.mic.yml up
+#
+# Esto permite que el contenedor use el microfono del host via PulseAudio.
+
+services:
+  audioclass:
+    # Acceso al dispositivo de audio del host
+    devices:
+      - /dev/snd:/dev/snd
+
+    # Grupo audio del host
+    group_add:
+      - audio
+
+    # PulseAudio del host
+    environment:
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - XDG_RUNTIME_DIR=/run/user/1000
+
+    volumes:
+      # Socket de PulseAudio del host
+      - /run/user/1000/pulse:/run/user/1000/pulse
+      # Config de PulseAudio del host
+      - /home/${USER:-root}/.config/pulse:/root/.config/pulse

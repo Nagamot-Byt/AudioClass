@@ -1,0 +1,56 @@
+# Build artifacts
+build/
+dist/
+dist_onefile/
+*.spec.bak
+
+# Git
+.git/
+.github/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests (no needed in production image)
+test_*.py
+run_ci_suite.py
+bench_models.py
+gen_*.py
+grabar_*.py
+validar_*.py
+optimize*.py
+desplegar_produccion.sh
+build_*.sh
+quick_start.*
+diagnostico_mic.py
+wcag_check.py
+run_wcag_on_exe.py
+upload_release_assets.py
+
+# Scratch files
+_*.txt
+_*.py
+*.log
+*.tmp
+
+# Exes
+*.exe
+*.AppImage
+*.zip
+*.tar.xz

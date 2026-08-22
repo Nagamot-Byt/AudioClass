@@ -1,0 +1,64 @@
+# docker-compose.yml — AudioClass v9.1
+#
+# Uso:
+#   docker-compose up              # Ejecutar con audio virtual
+#   docker-compose up --build      # Reconstruir imagen y ejecutar
+#   docker-compose down            # Detener
+#
+# Con microfono real del host:
+#   docker-compose -f docker-compose.yml -f docker-compose.mic.yml up
+#
+# Con API keys (Gemini/OpenAI):
+#   GEMINI_API_KEY=xxx docker-compose up
+#   OPENAI_API_KEY=xxx docker-compose up
+
+services:
+  audioclass:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: audioclass:v9.1
+    container_name: audioclass
+    restart: unless-stopped
+
+    # Display virtual (Xvfb)
+    environment:
+      - DISPLAY=:99
+      - QT_QPA_PLATFORM=offscreen
+      # API keys (opcional, pasadas como env)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+    # Volumes para datos persistentes
+    volumes:
+      - audioclass_config:/root/.config/audioclass
+      - audioclass_recordings:/root/AudioClass_Recordings
+
+    # Network para acceso al servidor Colab
+    ports:
+      - "5000:5000"
+
+    # Recursos (ajustar segun maquina)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+        reservations:
+          memory: 1G
+          cpus: "1.0"
+
+    # Comando por defecto: GUI interactiva
+    command: ["python", "audioclass_v91.py"]
+
+    #healthcheck:
+    #  test: ["CMD", "python", "-c", "import sounddevice; print('OK')"]
+    #  interval: 30s
+    #  timeout: 5s
+    #  retries: 3
+
+volumes:
+  audioclass_config:
+    driver: local
+  audioclass_recordings:
+    driver: local
