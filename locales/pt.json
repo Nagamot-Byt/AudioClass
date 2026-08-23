@@ -1,0 +1,172 @@
+{
+  "app": {
+    "title": "AudioClass - Gravador de Aulas",
+    "version": "Versão {version}",
+    "about": "Sobre o AudioClass"
+  },
+  "menu": {
+    "file": "Arquivo",
+    "edit": "Editar",
+    "view": "Visualizar",
+    "help": "Ajuda",
+    "settings": "Configurações",
+    "exit": "Sair"
+  },
+  "wizard": {
+    "welcome": "Bem-vindo ao AudioClass",
+    "welcome_desc": "Este assistente o ajudará a configurar o应用 pela primeira vez.",
+    "step1": "Nível Acadêmico",
+    "step1_desc": "Em que nível você está?",
+    "step2": "Perfil de Uso",
+    "step2_desc": "Como você planeja usar o AudioClass?",
+    "step3": "Microfone",
+    "step3_desc": "Selecione seu microfone",
+    "step4": "Chave API",
+    "step4_desc": "Configure a análise com IA (opcional)",
+    "step5": "Modo de Transcrição",
+    "step5_desc": "Escolha como transcrever suas aulas",
+    "step6": "Privacidade",
+    "step6_desc": "Revise a política de privacidade",
+    "next": "Próximo",
+    "back": "Voltar",
+    "finish": "Finalizar",
+    "skip": "Pular",
+    "privacy_accept": "Aceito a política de privacidade",
+    "ia_consent": "Permito a análise com IA"
+  },
+  "recording": {
+    "start": "Iniciar Gravação",
+    "stop": "Parar",
+    "pause": "Pausar",
+    "resume": "Retomar",
+    "recording": "Gravando...",
+    "paused": "Pausado",
+    "ready": "Pronto para gravar",
+    "duration": "Duração: {duration}",
+    "level": "Nível: {level}"
+  },
+  "transcription": {
+    "start": "Transcrever",
+    "processing": "Transcrevendo...",
+    "complete": "Transcrição concluída",
+    "error": "Erro na transcrição",
+    "language": "Idioma",
+    "auto_detect": "Auto-detectar",
+    "model": "Modelo",
+    "fast_mode": "Modo rápido"
+  },
+  "adaptation": {
+    "title": "Análise com IA",
+    "template": "Tipo de análise",
+    "templates": {
+      "academic": "Análise Acadêmica",
+      "summary": "Resumo",
+      "guide": "Guia de Estudo",
+      "flashcards": "Flashcards",
+      "exam": "Prova",
+      "mindmap": "Mapa Mental",
+      "clean": "Texto Limpo",
+      "timeline": "Cronologia"
+    },
+    "generating": "Gerando análise...",
+    "complete": "Análise concluída",
+    "error": "Erro ao gerar análise",
+    "provider": "Provedor de IA",
+    "copy": "Copiar",
+    "export": "Exportar"
+  },
+  "export": {
+    "title": "Exportar",
+    "pdf": "Exportar PDF",
+    "docx": "Exportar DOCX",
+    "txt": "Exportar TXT",
+    "gdocs": "Exportar para Google Docs",
+    "saved": "Salvo em: {path}",
+    "error": "Erro ao exportar"
+  },
+  "config": {
+    "title": "Configurações",
+    "general": "Geral",
+    "audio": "Áudio",
+    "transcription": "Transcrição",
+    "ai": "Inteligência Artificial",
+    "privacy": "Privacidade",
+    "about": "Sobre",
+    "language": "Idioma",
+    "theme": "Tema",
+    "dark": "Escuro",
+    "light": "Claro",
+    "save": "Salvar Alterações",
+    "cancel": "Cancelar",
+    "saved": "Configurações salvas"
+  },
+  "mic": {
+    "test": "Testar Microfone",
+    "testing": "Testando microfone...",
+    "level_ok": "Nível OK",
+    "level_low": "Nível baixo",
+    "level_high": "Nível alto",
+    "no_mic": "Nenhum microfone detectado",
+    "select": "Selecionar microfone",
+    "default": "Padrão do sistema",
+    "optimize": "Otimizar Microfone",
+    "optimizer_title": "Otimização de Microfone"
+  },
+  "status": {
+    "ready": "Pronto",
+    "processing": "Processando...",
+    "error": "Erro",
+    "connected": "Conectado",
+    "disconnected": "Desconectado"
+  },
+  "error": {
+    "generic": "Ocorreu um erro",
+    "no_file": "Nenhum arquivo selecionado",
+    "invalid_audio": "Arquivo de áudio inválido",
+    "api_key_required": "Chave API necessária",
+    "api_key_invalid": "Chave API inválida",
+    "network_error": "Erro de rede",
+    "permission_denied": "Permissão negada"
+  },
+  "success": {
+    "saved": "Salvo com sucesso",
+    "copied": "Copiado para a área de transferência",
+    "exported": "Exportado com sucesso",
+    "transcribed": "Transcrição concluída"
+  },
+  "privacy": {
+    "title": "Privacidade e Consentimento",
+    "description": "As transcrições são processadas em seu dispositivo. A análise com IA envia texto para servidores de terceiros.",
+    "local_only": "Processar tudo localmente (sem envio para nuvem)",
+    "consent": "Consinto com o envio de minhas transcrições para análise com IA",
+    "learn_more": "Saiba mais",
+    "policy": "Política de Privacidade"
+  },
+  "about": {
+    "title": "Sobre o AudioClass",
+    "version": "Versão {version}",
+    "description": "Gravador de aulas universitárias com transcrição e análise com IA.",
+    "license": "Licença: MIT",
+    "website": "Site",
+    "issues": "Reportar problemas"
+  },
+  "history": {
+    "title": "Histórico",
+    "empty": "Nenhuma gravação",
+    "play": "Reproduzir",
+    "transcribe": "Transcrever",
+    "delete": "Excluir",
+    "compile": "Compilar"
+  },
+  "update": {
+    "available": "Nova versão disponível: v{version}",
+    "checking": "Procurando atualizações...",
+    "downloading": "Baixando atualização...",
+    "installing": "Instalando atualização...",
+    "complete": "Atualização concluída",
+    "error": "Erro na atualização",
+    "later": "Agora não",
+    "install": "Baixar e instalar",
+    "view_release": "Ver alterações no GitHub"
+  }
+}

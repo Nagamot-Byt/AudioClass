@@ -60,3 +60,16 @@ _e2e_*
 _diag_*
 _geom_*
 _capturas_*
+
+# ── Testing y coverage ──
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Python cache ──
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Coverage artifacts ──
+.coverage.*

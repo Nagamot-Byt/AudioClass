@@ -1,0 +1,56 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AudioClass — Example terraform.tfvars
+# Copy to terraform.tfvars and fill in values.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── General ──────────────────────────────────────────────────────────────────
+environment     = "production"
+cloud_provider  = "aws"   # "aws" or "gcp"
+project_name    = "audioclass"
+region          = "us-east-1"
+
+# ── Application ──────────────────────────────────────────────────────────────
+app_image = "audioclass-server:latest"
+app_port  = 8000
+
+# Resource allocation
+app_cpu    = 1024   # 1 vCPU (AWS Fargate) / 1000m (GCP Cloud Run)
+app_memory = 2048   # 2 GB
+
+# Auto-scaling
+min_instances        = 1
+max_instances        = 10
+desired_instances    = 2   # AWS ECS only
+scale_cpu_threshold  = 70
+scale_memory_threshold = 80
+
+# ── Networking ───────────────────────────────────────────────────────────────
+vpc_cidr            = "10.0.0.0/16"
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+allowed_cidrs       = ["0.0.0.0/0"]
+
+# ── Database ─────────────────────────────────────────────────────────────────
+database_enabled         = false
+database_instance_class  = "db.t3.micro"   # AWS / "db-f1-micro" GCP
+database_name            = "audioclass"
+database_username        = "audioclass"
+database_password        = ""   # Set via TF_VAR_database_password env var
+database_storage_gb      = 20
+
+# ── Storage ──────────────────────────────────────────────────────────────────
+storage_bucket_name     = ""   # Empty = auto-generate
+storage_lifecycle_days  = 90
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# Set via environment variables (NOT in this file):
+#   export TF_VAR_api_key="your-api-key"
+#   export TF_VAR_gemini_api_key="your-gemini-key"
+#   export TF_VAR_openai_api_key="your-openai-key"
+
+# ── Domain / TLS (AWS only) ─────────────────────────────────────────────────
+domain_name      = ""   # e.g., "audioclass.example.com"
+certificate_arn  = ""   # ACM ARN or empty = auto-provision
+
+# ── GCP-specific ─────────────────────────────────────────────────────────────
+# gcp_project_id = "your-gcp-project-id"

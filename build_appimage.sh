@@ -61,25 +61,43 @@ img.save('$APPDIR/audioclass.png')
 " 2>/dev/null || echo "WARN: No PIL, usando icono generico"
 fi
 
-# 5. Empaquetar AppImage
+# 5. Empaquetar AppImage con update info
 echo "[5/5] Empaquetando AppImage..."
+
+# URL de update info para AppImageUpdate (zsync differential updates)
+UPDATE_INFO="gh-releases-zsync|Nagamot-Byt|AudioClass|latest|AudioClass_*x86_64.AppImage.zsync"
+
+# Buscar appimagetool
+APPIMAGETOOL=""
 if command -v appimagetool &>/dev/null; then
-    ARCH=x86_64 appimagetool "$APPDIR" "AudioClass_v9.1_Linux.AppImage" 2>&1 | tail -3
-    echo "=== AppImage creada: AudioClass_v9.1_Linux.AppImage ==="
-    ls -lh "AudioClass_v9.1_Linux.AppImage"
-elif command -v python &>/dev/null; then
-    # Fallback: descargar appimagetool
+    APPIMAGETOOL="appimagetool"
+elif [ -f /tmp/appimagetool ]; then
+    APPIMAGETOOL="/tmp/appimagetool"
+else
     echo "appimagetool no encontrado. Descargando..."
     curl -sL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /tmp/appimagetool
     chmod +x /tmp/appimagetool
-    ARCH=x86_64 /tmp/appimagetool "$APPDIR" "AudioClass_v9.1_Linux.AppImage" 2>&1 | tail -3
-    echo "=== AppImage creada: AudioClass_v9.1_Linux.AppImage ==="
-    ls -lh "AudioClass_v9.1_Linux.AppImage"
-else
+    APPIMAGETOOL="/tmp/appimagetool"
+fi
+
+if [ -z "$APPIMAGETOOL" ] || [ ! -x "$APPIMAGETOOL" ]; then
     echo "ERROR: No se puede crear AppImage (falta appimagetool)"
     echo "Instala: sudo apt install appimagetool"
-    echo "O descarga manualmente: https://github.com/AppImage/AppImageKit/releases"
     exit 1
 fi
+
+# Crear AppImage CON update info (genera .zsync automáticamente)
+echo "  Update info: $UPDATE_INFO"
+ARCH=x86_64 "$APPIMAGETOOL" -u "$UPDATE_INFO" "$APPDIR" "AudioClass_v9.1_Linux.AppImage" 2>&1 | tail -5
+
+# Verificar que se generó el .zsync
+if [ -f "AudioClass_v9.1_Linux.AppImage.zsync" ]; then
+    echo "  .zsync generado: $(ls -lh AudioClass_v9.1_Linux.AppImage.zsync | awk '{print $5}')"
+else
+    echo "  WARN: .zsync no se generó (AppImageUpdate no funcionará)"
+fi
+
+echo "=== AppImage creada: AudioClass_v9.1_Linux.AppImage ==="
+ls -lh AudioClass_v9.1_Linux.AppImage AudioClass_v9.1_Linux.AppImage.zsync 2>/dev/null
 
 echo "=== LISTO ==="

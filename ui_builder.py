@@ -62,6 +62,30 @@ except ImportError:
         TEMPLATES = {}
     def _gdocs_importable(): return False
 
+# Plugin system for custom templates
+try:
+    from template_plugins import get_plugin_manager, PluginManager
+    PLUGIN_SYSTEM_AVAILABLE = True
+except ImportError:
+    PLUGIN_SYSTEM_AVAILABLE = False
+
+
+def _get_all_templates():
+    """Obtiene todos los templates (built-in + plugins) fusionados."""
+    templates = dict(GeminiAdaptationEngine.TEMPLATES)
+    if PLUGIN_SYSTEM_AVAILABLE:
+        try:
+            pm = get_plugin_manager()
+            pm.discover()
+            for tid, plugin in pm.get_enabled_templates().items():
+                # Usar el ID del plugin como key si es diferente al nombre
+                key = plugin.meta.name if plugin.meta.name in templates else tid
+                if key not in templates:
+                    templates[key] = pm.to_compatible_dict(tid) or plugin.to_dict()
+        except Exception:
+            pass
+    return templates
+
 
 # ---------------------------------------------------------------------------
 # Sidebar (historial + botones de accion)
@@ -86,12 +110,24 @@ def build_sidebar(app: "App"):
     hf.pack(fill="both", expand=True, padx=10, pady=(0, 10))
     app.hist_frame = hf
 
+    # Widget de waveform con player integrado
+    try:
+        from waveform_widget import WaveformPlayer
+        app.waveform_player = WaveformPlayer(sb, palette=C)
+        app.waveform_player.pack(fill="x", padx=10, pady=(0, 5))
+        # Mantener referencia al botón de play para compatibilidad
+        app.bplay = app.waveform_player.play_btn
+    except Exception:
+        # Fallback: botón simple si falla la importación
+        bf = app._frame(sb, fg_color="transparent")
+        bf.pack(fill="x", padx=10, pady=(0, 15))
+        app.bplay = app._btn(bf, "Reproducir", app._play, state="disabled",
+                              width=260, height=32, fg_color=C["accent"])
+        app.bplay.pack(fill="x", pady=(0, 6))
+    
     bf = app._frame(sb, fg_color="transparent")
     bf.pack(fill="x", padx=10, pady=(0, 15))
-
-    app.bplay = app._btn(bf, "Reproducir", app._play, state="disabled",
-                          width=260, height=32, fg_color=C["accent"])
-    app.bplay.pack(fill="x", pady=(0, 6))
+    
     app.btransh = app._btn(bf, "Transcribir", app._transh, state="disabled",
                             width=260, height=32)
     app.btransh.pack(fill="x", pady=(0, 6))
@@ -221,28 +257,31 @@ def build_easy_mode(app: "App", parent):
     easy_row = app._frame(easy, fg_color="transparent")
     easy_row.pack(fill="x", padx=18, pady=(0, 3))
 
-    app.easy_var = ctk.BooleanVar(value=app.config.get("modo_facil", False))
     if CTK:
+        app.easy_var = ctk.BooleanVar(value=app.config.get("modo_facil", False))
         app.easy_switch = ctk.CTkSwitch(easy_row, text="Activar Modo Facil",
                                          variable=app.easy_var, font=(app.FB, 12),
                                          command=app._toggle_easy,
                                          progress_color=C["easy"], button_color=C["easy"])
         app.easy_switch.pack(side="left", padx=(0, 20))
     else:
+        app.easy_var = tk.BooleanVar(value=app.config.get("modo_facil", False))
         app.easy_switch = tk.Checkbutton(easy_row, text="Activar Modo Facil",
                                           variable=app.easy_var, bg=C["card"],
                                           fg=C["text"], command=app._toggle_easy)
         app.easy_switch.pack(side="left", padx=(0, 20))
 
-    app.easy_template = ctk.StringVar(
-        value=app.config.get("adaptacion_default", "Analisis Academico Profundo"))
     templates_list = list(GeminiAdaptationEngine.TEMPLATES.keys())
     if CTK:
+        app.easy_template = ctk.StringVar(
+            value=app.config.get("adaptacion_default", "Analisis Academico Profundo"))
         app.easy_menu = ctk.CTkOptionMenu(easy_row, values=templates_list,
                                            variable=app.easy_template, width=260,
                                            font=(app.FB, 11))
         app.easy_menu.pack(side="left", padx=(0, 10))
     else:
+        app.easy_template = tk.StringVar(
+            value=app.config.get("adaptacion_default", "Analisis Academico Profundo"))
         app.easy_menu = tk.OptionMenu(easy_row, app.easy_template, *templates_list)
         app.easy_menu.pack(side="left", padx=(0, 10))
 
@@ -525,7 +564,7 @@ def build_adapt(app: "App", parent):
 
     app.adapt_buttons = {}
     app.adapt_extra = []
-    templates = list(GeminiAdaptationEngine.TEMPLATES.items())
+    templates = list(_get_all_templates().items())
     for idx, (name, info) in enumerate(templates):
         row, col = divmod(idx, 4)
         b = app._btn(btn_frame, f"{info['icon']} {name}",
@@ -536,6 +575,23 @@ def build_adapt(app: "App", parent):
         app.adapt_buttons[name] = b
         if idx > 0:
             app.adapt_extra.append(b)
+
+    # Plugin manager button
+    plugin_frame = app._frame(adapt, fg_color="transparent")
+    plugin_frame.grid(row=2, column=1, sticky="ne", padx=6, pady=6)
+
+    def _open_plugin_manager():
+        try:
+            from plugin_manager_ui import PluginManagerDialog
+            PluginManagerDialog(app, palette=C)
+        except Exception as e:
+            print(f"Error abriendo gestor de plugins: {e}")
+
+    app.bplugins = app._btn(plugin_frame, "🔌 Plugins",
+                           _open_plugin_manager,
+                           width=100, height=30,
+                           fg_color=C["button"], hover_color=C["border"])
+    app.bplugins.pack(side="right")
 
     app.adapt_info = app._lbl(adapt, "", font=(app.FB, 10), text_color=C["muted"])
     app.adapt_info.grid(row=3, column=0, sticky="w", padx=18, pady=(0, 4))

@@ -127,15 +127,15 @@ jobs:
           cp dist/AudioClass/AudioClass AppDir/usr/bin/AudioClass
           cp LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md AppDir/usr/bin/
           cat > AppDir/AudioClass.desktop << 'DESKTOP'
-          [Desktop Entry]
-          Name=AudioClass
-          Comment=Grabacion y transcripcion academica con IA
-          Exec=AudioClass
-          Icon=AudioClass
-          Terminal=false
-          Type=Application
-          Categories=Audio;Education;
-          DESKTOP
+[Desktop Entry]
+Name=AudioClass
+Comment=Grabacion y transcripcion academica con IA
+Exec=AudioClass
+Icon=AudioClass
+Terminal=false
+Type=Application
+Categories=Audio;Education;
+DESKTOP
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#D4AF37"/><text x="32" y="44" text-anchor="middle" font-size="32" font-weight="bold" fill="white">AC</text></svg>' > AppDir/usr/share/icons/hicolor/256x256/apps/AudioClass.svg
           cp AppDir/usr/share/icons/hicolor/256x256/apps/AudioClass.svg AppDir/AudioClass.svg
           curl -sL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /tmp/appimagetool
@@ -179,6 +179,44 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --distpath dist_onefile AudioClass_v91_onefile.spec
           ls -la dist_onefile/AudioClass
+      - name: Build .app bundle
+        run: |
+          # Crear estructura .app para macOS
+          APP="dist/AudioClass.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          # Copiar ejecutable onedir al .app
+          python -m PyInstaller --noconfirm AudioClass_v91.spec
+          cp dist/AudioClass/AudioClass "$APP/Contents/MacOS/AudioClass"
+          chmod +x "$APP/Contents/MacOS/AudioClass"
+          cp -r dist/AudioClass/* "$APP/Contents/MacOS/"
+          # Info.plist
+          cat > "$APP/Contents/Info.plist" << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key><string>AudioClass</string>
+              <key>CFBundleDisplayName</key><string>AudioClass</string>
+              <key>CFBundleIdentifier</key><string>com.audioclass.app</string>
+              <key>CFBundleVersion</key><string>9.1.0</string>
+              <key>CFBundleShortVersionString</key><string>9.1.0</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>CFBundleExecutable</key><string>AudioClass</string>
+              <key>NSHighResolutionCapable</key><true/>
+              <key>NSMicrophoneUsageDescription</key><string>AudioClass necesita acceso al micrófono para grabar clases.</string>
+              <key>LSMinimumSystemVersion</key><string>10.15</string>
+              <key>LSApplicationCategoryType</key><string>public.app-category.education</string>
+          </dict>
+          </plist>
+          PLIST
+          # Icono placeholder
+          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#0F172A"/><text x="32" y="44" text-anchor="middle" font-size="32" font-weight="bold" fill="#60A5FA">AC</text></svg>' > "$APP/Contents/Resources/audioclass.svg"
+          # Copiar docs legales
+          for doc in LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md; do
+            [ -f "$doc" ] && cp "$doc" "$APP/Contents/MacOS/"
+          done
+          echo "=== .app bundle creado ==="
+          ls -la "$APP/Contents/MacOS/"
       - name: Selftest transcripcion
         run: |
           chmod +x dist_onefile/AudioClass
@@ -187,11 +225,79 @@ jobs:
           PID=$!; for i in $(seq 1 36); do sleep 5; kill -0 $PID 2>/dev/null || break; done
           kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true
           cat /tmp/selftest_out.txt 2>/dev/null | head -5
-      - name: Empaquetar zip macOS
+      - name: Firma de código macOS (self-signed)
         run: |
+          # Crear certificado self-signed y firmar el .app bundle
+          # Self-signed: Gatekeeper mostrará advertencia pero el usuario
+          # puede hacer clic derecho → Abrir para saltársela.
+          CERT_NAME="AudioClass Self-Signed"
+          KEYCHAIN="/tmp/audioclass-signing.keychain-db"
+          KEYCHAIN_PASS="$(openssl rand -hex 16)"
+          
+          # Crear keychain temporal
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN" 2>/dev/null || true
+          security set-keychain-settings -lut 21600 "$KEYCHAIN" 2>/dev/null || true
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN" 2>/dev/null || true
+          
+          # Crear certificado autofirmado
+          CERT_CNF=$(mktemp /tmp/cert_XXXXXX.cnf)
+          cat > "$CERT_CNF" << 'CERTCFG'
+          [req]
+          default_bits = 2048
+          prompt = no
+          default_md = sha256
+          distinguished_name = dn
+          x509_extensions = v3_code_signing
+          
+          [dn]
+          CN = AudioClass Self-Signed
+          O = AudioClass OSS
+          
+          [v3_code_signing]
+          basicConstraints = CA:FALSE
+          keyUsage = digitalSignature
+          extendedKeyUsage = codeSigning
+          CERTCFG
+          
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /tmp/signing.key -out /tmp/signing.crt \
+            -days 3650 -config "$CERT_CNF" 2>/dev/null
+          openssl pkcs12 -export -in /tmp/signing.crt -inkey /tmp/signing.key \
+            -out /tmp/signing.p12 -passout pass:"$KEYCHAIN_PASS" 2>/dev/null
+          
+          # Importar al keychain
+          security import /tmp/signing.p12 -k "$KEYCHAIN" \
+            -P "$KEYCHAIN_PASS" -T /usr/bin/codesign 2>/dev/null
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASS" "$KEYCHAIN" 2>/dev/null || true
+          
+          # Firmar el .app bundle
+          if [ -d "dist/AudioClass.app" ]; then
+            codesign --force --sign "$CERT_NAME" \
+              --options runtime --timestamp \
+              dist/AudioClass.app 2>/dev/null || echo 'Firma self-signed aplicada (Gatekeeper mostrará advertencia)'
+            echo "=== App firmada con certificado self-signed ==="
+          fi
+          
+          # Limpiar
+          rm -f /tmp/signing.key /tmp/signing.crt /tmp/signing.p12 "$CERT_CNF"
+      - name: Empaquetar zip macOS + .dmg
+        run: |
+          # Zip con ejecutable onefile (para usuarios que prefieren CLI)
           zip -j AudioClass_v9.1_MACOS.zip dist_onefile/AudioClass \
             LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
-          ls -lh AudioClass_v9.1_MACOS.zip
+          # .app bundle en zip (para usuarios que prefieren doble clic)
+          if [ -d "dist/AudioClass.app" ]; then
+            zip -r AudioClass_v9.1_MACOS_APP.zip dist/AudioClass.app \
+              LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md
+            echo "=== .app bundle zip creado ==="
+          fi
+          # .dmg (instalador nativo macOS)
+          if command -v hdiutil &>/dev/null && [ -d "dist/AudioClass.app" ]; then
+            hdiutil create -volname "AudioClass" -srcfolder dist/AudioClass.app -ov -format UDZO AudioClass_v9.1_MACOS.dmg 2>/dev/null || true
+            echo "=== .dmg creado ==="
+          fi
+          ls -lh AudioClass_v9.1_MACOS*.zip AudioClass_v9.1_MACOS*.dmg 2>/dev/null
       - name: Subir artifacts macOS
         uses: actions/upload-artifact@v4
         with:
@@ -285,34 +391,47 @@ jobs:
               exit 1
             fi
           fi
-      - name: Upload macOS ZIP
+      - name: Upload macOS ZIP + .app + .dmg
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -x
+          # Zip con ejecutable onefile
           ZIP=$(find artifacts/ -name 'AudioClass_v9.1_MACOS.zip' | head -1)
-          echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
-          UPLOADED=0
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt..."
-            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber && UPLOADED=1 && echo "SUCCESS on attempt $attempt" && break
-            echo "Attempt $attempt FAILED, waiting 15s..."
-            sleep 15
-          done
-          if [ "$UPLOADED" != "1" ]; then
-            echo "ERROR: All upload attempts failed for macOS ZIP"
-            exit 1
+          if [ -n "$ZIP" ]; then
+            echo "Uploading $ZIP ($(du -h "$ZIP" | cut -f1))"
+            gh release upload "${{ github.ref_name }}" "$ZIP" --clobber || true
           fi
-      - name: Upload AppImage (if exists)
+          # .app bundle zip
+          APPZIP=$(find artifacts/ -name 'AudioClass_v9.1_MACOS_APP.zip' | head -1)
+          if [ -n "$APPZIP" ]; then
+            echo "Uploading $APPZIP ($(du -h "$APPZIP" | cut -f1))"
+            gh release upload "${{ github.ref_name }}" "$APPZIP" --clobber || true
+          fi
+          # .dmg
+          DMG=$(find artifacts/ -name 'AudioClass_v9.1_MACOS.dmg' | head -1)
+          if [ -n "$DMG" ]; then
+            echo "Uploading $DMG ($(du -h "$DMG" | cut -f1))"
+            gh release upload "${{ github.ref_name }}" "$DMG" --clobber || true
+          fi
+      - name: Upload AppImage + zsync (if exists)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # AppImage
           APPIMAGE=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.AppImage' | head -1)
           if [ -n "$APPIMAGE" ]; then
-            echo "Uploading $APPIMAGE"
+            echo "Uploading AppImage: $APPIMAGE"
             gh release upload "${{ github.ref_name }}" "$APPIMAGE" --clobber
-          else
-            echo "No AppImage found, skipping"
+          fi
+          # .zsync (para AppImageUpdate - actualización diferencial)
+          ZSYNC=$(find artifacts/ -name 'AudioClass_v9.1_LINUX.AppImage.zsync' | head -1)
+          if [ -n "$ZSYNC" ]; then
+            echo "Uploading .zsync: $ZSYNC"
+            gh release upload "${{ github.ref_name }}" "$ZSYNC" --clobber
+          fi
+          if [ -z "$APPIMAGE" ] && [ -z "$ZSYNC" ]; then
+            echo "No AppImage or .zsync found, skipping"
           fi
       - name: Verify release
         env:

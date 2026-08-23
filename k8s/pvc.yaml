@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audioclass-data
+  namespace: audioclass
+  labels:
+    app.kubernetes.io/name: audioclass
+    app.kubernetes.io/component: server
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Descomentar para usar un StorageClass específico
+  # storageClassName: fast-ssd

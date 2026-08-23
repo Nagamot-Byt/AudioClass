@@ -86,3 +86,136 @@ def load_bundled_fonts():
                 tkfont.Font(file=path)
             except Exception:
                 pass
+
+
+# ── Detección automática de tema del sistema ─────────────────────────────────
+_system_theme_listener = None
+
+
+def detect_system_theme() -> str:
+    """Detecta el tema del sistema operativo (dark/light).
+    
+    Returns:
+        'dark' o 'light'
+    """
+    try:
+        import darkdetect
+        theme = darkdetect.theme()
+        if theme:
+            return theme.lower()  # 'Dark' -> 'dark', 'Light' -> 'light'
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    
+    # Fallback: intentar detectar manualmente
+    try:
+        import platform
+        import subprocess
+        
+        system = platform.system()
+        
+        if system == "Darwin":
+            # macOS: usar defaults
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True, text=True, timeout=5
+            )
+            return "dark" if "Dark" in result.stdout else "light"
+            
+        elif system == "Linux":
+            # Linux: verificar GTK theme o variable de entorno
+            import os
+            gtk_theme = os.environ.get("GTK_THEME", "")
+            if "dark" in gtk_theme.lower():
+                return "dark"
+            
+            # Verificar freedesktop portal
+            try:
+                result = subprocess.run(
+                    ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if "dark" in result.stdout.lower():
+                    return "dark"
+            except Exception:
+                pass
+            
+        elif system == "Windows":
+            # Windows: verificar registro
+            try:
+                import winreg
+                key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+                )
+                value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                winreg.CloseKey(key)
+                return "light" if value == 1 else "dark"
+            except Exception:
+                pass
+                
+    except Exception:
+        pass
+    
+    return "dark"  # Default
+
+
+def start_theme_watcher(callback, interval_ms: int = 5000):
+    """Inicia un watcher que detecta cambios de tema del sistema.
+    
+    Args:
+        callback: Función a llamar cuando cambia el tema (recibe 'dark' o 'light').
+        interval_ms: Intervalo de verificación en milisegundos.
+    """
+    global _system_theme_listener
+    
+    # Usar darkdetect listener si está disponible
+    try:
+        import darkdetect
+        
+        def _on_theme_change(theme):
+            if theme:
+                callback(theme.lower())
+        
+        _system_theme_listener = darkdetect.Listener(_on_theme_change)
+        _system_theme_listener.start()
+        return
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    
+    # Fallback: polling cada N segundos
+    import threading
+    
+    last_theme = [detect_system_theme()]
+    
+    def _poll():
+        while True:
+            try:
+                current = detect_system_theme()
+                if current != last_theme[0]:
+                    last_theme[0] = current
+                    callback(current)
+            except Exception:
+                pass
+            
+            import time
+            time.sleep(interval_ms / 1000.0)
+    
+    _system_theme_listener = threading.Thread(target=_poll, daemon=True)
+    _system_theme_listener.start()
+
+
+def stop_theme_watcher():
+    """Detiene el watcher de cambios de tema."""
+    global _system_theme_listener
+    
+    if _system_theme_listener is not None:
+        try:
+            if hasattr(_system_theme_listener, "stop"):
+                _system_theme_listener.stop()
+        except Exception:
+            pass
+        _system_theme_listener = None

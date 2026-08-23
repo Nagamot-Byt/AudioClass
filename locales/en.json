@@ -1,0 +1,172 @@
+{
+  "app": {
+    "title": "AudioClass - Class Recorder",
+    "version": "Version {version}",
+    "about": "About AudioClass"
+  },
+  "menu": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "help": "Help",
+    "settings": "Settings",
+    "exit": "Exit"
+  },
+  "wizard": {
+    "welcome": "Welcome to AudioClass",
+    "welcome_desc": "This wizard will help you set up the app for the first time.",
+    "step1": "Academic Level",
+    "step1_desc": "What level are you in?",
+    "step2": "Usage Profile",
+    "step2_desc": "How do you plan to use AudioClass?",
+    "step3": "Microphone",
+    "step3_desc": "Select your microphone",
+    "step4": "API Key",
+    "step4_desc": "Set up AI analysis (optional)",
+    "step5": "Transcription Mode",
+    "step5_desc": "Choose how to transcribe your classes",
+    "step6": "Privacy",
+    "step6_desc": "Review the privacy policy",
+    "next": "Next",
+    "back": "Back",
+    "finish": "Finish",
+    "skip": "Skip",
+    "privacy_accept": "I accept the privacy policy",
+    "ia_consent": "I allow AI analysis"
+  },
+  "recording": {
+    "start": "Start Recording",
+    "stop": "Stop",
+    "pause": "Pause",
+    "resume": "Resume",
+    "recording": "Recording...",
+    "paused": "Paused",
+    "ready": "Ready to record",
+    "duration": "Duration: {duration}",
+    "level": "Level: {level}"
+  },
+  "transcription": {
+    "start": "Transcribe",
+    "processing": "Transcribing...",
+    "complete": "Transcription complete",
+    "error": "Transcription error",
+    "language": "Language",
+    "auto_detect": "Auto-detect",
+    "model": "Model",
+    "fast_mode": "Fast mode"
+  },
+  "adaptation": {
+    "title": "AI Analysis",
+    "template": "Analysis type",
+    "templates": {
+      "academic": "Academic Analysis",
+      "summary": "Summary",
+      "guide": "Study Guide",
+      "flashcards": "Flashcards",
+      "exam": "Exam",
+      "mindmap": "Mind Map",
+      "clean": "Clean Text",
+      "timeline": "Timeline"
+    },
+    "generating": "Generating analysis...",
+    "complete": "Analysis complete",
+    "error": "Error generating analysis",
+    "provider": "AI Provider",
+    "copy": "Copy",
+    "export": "Export"
+  },
+  "export": {
+    "title": "Export",
+    "pdf": "Export PDF",
+    "docx": "Export DOCX",
+    "txt": "Export TXT",
+    "gdocs": "Export to Google Docs",
+    "saved": "Saved to: {path}",
+    "error": "Export error"
+  },
+  "config": {
+    "title": "Settings",
+    "general": "General",
+    "audio": "Audio",
+    "transcription": "Transcription",
+    "ai": "Artificial Intelligence",
+    "privacy": "Privacy",
+    "about": "About",
+    "language": "Language",
+    "theme": "Theme",
+    "dark": "Dark",
+    "light": "Light",
+    "save": "Save Changes",
+    "cancel": "Cancel",
+    "saved": "Settings saved"
+  },
+  "mic": {
+    "test": "Test Microphone",
+    "testing": "Testing microphone...",
+    "level_ok": "Level OK",
+    "level_low": "Level low",
+    "level_high": "Level high",
+    "no_mic": "No microphone detected",
+    "select": "Select microphone",
+    "default": "System default",
+    "optimize": "Optimize Microphone",
+    "optimizer_title": "Microphone Optimization"
+  },
+  "status": {
+    "ready": "Ready",
+    "processing": "Processing...",
+    "error": "Error",
+    "connected": "Connected",
+    "disconnected": "Disconnected"
+  },
+  "error": {
+    "generic": "An error occurred",
+    "no_file": "No file selected",
+    "invalid_audio": "Invalid audio file",
+    "api_key_required": "API Key required",
+    "api_key_invalid": "Invalid API Key",
+    "network_error": "Network error",
+    "permission_denied": "Permission denied"
+  },
+  "success": {
+    "saved": "Saved successfully",
+    "copied": "Copied to clipboard",
+    "exported": "Exported successfully",
+    "transcribed": "Transcription complete"
+  },
+  "privacy": {
+    "title": "Privacy and Consent",
+    "description": "Transcriptions are processed on your device. AI analysis sends text to third-party servers.",
+    "local_only": "Process everything locally (no cloud upload)",
+    "consent": "I consent to sending my transcriptions for AI analysis",
+    "learn_more": "Learn more",
+    "policy": "Privacy Policy"
+  },
+  "about": {
+    "title": "About AudioClass",
+    "version": "Version {version}",
+    "description": "University class recorder with transcription and AI analysis.",
+    "license": "License: MIT",
+    "website": "Website",
+    "issues": "Report issues"
+  },
+  "history": {
+    "title": "History",
+    "empty": "No recordings",
+    "play": "Play",
+    "transcribe": "Transcribe",
+    "delete": "Delete",
+    "compile": "Compile"
+  },
+  "update": {
+    "available": "New version available: v{version}",
+    "checking": "Checking for updates...",
+    "downloading": "Downloading update...",
+    "installing": "Installing update...",
+    "complete": "Update complete",
+    "error": "Update error",
+    "later": "Not now",
+    "install": "Download and install",
+    "view_release": "View changes on GitHub"
+  }
+}

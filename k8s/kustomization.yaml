@@ -1,0 +1,58 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: audioclass
+
+namespace: audioclass
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: audioclass-platform
+  app.kubernetes.io/managed-by: kustomize
+
+# Variables de entorno comunes
+configMapGenerator:
+  - name: audioclass-config
+    behavior: merge
+    literals:
+      - APP_VERSION=9.1.0
+
+# Secret generator (alternativa a secret.yaml)
+# Descomentar para generar secrets desde valores
+# secretGenerator:
+#   - name: audioclass-secrets
+#     literals:
+#       - AUDIOCLASS_API_KEY=your-api-key-here
+#     type: Opaque
+
+# Patches para diferentes entornos
+patches:
+  # Production: más réplicas y recursos
+  - target:
+      kind: Deployment
+      name: audioclass-server
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "2Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "8Gi"

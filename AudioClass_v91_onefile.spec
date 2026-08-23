@@ -116,6 +116,11 @@ a = Analysis(
         # Anti-fallo de calidad de audio
         'audio_quality_checker',
         'sound_error_solver',
+        # Modulos nuevos (refactor v9.2+)
+        'config_dialog',
+        'mic_optimizer_ui',
+        'ai_providers',
+        'update_checker',
     ],
     hookspath=[],
     hooksconfig={},

@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Documentación
+    url: https://github.com/usuario/audioclass/blob/main/GUIA_DE_USO.md
+    about: Consulta la guía de uso antes de abrir un issue
+  - name: 💬 Discusiones
+    url: https://github.com/usuario/audioclass/discussions
+    about: Usa las discusiones para preguntas generales o discutir ideas
+  - name: 🐛 Reportar problema de seguridad
+    url: https://github.com/usuario/audioclass/security/advisories/new
+    about: Reporta vulnerabilidades de seguridad de forma privada

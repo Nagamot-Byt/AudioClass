@@ -93,7 +93,7 @@ bash build_mac.sh --onefile
 ## Tests
 
 ```bash
-# Suite completa (13 tests)
+# Suite completa (20 tests)
 python run_ci_suite.py
 
 # Test individual
@@ -116,9 +116,27 @@ assets/audioclass_theme.json   # Tema de la interfaz
 models_ct2/tiny/               # Modelo Whisper tiny
 models_ct2/base/               # Modelo Whisper base
 
-.github/workflows/ci.yml       # CI: 13 tests en ubuntu
+.github/workflows/ci.yml       # CI: 20 tests en ubuntu
 .github/workflows/release.yml  # Release: builds 3 plataformas
 ```
+
+---
+
+## Verificacion de Integridad (SHA-256)
+
+Para verificar que el exe no fue manipulado:
+
+```bash
+# Verificar con el checksum oficial
+dist_onefile/AudioClass.exe  # (buscar SHA256SUMS.txt en la Release)
+
+# O generar el hash localmente
+python gen_sha256.py "AudioClass COMPLETA v9.1.exe"
+# Compara con el hash publicado en GitHub Releases
+```
+
+> El hash SHA-256 se publica en cada Release de GitHub y en `SHA256SUMS.txt`.
+> Nunca descargues o ejecutes un exe sin verificar su hash.
 
 ---
 

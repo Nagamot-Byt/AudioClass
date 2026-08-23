@@ -42,15 +42,53 @@ print('CT2_READY')
 "
 fi
 
-# Build
-if [ "$MODE" = "--onedir" ]; then
-    $PY -m PyInstaller --noconfirm AudioClass_v91.spec
-    echo "=== Build onedir completo ==="
-    ls -la dist/AudioClass/AudioClass
-else
-    $PY -m PyInstaller --noconfirm AudioClass_v91_onefile.spec
-    echo "=== Build onefile completo ==="
-    ls -la dist_onefile/AudioClass
+# Build onedir (necesario para .app bundle)
+echo "[3/4] Build onedir..."
+$PY -m PyInstaller --noconfirm AudioClass_v91.spec
+
+echo "[4/4] Creando .app bundle..."
+APP="dist/AudioClass.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+# Copiar ejecutable y dependencias
+cp dist/AudioClass/AudioClass "$APP/Contents/MacOS/AudioClass"
+chmod +x "$APP/Contents/MacOS/AudioClass"
+cp -r dist/AudioClass/* "$APP/Contents/MacOS/"
+
+# Info.plist
+cat > "$APP/Contents/Info.plist" << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>AudioClass</string>
+    <key>CFBundleDisplayName</key><string>AudioClass</string>
+    <key>CFBundleIdentifier</key><string>com.audioclass.app</string>
+    <key>CFBundleVersion</key><string>9.1.0</string>
+    <key>CFBundleShortVersionString</key><string>9.1.0</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleExecutable</key><string>AudioClass</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>AudioClass necesita acceso al micrófono para grabar clases.</string>
+    <key>LSMinimumSystemVersion</key><string>10.15</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.education</string>
+</dict>
+</plist>
+PLIST
+
+# Docs legales
+for doc in LEEME.txt LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md; do
+    [ -f "$doc" ] && cp "$doc" "$APP/Contents/MacOS/"
+done
+
+echo "=== .app bundle creado: $APP ==="
+ls -la "$APP/Contents/MacOS/"
+
+# DMG
+if command -v hdiutil &>/dev/null; then
+    echo "Creando .dmg..."
+    hdiutil create -volname "AudioClass" -srcfolder "$APP" -ov -format UDZO AudioClass_v9.1_MACOS.dmg 2>/dev/null || true
+    [ -f AudioClass_v9.1_MACOS.dmg ] && echo "=== DMG: AudioClass_v9.1_MACOS.dmg ==="
 fi
 
 echo "=== BUILD macOS OK ==="

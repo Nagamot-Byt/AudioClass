@@ -1,0 +1,85 @@
+# ============================================================
+# AudioClass Transcription Server - Dockerfile
+#
+# Servidor headless de transcripción con API REST.
+# Sin GUI, sin display, optimizado para servidores.
+#
+# Uso rápido:
+#   docker build -f Dockerfile.server -t audioclass-server .
+#   docker run -d -p 8000:8000 --name audioclass audioclass-server
+#
+# Con docker-compose:
+#   docker-compose up -d
+# ============================================================
+
+FROM python:3.12-slim AS base
+
+# Evitar prompts interactivos durante build
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# ── Dependencias del sistema (mínimas para servidor headless) ──
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Audio (para sounddevice)
+    libportaudio2 \
+    portaudio19-dev \
+    libsndfile1 \
+    # Utilidades
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Crear usuario no-root ─────────────────────────────────
+RUN groupadd -r audioclass && useradd -r -g audioclass \
+    -d /app -s /bin/bash audioclass
+
+# ── Directorios de trabajo ────────────────────────────────
+WORKDIR /app
+
+# ── Copiar requirements primero (cache de Docker) ────────
+COPY requirements_v91.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements_v91.txt && \
+    pip install --no-cache-dir fastapi uvicorn python-multipart
+
+# ── Copiar modelo Whisper tiny (para transcripción offline) ──
+RUN python -c "import whisper; whisper.load_model('tiny')" || true
+
+# ── Copiar modelos CT2 (faster-whisper) ──────────────────
+COPY models_ct2/ ./models_ct2/
+
+# ── Copiar código fuente ──────────────────────────────────
+COPY audioclass_server.py .
+COPY audioclass_core.py .
+COPY config_manager.py .
+COPY theme.py .
+COPY transcription_engines.py .
+
+# ── Copiar documentos legales ─────────────────────────────
+COPY LICENCIA.txt EULA.txt AVISO_DE_PRIVACIDAD.txt ./
+
+# ── Permisos ──────────────────────────────────────────────
+RUN chown -R audioclass:audioclass /app
+
+# ── Puerto del servidor ───────────────────────────────────
+EXPOSE 8000
+
+# ── Volume para config persistente ────────────────────────
+VOLUME ["/app/config", "/app/recordings"]
+
+# ── Variables de entorno por defecto ──────────────────────
+ENV AUDIOCLASS_HOST=0.0.0.0 \
+    AUDIOCLASS_PORT=8000 \
+    AUDIOCLASS_API_KEY="" \
+    AUDIOCLASS_MAX_UPLOAD_MB=200 \
+    AUDIOCLASS_RATE_LIMIT=30
+
+# ── Usuario no-root ───────────────────────────────────────
+USER audioclass
+
+# ── Healthcheck ───────────────────────────────────────────
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# ── Comando de inicio ─────────────────────────────────────
+CMD ["python", "audioclass_server.py", "--host", "0.0.0.0", "--port", "8000"]

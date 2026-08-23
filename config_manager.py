@@ -23,7 +23,7 @@ CONFIG_PATH = os.path.join(OUTPUT_DIR, "audioclass_config.json")
 DEFAULT_CONFIG = {
     "gemini_api_key": "",
     "colab_url": "",
-    "colab_key": "audioclass",
+    "colab_key": "",
     "google_creds_path": "",
     "audio_profile": "Clase Universitaria",
     "transcription_mode": "local",
@@ -40,7 +40,8 @@ DEFAULT_CONFIG = {
     "modo_guiado": True,
     "auto_adaptar": False,
     "adaptacion_default": "Analisis Academico Profundo",
-    "theme": "dark",
+    "theme": "auto",  # dark, light, auto (sigue el tema del sistema)
+    "language": "es",  # es, en, pt
     "vu_sensitivity": 0.25,
     # Microfono elegido por el usuario (por NOMBRE, para sobrevivir a
     # reordenamientos de ids de PortAudio). Vacio = predeterminado del sistema.
@@ -54,6 +55,128 @@ DEFAULT_CONFIG = {
     # Ganancia del microfono: 1.0 = sin boost, 2.0-5.0 para mics debiles.
     "mic_gain": 1.0,
 }
+
+# Versión del schema de configuración. Se incrementa cuando se añaden,
+# renombran o eliminan claves. El migrador aplica transforms secuenciales
+# de la versión del disco a la versión actual.
+CONFIG_VERSION = 5
+
+
+# ── Migración de configuración entre versiones ───────────────────────────
+# Cada migración es una función que transforma un dict in-place de la
+# versión N a la versión N+1. Se aplican en orden secuencial.
+
+def _migrate_v1_to_v2(cfg: dict) -> dict:
+    """Migración v1 -> v2: renombrar 'colab_key' trivial a vacío.
+
+    En v1 el default de 'colab_key' era 'audioclass' (trivial). En v2
+    se cambia a vacío para que el servidor rechace keys débiles.
+    Si el usuario tenía 'audioclass', se resetea a vacío.
+    """
+    trivial_keys = {"audioclass", "admin", "password", "1234", "test"}
+    if cfg.get("colab_key", "") in trivial_keys:
+        cfg["colab_key"] = ""
+    return cfg
+
+
+def _migrate_v2_to_v3(cfg: dict) -> dict:
+    """Migración v2 -> v3: normalizar nombres de modelos Gemini.
+
+    Gemini 1.5 fue retirado en 2025. Si el usuario tenía 'gemini-pro'
+    o 'gemini-flash' (nombres viejos), se mapea a los IDs actuales.
+    También se normaliza 'gemini_model' a los aliases soportados.
+    """
+    OLD_MODEL_MAP = {
+        "gemini-1.5-flash": "flash",
+        "gemini-1.5-pro": "pro",
+        "gemini-pro": "pro",
+        "gemini-flash": "flash",
+        "gemini-1.0-pro": "pro",
+        "gemini-1.0-flash": "flash",
+    }
+    gemini_model = cfg.get("gemini_model", "flash")
+    if gemini_model in OLD_MODEL_MAP:
+        cfg["gemini_model"] = OLD_MODEL_MAP[gemini_model]
+    # Also check full model IDs that users might have set manually
+    FULL_ID_MAP = {
+        "gemini-1.5-flash": "flash",
+        "gemini-1.5-pro": "pro",
+        "gemini-2.0-flash": "flash",
+        "gemini-2.5-pro": "pro",
+    }
+    if gemini_model in FULL_ID_MAP:
+        cfg["gemini_model"] = FULL_ID_MAP[gemini_model]
+    return cfg
+
+
+def _migrate_v3_to_v4(cfg: dict) -> dict:
+    """Migración v3 -> v4: renombrar 'cloud_model' a 'colab_model'.
+
+    El campo 'cloud_model' era ambiguo (¿Gemini cloud? ¿Colab?).
+    Se renombra a 'colab_model' para que sea explícito. Si el usuario
+    tenía un valor personalizado en 'cloud_model', se copia a 'colab_model'.
+    """
+    if "cloud_model" in cfg and "colab_model" not in cfg:
+        cfg["colab_model"] = cfg["cloud_model"]
+    # Eliminar el campo viejo para no confundir
+    cfg.pop("cloud_model", None)
+    return cfg
+
+
+def _migrate_v4_to_v5(cfg: dict) -> dict:
+    """Migración v4 -> v5: normalizar valores de tema.
+
+    Algunos usuarios escribieron 'Dark', 'LIGHT', 'dark ' (con espacio),
+    42 (número), o None. Se normaliza a 'dark', 'light' o 'auto' (lowercase,
+    sin espacios). Valores no-string o irreconocibles → fallback a 'auto'.
+
+    Si 'theme' no existe en la config, no lo añade: el paso de defaults
+    (DEFAULT_CONFIG) se encargará.
+    """
+    if "theme" not in cfg:
+        return cfg
+    theme = cfg["theme"]
+    if isinstance(theme, str):
+        normalized = theme.strip().lower()
+        if normalized in ("dark", "light", "auto"):
+            cfg["theme"] = normalized
+        else:
+            cfg["theme"] = "auto"
+    else:
+        # None, int, bool, etc.: fallback a auto (sigue el tema del sistema)
+        cfg["theme"] = "auto"
+    return cfg
+
+
+# Registro de migraciones: lista de (desde_version, hasta_version, función)
+# Se aplican en orden secuencial; cada una transforma vN -> vN+1.
+_MIGRATIONS = [
+    (1, 2, _migrate_v1_to_v2),
+    (2, 3, _migrate_v2_to_v3),
+    (3, 4, _migrate_v3_to_v4),
+    (4, 5, _migrate_v4_to_v5),
+]
+
+
+def _migrate_config(cfg: dict) -> dict:
+    """Aplica todas las migraciones necesarias para llevar la config
+    a la versión actual. Devuelve el dict migrado.
+
+    Si la config no tiene versión (configs antiguas), asume v1.
+    """
+    current_ver = cfg.get("_config_version", 1)
+    if current_ver >= CONFIG_VERSION:
+        return cfg  # Ya está actualizada
+
+    for from_ver, to_ver, migrate_fn in _MIGRATIONS:
+        if current_ver < to_ver and from_ver >= current_ver:
+            try:
+                cfg = migrate_fn(cfg)
+            except Exception:
+                pass  # No fallar la app por un error de migración
+
+    cfg["_config_version"] = CONFIG_VERSION
+    return cfg
 
 
 # ── Cifrado de secretos (DPAPI en Windows) ────────────────────────────────
@@ -168,13 +291,16 @@ def _decrypt_secret(value):
 
 # ── Carga / Guardado ──────────────────────────────────────────────────────
 def load_config(path=None):
-    """Carga la configuracion desde JSON. Aplica defaults para claves faltantes
-    y descifra secretos. Si el archivo no existe, devuelve DEFAULT_CONFIG."""
+    """Carga la configuracion desde JSON. Aplica defaults para claves faltantes,
+    descifra secretos y ejecuta migraciones entre versiones. Si el archivo
+    no existe, devuelve DEFAULT_CONFIG."""
     cfg_path = path or CONFIG_PATH
     if os.path.exists(cfg_path):
         try:
             with open(cfg_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
+            # Aplicar migraciones de versión
+            cfg = _migrate_config(cfg)
             for k, v in DEFAULT_CONFIG.items():
                 if k not in cfg:
                     cfg[k] = v

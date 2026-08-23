@@ -38,6 +38,10 @@ jobs:
       - name: py_compile (sintaxis de todos los fuentes)
         run: |
           python -m py_compile audioclass_v91.py audioclass_core.py \
+            config_manager.py config_dialog.py mic_optimizer_ui.py \
+            ai_providers.py update_checker.py ui_builder.py \
+            theme.py recording_engine.py transcription_engines.py \
+            export_utils.py audio_quality_checker.py sound_error_solver.py \
             audioclass_colab_server_v91.py grabar_prueba.py \
             bench_models.py optimizar_mic.py run_ci_suite.py \
             test_*.py && echo COMPILE_OK
@@ -155,6 +159,10 @@ jobs:
         run: python -u run_ci_suite.py test_privacy_consent
       - name: "Test seguridad servidor Colab (test_colab_server_security)"
         run: python -u run_ci_suite.py test_colab_server_security
+      - name: "Test code signing (test_code_signing)"
+        run: python -u run_ci_suite.py test_code_signing
+      - name: "Test módulos refactorizados (test_refactored_modules)"
+        run: python -u run_ci_suite.py test_refactored_modules
       - name: "Test motor paralelo (test_parallel_transcribe)"
         run: python -u run_ci_suite.py test_parallel_transcribe
       - name: "Test exportación DOCX/PDF (test_export_docx_pdf)"
@@ -169,5 +177,58 @@ jobs:
         run: python -u run_ci_suite.py test_lang_auto
       - name: "Test watchdog anti-cuelgue (test_watchdog)"
         run: python -u run_ci_suite.py test_watchdog
+      - name: "Test config manager (test_config_manager)"
+        run: python -u run_ci_suite.py test_config_manager
+      - name: "Test integración API (test_api_integration)"
+        run: python -u run_ci_suite.py test_api_integration
+      - name: "Test detección micrófono (test_mic_detection)"
+        run: python -u run_ci_suite.py test_mic_detection
+      - name: "Test calidad audio/solver (test_audio_quality_solver)"
+        run: python -u run_ci_suite.py test_audio_quality_solver
+      - name: "Test quality gate E2E (test_quality_gate_e2e)"
+        run: python -u run_ci_suite.py test_quality_gate_e2e
+      - name: "Test módulos en exe (test_exe_has_modules)"
+        run: python -u run_ci_suite.py test_exe_has_modules
       - name: "Test benchmark de modelos (test_benchmark_models)"
         run: python -u run_ci_suite.py test_benchmark_models
+      - name: "Unit tests del core (test_core_units)"
+        run: python -u test_core_units.py
+      - name: "Unit tests de migración config (test_config_migration)"
+        run: python -u test_config_migration.py
+
+  coverage:
+    name: Cobertura de código (pytest-cov)
+    runs-on: ubuntu-latest
+    needs: [tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencias
+        run: |
+          pip install --quiet numpy scipy sounddevice matplotlib fpdf2 pypdf \
+            requests customtkinter pytest pytest-cov
+          pip install --quiet openai-whisper
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet faster-whisper
+          sudo apt-get install -y libportaudio2 libsndfile1 >/dev/null 2>&1 || true
+      - name: Ejecutar tests con cobertura
+        run: |
+          python -m pytest test_core_units.py test_config_manager.py \
+            test_refactored_modules.py test_config_migration.py \
+            test_adapt_engines.py test_lang_auto.py \
+            --cov=config_manager --cov=template_plugins --cov=theme \
+            --cov=update_checker --cov=locales/i18n \
+            --cov=ai_providers --cov=recording_engine \
+            --cov=export_utils --cov=ui_builder \
+            --cov-report=term-missing --cov-report=html \
+            --cov-fail-under=60 -v
+          echo "COVERAGE_REPORT_GENERATED"
+      - name: Subir reporte de cobertura
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30

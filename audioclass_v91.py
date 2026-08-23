@@ -174,6 +174,9 @@ C = PALETTES["dark"].copy()
 
 # ── Modulos extraidos ──────────────────────────────────────────────────
 from recording_engine import RecordingMixin
+from mic_optimizer_ui import MicTestMixin
+from config_dialog import ConfigDialogMixin
+from waveform_widget import WaveformPlayer
 from transcription_engines import TRANSCRIPTION_ENGINES as _TE_ENGINES, select_engine as _select_engine
 from export_utils import (
     fmt_timestamp as _fmt_ts_standalone,
@@ -216,6 +219,14 @@ from audioclass_core import (AudioPipeline, LocalWhisperEngine,
                              CloudColabEngine, GeminiAdaptationEngine,
                              OpenAIAdaptationEngine, build_adaptation_engine,
                              GoogleDocsExporter)
+
+# Plugin system for custom templates
+try:
+    from template_plugins import get_plugin_manager, PluginManager
+    from plugin_manager_ui import PluginManagerDialog
+    PLUGIN_SYSTEM_AVAILABLE = True
+except ImportError:
+    PLUGIN_SYSTEM_AVAILABLE = False
 # ═══════════════════════════════════════════════════════════════════════════════
 # UI PRINCIPAL — AudioClass v9.1 (continuación)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -353,7 +364,7 @@ def _same_mic(a, b):
         return False
 
 
-class App(ctk.CTk if CTK else ctk.Tk):
+class App(ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
     """Aplicacion principal de AudioClass v9.1.
 
     Interfaz grafica para grabar, transcribir y exportar clases universitarias.
@@ -387,7 +398,18 @@ class App(ctk.CTk if CTK else ctk.Tk):
             _load_bundled_fonts()
 
             self.config = load_config()
-            self.dark = (self.config.get("theme", "dark") == "dark")
+            
+            # Manejar tema: 'auto' sigue el tema del sistema
+            theme_setting = self.config.get("theme", "auto")
+            self._theme_watcher_active = False
+            
+            if theme_setting == "auto":
+                from theme import detect_system_theme
+                system_theme = detect_system_theme()
+                self.dark = (system_theme == "dark")
+            else:
+                self.dark = (theme_setting == "dark")
+            
             C.clear(); C.update(PALETTES["dark" if self.dark else "light"])
             if CTK: ctk.set_appearance_mode("dark" if self.dark else "light")
 
@@ -468,7 +490,7 @@ class App(ctk.CTk if CTK else ctk.Tk):
             )
             self.cloud_engine = CloudColabEngine(
                 self.config.get("colab_url", ""),
-                self.config.get("colab_key", "audioclass"),
+                self.config.get("colab_key", ""),
                 self.config.get("whisper_language", "auto")
             )
             self.adapt_engine = self._build_adapt_engine()
@@ -486,7 +508,12 @@ class App(ctk.CTk if CTK else ctk.Tk):
             else:
                 self._build_main_ui()
 
+            # Iniciar watcher de tema si está en modo auto
+            if self.config.get("theme") == "auto":
+                self._start_theme_watcher()
+
             self._poll()
+            self._check_for_updates_async()
             self.protocol("WM_DELETE_WINDOW", self._close)
 
         except Exception as e:
@@ -569,6 +596,11 @@ class App(ctk.CTk if CTK else ctk.Tk):
         if CTK:
             return ctk.CTkEntry(p, **kw)
         return ctk.Entry(p, font=kw.get("font", (self.FB, 11)), bg=C["card"], fg=C["text"], insertbackground=C["text"])
+
+    @property
+    def _C(self):
+        """Acceso a la paleta activa para mixins y helpers externos."""
+        return C
 
     def _palette_key(self, value, forced=None):
         """Convierte un color a su CLAVE de paleta activa (primera coincidencia).
@@ -1217,21 +1249,17 @@ class App(ctk.CTk if CTK else ctk.Tk):
                 pass
             self._toast_btn = None
 
-        # Toasts: colores de paleta por modo (dark/light) para que el texto
-        # siempre tenga contraste y siga el tema (antes hex literales fijos).
-        _PILL = {
-            "ok":   ("#0F172A", "#7DD3FC"),
-            "err":  ("#450A0A", "#FCA5A5"),
-            "warn": ("#451A03", "#FDE68A"),
+        # Toasts: colores derivados de la paleta activa C para que siempre
+        # tengan contraste y sigan el tema (claro/oscuro).
+        _TOAST_STYLES = {
+            "ok":   {"bg_key": "card", "fg": C["ok"]},
+            "err":  {"bg_key": "card", "fg": C["err"]},
+            "warn": {"bg_key": "card", "fg": C["warn"]},
         }
-        _PILL_LIGHT = {
-            "ok":   ("#E0F2FE", "#075985"),
-            "err":  ("#FEE2E2", "#991B1B"),
-            "warn": ("#FEF3C7", "#92400E"),
-        }
-        _PULSE = {"ok": C["accent"], "err": C["err"], "warn": C["warn"]}
-        pill_bg, pill_fg = (_PILL if self.dark else _PILL_LIGHT).get(kind, (_PILL if self.dark else _PILL_LIGHT)["ok"])
-        pulse_col = _PULSE.get(kind, C["accent"])
+        style = _TOAST_STYLES.get(kind, _TOAST_STYLES["ok"])
+        pill_bg = C.get(style["bg_key"], C["card"])
+        pill_fg = style["fg"]
+        pulse_col = C.get(kind, C["accent"])
         self._toast_btn = None
         if CTK:
             lbl = ctk.CTkLabel(self.steps_frame, text="[OK] " + msg,
@@ -1488,13 +1516,36 @@ CONSEJOS:
             pass
 
     def _theme(self):
-        """Cambia entre tema claro y oscuro."""
-        self.dark = not self.dark
-        self.config["theme"] = "dark" if self.dark else "light"
+        """Cambia entre tema claro, oscuro y auto (sigue el sistema)."""
+        current = self.config.get("theme", "auto")
+        
+        # Ciclo: dark -> light -> auto -> dark
+        if current == "dark":
+            new_theme = "light"
+        elif current == "light":
+            new_theme = "auto"
+        else:  # auto
+            new_theme = "dark"
+        
+        self.config["theme"] = new_theme
         save_config(self.config)
+        
+        # Aplicar tema
+        if new_theme == "auto":
+            from theme import detect_system_theme
+            system_theme = detect_system_theme()
+            self.dark = (system_theme == "dark")
+            self._start_theme_watcher()  # Iniciar watcher
+        else:
+            self.dark = (new_theme == "dark")
+            self._stop_theme_watcher()  # Detener watcher
+        
         self._apply_palette()
+        
+        # Actualizar texto del botón
+        theme_labels = {"dark": "Oscuro", "light": "Claro", "auto": "Auto"}
         try:
-            self.btheme.configure(text="Oscuro" if not self.dark else "Claro")
+            self.btheme.configure(text=theme_labels.get(new_theme, "Tema"))
         except Exception:
             pass
         if getattr(self, "btheme_hd", None):
@@ -1502,6 +1553,38 @@ CONSEJOS:
                 self.btheme_hd.configure(text="Tema")
             except Exception:
                 pass
+
+    def _start_theme_watcher(self):
+        """Inicia el watcher para detectar cambios de tema del sistema."""
+        if getattr(self, "_theme_watcher_active", False):
+            return  # Ya está activo
+        
+        def _on_system_theme_change(new_theme):
+            """Callback cuando el tema del sistema cambia."""
+            try:
+                if self.config.get("theme") != "auto":
+                    return  # No está en modo auto, ignorar
+                
+                new_dark = (new_theme == "dark")
+                if new_dark != self.dark:
+                    self.dark = new_dark
+                    # Actualizar en el hilo principal de Tk
+                    self.after(0, self._apply_palette)
+            except Exception:
+                pass
+        
+        from theme import start_theme_watcher
+        start_theme_watcher(_on_system_theme_change, interval_ms=5000)
+        self._theme_watcher_active = True
+
+    def _stop_theme_watcher(self):
+        """Detiene el watcher de cambios de tema."""
+        if not getattr(self, "_theme_watcher_active", False):
+            return
+        
+        from theme import stop_theme_watcher
+        stop_theme_watcher()
+        self._theme_watcher_active = False
 
     def _apply_palette(self):
         """Cambia la paleta activa (claro/oscuro) y re-mapea las superficies
@@ -1770,764 +1853,41 @@ CONSEJOS:
             self._msg("error", "Error", f"No se pudo abrir la carpeta:\n{e}")
 
     def _test_mic(self):
-        """Ventana de prueba nativa del microfono: graba ~8 s con el pipeline
-        activo, muestra un medidor de nivel en vivo y las metricas de calidad
-        (adaptacion de grabar_prueba.py integrada en la app)."""
-        # Si la ventana ya esta abierta, reutilizarla (evitar duplicados)
-        if getattr(self, "mic_test_top", None) is not None:
-            try:
-                if self.mic_test_top.winfo_exists():
-                    self.mic_test_top.lift()
-                    self.mic_test_top.focus_force()
-                    return
-            except Exception:
-                pass
-
-        top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("Prueba de Microfono")
-        top.geometry("600x440")
-        top.transient(self)
-        top.grab_set()
-        self.mic_test_top = top
-        self._mic_busy = False
-
-        self._lbl(top, "Prueba rapida de microfono", font=(self.FH, 18, "bold"),
-                  text_color=C["accent"]).pack(pady=(18, 4))
-        self._lbl(top, "Pulsa el boton, espera 2 segundos y habla durante ~6 segundos.",
-                  font=(self.FB, 12), text_color=C["muted"]).pack(pady=(0, 12))
-
-        lvl_row = self._frame(top, fg_color="transparent")
-        lvl_row.pack(fill="x", padx=30, pady=(0, 4))
-        self._lbl(lvl_row, "Nivel:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
-        if CTK:
-            self.mic_lvl_bar = ctk.CTkProgressBar(lvl_row, height=14, corner_radius=7,
-                                                  progress_color=C["muted"])
-        else:
-            self.mic_lvl_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
-        self.mic_lvl_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.mic_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=(self.FB, 10), text_color=C["muted"])
-        self.mic_lvl_lbl.pack(side="left")
-
-        self.mic_state = self._lbl(top, "", font=(self.FB, 12), text_color=C["warn"])
-        self.mic_state.pack(pady=(8, 4))
-
-        self.mic_result = self._lbl(top, "", font=(self.FB, 11), text_color=C["text"],
-                                    anchor="w", wraplength=540)
-        self.mic_result.pack(padx=30, pady=(4, 10))
-
-        self.btn_mic_test = self._btn(top, "Comenzar prueba (8 s)", self._mic_test_start,
-                                      width=280, height=44, font=(self.FB, 14, "bold"),                                       fg_color=C["err"], hover_color=C["err"])
-        self.btn_mic_test.pack(pady=(4, 8))
-        self._btn(top, "Cerrar", top.destroy, width=140, height=36).pack(pady=(0, 14))
+        """Ventana de prueba nativa del microfono (delega a MicTestMixin)."""
+        self.open_mic_test()
 
     def _mic_test_start(self):
-        """Arranca la grabacion de prueba en un hilo (sin bloquear la UI)."""
-        try:
-            if getattr(self, "_mic_busy", False):
-                return
-            self._mic_busy = True
-            if hasattr(self, "btn_mic_test") and self.btn_mic_test.winfo_exists():
-                self.btn_mic_test.configure(state="disabled", text="Escuchando... habla ahora")
-            if hasattr(self, "mic_state") and self.mic_state.winfo_exists():
-                self.mic_state.configure(text="HABLA AHORA durante ~6 segundos", text_color=C["err"])
-            if hasattr(self, "mic_result") and self.mic_result.winfo_exists():
-                self.mic_result.configure(text="")
-            threading.Thread(target=self._mic_test_worker, daemon=True).start()
-        except Exception:
-            self._mic_busy = False
+        """Wrapper: delega a MicTestMixin."""
+        self._mic_test_start_inner()
 
     def _mic_test_worker(self):
-        """Graba ~8 s con el microfono, procesa con el pipeline activo y
-        envia las metricas a la UI por la cola (no tocar widgets desde el hilo)."""
-        try:
-            SR = SAMPLE_RATE
-            DUR = 8
-            win = int(0.1 * SR)
-            buf = []
-
-            def cb(indata, frames, ti, status):
-                """Metodo interno: cb."""
-                x = indata.copy().flatten()
-                buf.append(x)
-                r = float(np.sqrt(np.mean(x.astype(np.float64) ** 2))) if len(x) else 0.0
-                self.q.put(("mic_lvl", r))
-
-            with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                                blocksize=win, callback=cb,
-                                device=_mic_device_id_for(getattr(self, "config", None) or {})):
-                t0 = time.time()
-                while time.time() - t0 < DUR:
-                    time.sleep(0.05)
-
-            if not buf:
-                self.q.put(("mic_result", "No se capturo audio del microfono."))
-                return
-            raw = np.concatenate(buf).flatten()
-            proc = self.pipeline.process(raw)
-            self.q.put(("mic_result", self._mic_metrics(raw, proc)))
-        except Exception as e:
-            self.q.put(("mic_result", f"Error: {e}"))
-        finally:
-            self._mic_busy = False
-            self.q.put(("mic_idle", None))
+        """Wrapper: delega a MicTestMixin."""
+        self._mic_test_worker_inner()
 
     def _mic_metrics(self, raw, proc):
-        """Metricas objetivas raw vs mejorado (en memoria, sin guardar WAVs)."""
-        SR = SAMPLE_RATE
-        w = int(0.04 * SR)
-        hop = w // 2
-        fr_r = self.pipeline._frame_rms(raw.astype(np.float64), w, hop)
-        fr_p = self.pipeline._frame_rms(proc.astype(np.float64), w, hop)
-        if len(fr_r) == 0 or len(fr_p) == 0:
-            return "Audio demasiado corto para analizar."
-        floor_r = float(np.percentile(fr_r, 10))
-        floor_p = float(np.percentile(fr_p, 10))
-        speech_r = float(np.percentile(fr_r, 90))
-        speech_p = float(np.percentile(fr_p, 90))
-        QUIET = 0.01
-        sil_r = float(np.mean(fr_r < QUIET)) * 100
-        sil_p = float(np.mean(fr_p < QUIET)) * 100
-
-        def band(x, lo, hi):
-            """Metodo interno: band."""
-            if len(x) < 512:
-                return 0.0
-            f, P = signal.welch(x, fs=SR, nperseg=2048)
-            return float(np.sum(P[(f >= lo) & (f <= hi)]))
-
-        vi, vo = band(raw, 200, 3000), band(proc, 200, 3000)
-        hii, hoo = band(raw, 7100, 7900), band(proc, 7100, 7900)
-        pk = float(np.max(np.abs(proc))) if len(proc) else 0.0
-        snr = speech_p / max(floor_p, 1e-12)
-        # Heuristica del propio VAD (_agc_vad_limiter): el ruido de fondo
-        # amplificado por el AGC tiene p90/p10 ~1.5 (sin estructura de voz),
-        # mientras que la voz real da >2.0. Sin esto, el ruido puro
-        # normalizado por el AGC puede cruzar el umbral de 0.02 y etiquetarse
-        # "Voz detectada" (depende de la plataforma/numpy; se midio 0.009 en
-        # local y >0.02 en el runner de CI).
-        spread_r = speech_r / max(floor_r, 1e-12)
-        lines = []
-        if speech_p > 0.02 and spread_r >= 2.0:
-            lines.append(f"[OK] Voz detectada (nivel de habla {speech_p:.3f})")
-        elif speech_p > 0.02:
-            lines.append(f"Voz muy baja ({speech_p:.3f}) — sin estructura de voz (ruido amplificado); revisa el microfono")
-        else:
-            lines.append(f"Voz muy baja ({speech_p:.3f}) — acercate al microfono o habla mas alto")
-        lines.append(f"Silencio recortado: {sil_r:.0f}% -> {sil_p:.0f}% (noise gate)")
-        lines.append(f"Nivel de habla: {speech_r:.4f} -> {speech_p:.4f}")
-        lines.append(f"SNR habla/piso: {snr:.1f}x")
-        lines.append(f"Voz 200-3000 Hz: x{vo / max(vi, 1e-12):.2f}")
-        # Evitar '-inf dB' si el filtro paso-bajas deja la banda alta en cero
-        # (silencio digital o perfil con lp_freq bajo): se reporta 'sin señal'.
-        if hoo <= 1e-12:
-            lines.append("Agudos 7.1-7.9 kHz: sin señal (filtrado por el perfil)")
-        else:
-            lines.append(f"Agudos 7.1-7.9 kHz: {20 * np.log10(hoo / max(hii, 1e-12)):+.1f} dB")
-        lines.append(f"Pico: {pk:.3f} (limite {self.pipeline.p['limiter']:.2f}, sin clipping)")
-        return "\n".join(lines)
+        """Wrapper: delega a MicTestMixin (con fallback standalone)."""
+        if hasattr(self, '_compute_mic_metrics'):
+            return self._compute_mic_metrics(raw, proc)
+        # Fallback: implementación inline para compatibilidad con tests Fake
+        from mic_optimizer_ui import MicTestMixin
+        return MicTestMixin._compute_mic_metrics(self, raw, proc)
 
     # ── Optimizador de microfono (integrado, sin salir de la app) ──────────
     def _open_mic_opt(self):
-        """Ventana del optimizador de microfono: diagnostica el nivel de
-        entrada, el permiso de privacidad y todos los microfonos, y puede
-        aplicar la correccion (nivel 100% + desmute + boost) SIN salir de la
-        app. Reutiliza las funciones CoreAudio de optimizar_mic.py (ctypes)."""
-        if getattr(self, "mic_opt_top", None) is not None:
-            try:
-                if self.mic_opt_top.winfo_exists():
-                    self.mic_opt_top.lift()
-                    self.mic_opt_top.focus_force()
-                    return
-            except Exception:
-                pass
-
-        top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("Optimizador de micrófono")
-        top.geometry("680x600")
-        top.transient(self)
-        top.grab_set()
-        self.mic_opt_top = top
-
-        self._lbl(top, "Optimizador de micrófono", font=(self.FH, 18, "bold"),
-                  text_color=C["accent"]).pack(pady=(16, 4))
-        self._lbl(top, "Diagnostica el nivel de entrada y corrige las grabaciones en silencio. "
-                       "Habla en voz alta durante cada prueba de 4 segundos.",
-                  font=(self.FB, 11), text_color=C["muted"], wraplength=620).pack(pady=(0, 10))
-
-        mic_row = self._frame(top, fg_color="transparent")
-        mic_row.pack(fill="x", padx=30, pady=(0, 6))
-        self._lbl(mic_row, "Micrófono:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
-        mic_devs = _input_devices()
-        mic_names = ["Predeterminado del sistema"] + [n for _, n in mic_devs]
-        cfg_mic = str((getattr(self, "config", None) or {}).get("mic_device") or "").strip()
-        self.mic_opt_mic_var = ctk.StringVar(
-            value=cfg_mic if cfg_mic in mic_names else "Predeterminado del sistema")
-        if CTK:
-            self.mic_opt_menu = ctk.CTkOptionMenu(mic_row, values=mic_names, variable=self.mic_opt_mic_var,
-                                                  width=430, font=(self.FB, 11), fg_color=C["button"],
-                                                  text_color=C["text"], button_color=C["accent"],
-                                                  button_hover_color=C["accent_hover"],
-                                                  dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
-                                                  dropdown_text_color=C["text"])
-        else:
-            self.mic_opt_menu = ctk.OptionMenu(mic_row, self.mic_opt_mic_var, *mic_names)
-        self.mic_opt_menu.pack(side="left", padx=(0, 8))
-        if not mic_devs:
-            try:
-                self.mic_opt_menu.configure(state="disabled")
-            except Exception:
-                pass
-
-        lvl_row = self._frame(top, fg_color="transparent")
-        lvl_row.pack(fill="x", padx=30, pady=(0, 4))
-        self._lbl(lvl_row, "Nivel:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
-        if CTK:
-            self.mic_opt_lvl_bar = ctk.CTkProgressBar(lvl_row, height=14, corner_radius=7,
-                                                      progress_color=C["muted"])
-        else:
-            self.mic_opt_lvl_bar = ttk.Progressbar(lvl_row, mode="determinate", maximum=100)
-        self.mic_opt_lvl_bar.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.mic_opt_lvl_lbl = self._lbl(lvl_row, "-∞ dB", font=(self.FB, 10), text_color=C["muted"])
-        self.mic_opt_lvl_lbl.pack(side="left")
-
-        self.mic_opt_state_lbl = self._lbl(top, "", font=(self.FB, 12), text_color=C["warn"])
-        self.mic_opt_state_lbl.pack(pady=(6, 4))
-
-        if CTK:
-            self.mic_opt_txt = ctk.CTkTextbox(top, height=250, font=("Consolas", 10),
-                                              text_color=C["text"], fg_color=C["card"],
-                                              border_width=1, border_color=C["border"],
-                                              wrap="word", state="disabled")
-        else:
-            self.mic_opt_txt = tk.Text(top, height=16, font=("Consolas", 10),
-                                       bg=C["card"], fg=C["text"], wrap="word",
-                                       state="disabled", relief="flat", borderwidth=1,
-                                       highlightthickness=1, highlightbackground=C["border"])
-        self.mic_opt_txt.pack(fill="both", expand=True, padx=30, pady=(4, 8))
-
-        btns = self._frame(top, fg_color="transparent")
-        btns.pack(fill="x", padx=30, pady=(0, 14))
-        self.btn_mic_opt_diag = self._btn(btns, "Diagnosticar", lambda: self._mic_opt_start(False),
-                                          width=200, height=40, font=(self.FB, 12, "bold"),
-                                          fg_color=C["accent"], hover_color=C["accent_hover"])
-        self.btn_mic_opt_diag.pack(side="left", padx=(0, 8))
-        self.btn_mic_opt_apply = self._btn(btns, "Aplicar optimización", lambda: self._mic_opt_start(True),
-                                           width=225, height=40, font=(self.FB, 12, "bold"),
-                                           fg_color=C["ok"], hover_color=C["ok"])
-        self.btn_mic_opt_apply.pack(side="left", padx=(0, 8))
-        self._btn(btns, "Cerrar", top.destroy, width=100, height=36).pack(side="left")
+        """Ventana del optimizador de microfono (delega a MicTestMixin)."""
+        self.open_mic_optimizer()
 
     def _mic_opt_start(self, do_apply):
-        """Arranca el diagnostico/optimizacion en un hilo (no bloquea la UI)."""
-        try:
-            if getattr(self, "_mic_opt_busy", False):
-                return
-            self._mic_opt_busy = True
-            for b in ("btn_mic_opt_diag", "btn_mic_opt_apply"):
-                w = getattr(self, b, None)
-                if w is not None:
-                    try:
-                        if w.winfo_exists():
-                            w.configure(state="disabled")
-                    except Exception:
-                        pass
-            if hasattr(self, "mic_opt_txt"):
-                try:
-                    self.mic_opt_txt.configure(state="normal")
-                    self.mic_opt_txt.delete("1.0", "end")
-                    self.mic_opt_txt.configure(state="disabled")
-                except Exception:
-                    pass
-            mic_name = ""
-            try:
-                mic_name = self.mic_opt_mic_var.get()
-            except Exception:
-                pass
-            threading.Thread(target=self._mic_opt_worker, args=(do_apply,),
-                             kwargs={"mic_name": mic_name}, daemon=True).start()
-        except Exception:
-            self._mic_opt_busy = False
+        """Wrapper: delega a MicTestMixin."""
+        self._mic_opt_start_inner(do_apply)
 
     def _mic_opt_worker(self, do_apply, mic_name=""):
-        """Hilo del optimizador: diagnostica (dispositivo, nivel, mute, permiso,
-        todos los mics) y, si do_apply, aplica 100% + desmute + boost. El
-        dispositivo objetivo es el elegido en el selector de la ventana
-        (mic_name, por nombre) o el predeterminado del sistema. Los avances
-        van por la cola (_poll) para no tocar widgets desde el hilo."""
-        try:
-            if sys.platform != "win32":
-                self.q.put(("mic_opt_log", "El optimizador solo aplica en Windows.\n"))
-                self.q.put(("mic_opt_done", "NO_WINDOWS"))
-                return
-            import optimizar_mic as om
-            log = self.q.put
-
-            # Dispositivo objetivo: el del selector (por nombre) o el default.
-            target = (mic_name or "").strip()
-            use_default = (not target) or target == "Predeterminado del sistema"
-            dev = None
-            sd_id = None
-            sname = ""
-            if not use_default:
-                try:
-                    dev = om._capture_device_by_sd_name(target)
-                except Exception:
-                    dev = None
-                if dev is None:
-                    log(("mic_opt_log", f"No pude identificar '{target}' en Windows; uso el predeterminado.\n"))
-            if dev is None:
-                dev = om._default_capture_device()
-                try:
-                    sname = sd.query_devices(sd.default.device[0])["name"]
-                except Exception:
-                    pass
-            else:
-                sname = target
-                sd_id = _mic_device_id_for({"mic_device": target})
-            if use_default:
-                log(("mic_opt_log", f"Dispositivo por defecto: {sname}\n"))
-            else:
-                log(("mic_opt_log", f"Dispositivo (elegido): {sname}\n"))
-            st = om.get_mic_state(dev)
-            if st:
-                log(("mic_opt_log", f"  Nivel: {st[0]}%  |  Mute: {'SÍ [!]' if st[1] else 'No'}\n"))
-            else:
-                log(("mic_opt_log", "  (nivel no accesible)\n"))
-
-            pv = om.privacy_mic()
-            if pv != "Allow":
-                log(("mic_opt_log", f"Permiso de micrófono: {pv}  DENEGADO — permite el acceso en "
-                                     "Configuración > Privacidad > Micrófono\n"))
-            else:
-                log(("mic_opt_log", "Permiso de micrófono: Allow\n"))
-
-            log(("mic_opt_log", "Microfonos activos:\n"))
-            try:
-                for did2, lvl, mute in om.list_mics():
-                    mark = ""
-                    if _same_mic(did2, sname):
-                        mark = " [DEFAULT]" if use_default else " [ELEGIDO]"
-                    extra = f"nivel {lvl}%" + (" mute [!]" if mute else "")
-                    log(("mic_opt_log", f"  {extra}{mark}  {str(did2)[:64]}\n"))
-            except Exception as e:
-                log(("mic_opt_log", f"  (no enumerable: {e})\n"))
-
-            # Prueba de señal ANTES (piso/p90/peak) con medidor en vivo
-            self.q.put(("mic_opt_state", "HABLA AHORA durante 4 s"))
-            antes = om.measure_signal(4.0, device=sd_id,
-                                      on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
-            self.q.put(("mic_opt_state", ""))
-            log(("mic_opt_log", f"Prueba: {antes['dur']:.1f}s | piso {antes['piso']:.4f} | "
-                                 f"p90 {antes['p90']:.4f} | peak {antes['peak']:.3f} -> {antes['veredicto']}\n"))
-            if not do_apply:
-                if antes["veredicto"] == "OK":
-                    log(("mic_opt_log", "El micrófono captura bien. No se requiere optimización.\n"))
-                else:
-                    log(("mic_opt_log", "Sugerencia: pulsa 'Aplicar optimización' para subir el nivel "
-                                         "al 100% y activar el boost si el driver lo permite.\n"))
-                self.q.put(("mic_opt_done", antes["veredicto"]))
-                return
-
-            # ── Aplicar optimizacion ────────────────────────────────────────
-            log(("mic_opt_log", "\nAPLICANDO OPTIMIZACIÓN...\n"))
-            ok1, err1 = om.apply_mic_level(dev, 100)
-            log(("mic_opt_log", f"  [{'OK' if ok1 else 'NO'}] nivel -> 100% + desmute  {err1}\n"))
-            ok2, msg2 = om.apply_boost(dev)
-            log(("mic_opt_log", f"  [{'OK' if ok2 else 'NO'}] boost del nodo de volumen  {msg2}\n"))
-            time.sleep(0.5)
-            st2 = om.get_mic_state(dev)
-            if st2:
-                log(("mic_opt_log", f"  Estado tras aplicar: nivel {st2[0]}% | mute {'SÍ [!]' if st2[1] else 'No'}\n"))
-
-            self.q.put(("mic_opt_state", "HABLA AHORA durante 4 s (post-optimización)"))
-            despues = om.measure_signal(4.0, device=sd_id,
-                                        on_level=lambda r: self.q.put(("mic_opt_lvl", r)))
-            self.q.put(("mic_opt_state", ""))
-            log(("mic_opt_log", f"Post: {despues['dur']:.1f}s | piso {despues['piso']:.4f} | "
-                                 f"p90 {despues['p90']:.4f} | peak {despues['peak']:.3f} -> {despues['veredicto']}\n"))
-            mejo = despues["p90"] / max(antes["p90"], 1e-6)
-            log(("mic_opt_log", f"RESUMEN: p90 {antes['p90']:.4f} -> {despues['p90']:.4f}  (x{mejo:.1f})\n"))
-            if despues["veredicto"] == "OK":
-                log(("mic_opt_log", "El micrófono quedó optimizado. La app ya capturará tu voz.\n"))
-            elif despues["veredicto"] == "DÉBIL":
-                log(("mic_opt_log", "Sigue débil. Si NO hablaste en la prueba, repítela hablando. Si hablaste "
-                                     "y sigue débil: acércate al micro, revisa el boost en Realtek Audio Console "
-                                     "o desactiva la supresión de ruido agresiva.\n"))
-            else:
-                log(("mic_opt_log", "Sigue sin señal: revisa que el micro no esté físicamente desactivado "
-                                     "y que el dispositivo por defecto sea el correcto.\n"))
-            self.q.put(("mic_opt_done", despues["veredicto"]))
-        except Exception as e:
-            log_exc("mic optimizer")
-            try:
-                self.q.put(("mic_opt_log", f"Error: {str(e)[:120]}\n"))
-            except Exception:
-                pass
-            self.q.put(("mic_opt_done", "ERROR"))
+        """Wrapper: delega a MicTestMixin."""
+        self._mic_opt_worker_inner(do_apply, mic_name)
 
     def _open_config(self):
-        """Metodo interno: open config."""
-        top = ctk.CTkToplevel(self) if CTK else ctk.Toplevel(self)
-        top.title("Configuracion de AudioClass")
-        # Altura adaptativa: el dialogo tiene mas secciones de las que caben en
-        # pantallas pequenas (768 px), donde antes se recortaba a ~749 px y la
-        # seccion de microfono y Guardar Cambios quedaban inaccesibles.
-        try:
-            _sh = top.winfo_screenheight()
-            top.geometry("650x%d" % min(1060, max(560, _sh - 80)))
-        except Exception:
-            top.geometry("650x680")
-        top.transient(self)
-        top.grab_set()
-        top.grid_rowconfigure(0, weight=1)
-        top.grid_columnconfigure(0, weight=1)
-
-        # Cuerpo DESPLAZABLE (CTK: CTkScrollableFrame; fallback tk: Canvas+Scrollbar):
-        # mismo patron que el asistente — todas las secciones viven dentro del
-        # scroll y la barra de acciones queda SIEMPRE visible fuera de el.
-        if CTK:
-            body = ctk.CTkScrollableFrame(top, fg_color=C["bg"], corner_radius=0,
-                                          scrollbar_button_color=C["border"])
-            body.grid(row=0, column=0, sticky="nsew")
-        else:
-            from tkinter import Canvas, Scrollbar
-            canvas = Canvas(top, bg=C["bg"], highlightthickness=0)
-            sbar = Scrollbar(top, orient="vertical", command=canvas.yview)
-            canvas.configure(yscrollcommand=sbar.set)
-            canvas.grid(row=0, column=0, sticky="nsew")
-            sbar.grid(row=0, column=1, sticky="ns")
-            body = ctk.Frame(canvas, bg=C["bg"])
-            body_id = canvas.create_window((0, 0), window=body, anchor="nw")
-
-            def _on_body_conf(_e):
-                """Metodo interno: on body conf."""
-                canvas.configure(scrollregion=canvas.bbox("all"))
-            body.bind("<Configure>", _on_body_conf)
-
-            def _on_canvas_conf(e):
-                """Metodo interno: on canvas conf."""
-                canvas.itemconfigure(body_id, width=e.width)
-            canvas.bind("<Configure>", _on_canvas_conf)
-            canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
-            body.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
-        self.cfg_body = body
-        body.grid_columnconfigure(0, weight=1)
-
-        f1 = self._frame(body, fg_color=C["card"])
-        f1.pack(fill="x", padx=20, pady=10)
-        self._lbl(f1, "Proveedor de IA para el análisis", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(f1, "Elige con qué servicio analizar tus clases (resúmenes, guías, exámenes):",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        adapt_provider = ctk.StringVar(value=self.config.get("adapt_provider", "gemini"))
-        prov_row = self._frame(f1, fg_color="transparent")
-        prov_row.pack(anchor="w", padx=15, pady=(0, 8))
-        for val, lbl in (("gemini", "Gemini (Google)"), ("openai", "OpenAI (GPT)")):
-            rb = ctk.CTkRadioButton(prov_row, text=lbl, variable=adapt_provider, value=val,
-                                    font=(self.FB, 11), text_color=C["text"])
-            rb.pack(side="left", padx=(0, 25))
-            self._themeable.append(("label", rb, "text"))
-
-        # ── Sección Gemini ──
-        f1g = self._frame(f1, fg_color="transparent")
-        f1g.pack(fill="x", padx=15, pady=(0, 8))
-        self._lbl(f1g, "API Key de Google AI Studio (Gemini)", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
-        self._lbl(f1g, "Consiguela gratis en: aistudio.google.com/app/apikey", font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
-        gemini_entry = self._entry(f1g, width=500, font=(self.FB, 11))
-        gemini_entry.pack(anchor="w", pady=(0, 4))
-        gemini_entry.insert(0, self.config.get("gemini_api_key", ""))
-
-        gemini_model = ctk.StringVar(value=self.config.get("gemini_model", "flash"))
-        gmod_row = self._frame(f1g, fg_color="transparent")
-        gmod_row.pack(anchor="w", pady=(0, 4))
-        if CTK:
-            # Radiobuttons en vez de segmented: el texto unico del segmented no
-            # cumple contraste en ambos estados (activo=acento / inactivo=gris).
-            for val, lbl in (("flash", "Flash"), ("pro", "Pro")):
-                rb = ctk.CTkRadioButton(gmod_row, text=lbl, variable=gemini_model, value=val,
-                                        font=(self.FB, 11), text_color=C["text"])
-                rb.pack(side="left", padx=(0, 20))
-                self._themeable.append(("label", rb, "text"))
-        else:
-            ctk.OptionMenu(f1g, gemini_model, "flash", "pro").pack(anchor="w", padx=15, pady=(0, 12))
-        self._lbl(f1g, "flash = rapido y economico (Gemini 2.0 Flash) | pro = maxima calidad (Gemini 2.5 Pro)",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
-
-        test_row = self._frame(f1g, fg_color="transparent")
-        test_row.pack(fill="x", pady=(0, 4))
-        self.gemini_test_lbl = self._lbl(test_row, "", font=(self.FB, 10), text_color=C["muted"])
-        self.gemini_test_lbl.pack(side="left", padx=(0, 10))
-        self.btn_test_gemini = self._btn(test_row, "Probar Conexión",
-                                         lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"),
-                                         width=150, height=30, fg_color=C["accent"])
-        self.btn_test_gemini.pack(side="left")
-
-        # ── Sección OpenAI ──
-        f1o = self._frame(f1, fg_color="transparent")
-        f1o.pack(fill="x", padx=15, pady=(0, 8))
-        self._lbl(f1o, "API Key de OpenAI (GPT)", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
-        self._lbl(f1o, "Consiguela en: platform.openai.com/api-keys (tiene plan gratuito inicial)",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
-        openai_entry = self._entry(f1o, width=500, font=(self.FB, 11))
-        openai_entry.pack(anchor="w", pady=(0, 4))
-        openai_entry.insert(0, self.config.get("openai_api_key", ""))
-
-        openai_model = ctk.StringVar(value=self.config.get("openai_model", "mini"))
-        omod_row = self._frame(f1o, fg_color="transparent")
-        omod_row.pack(anchor="w", pady=(0, 4))
-        for val, lbl in (("mini", "GPT-4o mini"), ("gpt4o", "GPT-4o")):
-            rb = ctk.CTkRadioButton(omod_row, text=lbl, variable=openai_model, value=val,
-                                    font=(self.FB, 11), text_color=C["text"])
-            rb.pack(side="left", padx=(0, 20))
-            self._themeable.append(("label", rb, "text"))
-        self._lbl(f1o, "mini = rapido y economico | GPT-4o = maxima calidad",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", pady=(0, 4))
-
-        otest_row = self._frame(f1o, fg_color="transparent")
-        otest_row.pack(fill="x", pady=(0, 4))
-        self.openai_test_lbl = self._lbl(otest_row, "", font=(self.FB, 10), text_color=C["muted"])
-        self.openai_test_lbl.pack(side="left", padx=(0, 10))
-        self.btn_test_openai = self._btn(otest_row, "Probar Conexión",
-                                         lambda: self._test_adapt(openai_entry, openai_model, "openai"),
-                                         width=150, height=30, fg_color=C["accent"])
-        self.btn_test_openai.pack(side="left")
-
-        # Auto-test solo del proveedor activo al abrir la ventana
-        if self.config.get("adapt_provider", "gemini") == "openai":
-            if self.config.get("openai_api_key"):
-                self.after(400, lambda: self._test_adapt(openai_entry, openai_model, "openai"))
-        elif self.config.get("gemini_api_key"):
-            self.after(400, lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"))
-
-        f2 = self._frame(body, fg_color=C["card"])
-        f2.pack(fill="x", padx=20, pady=10)
-        self._lbl(f2, "Google Colab (Cloud GPU)", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(f2, "URL de ngrok desde tu servidor de Colab:", font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        colab_entry = self._entry(f2, width=500, font=(self.FB, 11))
-        colab_entry.pack(anchor="w", padx=15, pady=(0, 8))
-        colab_entry.insert(0, self.config.get("colab_url", ""))
-
-        colab_key = self._entry(f2, width=200, font=(self.FB, 11))
-        colab_key.pack(anchor="w", padx=15, pady=(0, 12))
-        colab_key.insert(0, self.config.get("colab_key", "audioclass"))
-
-        fm = self._frame(body, fg_color=C["card"])
-        fm.pack(fill="x", padx=20, pady=10)
-        self._lbl(fm, "Micrófono de grabación", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(fm, "Elige con qué micrófono grabar y medir el nivel. Con 'Predeterminado del sistema' se usa el que Windows tenga activo.",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        mic_row = self._frame(fm, fg_color="transparent")
-        mic_row.pack(fill="x", padx=15, pady=(0, 12))
-        mic_devs = _input_devices()
-        mic_names = ["Predeterminado del sistema"] + [n for _, n in mic_devs]
-        cur_mic = str(self.config.get("mic_device") or "").strip()
-        mic_var = ctk.StringVar(value=cur_mic if cur_mic in mic_names else "Predeterminado del sistema")
-        if CTK:
-            self.mic_menu = ctk.CTkOptionMenu(mic_row, values=mic_names, variable=mic_var,
-                                              width=470, font=(self.FB, 11), fg_color=C["button"],
-                                              text_color=C["text"], button_color=C["accent"],
-                                              button_hover_color=C["accent_hover"],
-                                              dropdown_fg_color=C["card"], dropdown_hover_color=C["border"],
-                                              dropdown_text_color=C["text"])
-        else:
-            self.mic_menu = ctk.OptionMenu(mic_row, mic_var, *mic_names)
-        self.mic_menu.pack(side="left", padx=(0, 8))
-        if not mic_devs:
-            try:
-                self.mic_menu.configure(state="disabled")
-            except Exception:
-                pass
-        # Boton de auto-deteccion del mejor microfono
-        self._mic_search_lbl = self._lbl(mic_row, "", font=(self.FB, 10), text_color=C["muted"])
-        self._mic_search_lbl.pack(side="left", padx=(8, 4))
-        def _auto_find_mic():
-            """Busca automaticamente el microfono con mejor senal."""
-            try:
-                import sounddevice as _sd
-                self._mic_search_lbl.configure(text="Buscando...", text_color=C["warn"])
-                self.update_idletasks()
-                best_id, best_p90 = _find_best_mic()
-                if best_id is not None:
-                    devs = _sd.query_devices()
-                    if best_id < len(devs):
-                        found_name = str(devs[best_id]["name"])
-                        self.config["mic_device"] = found_name
-                        _cm_save_config(self.config)
-                        # Actualizar el menu
-                        if hasattr(self, "mic_menu"):
-                            try:
-                                self.mic_menu.set(found_name)
-                            except Exception:
-                                pass
-                        self._mic_search_lbl.configure(
-                            text=f"Encontrado: {found_name[:30]} (p90={best_p90:.4f})",
-                            text_color=C["ok"])
-                    else:
-                        self._mic_search_lbl.configure(text="No se encontro mic activo", text_color=C["err"])
-                else:
-                    self._mic_search_lbl.configure(text="No hay microfonos con senal", text_color=C["err"])
-            except Exception as ex:
-                self._mic_search_lbl.configure(text=f"Error: {str(ex)[:40]}", text_color=C["err"])
-        self._btn(mic_row, "Auto-detectar", _auto_find_mic, width=120, height=28,
-                  fg_color=C["accent"], hover_color=C["accent_hover"]).pack(side="left", padx=(4, 0))
-
-        # Control de ganancia del microfono (boost para mics debiles)
-        gain_row = self._frame(fm, fg_color="transparent")
-        gain_row.pack(fill="x", padx=15, pady=(0, 8))
-        self._lbl(gain_row, "Ganancia del microfono:", font=(self.FB, 11)).pack(side="left", padx=(0, 8))
-        gain_var = ctk.DoubleVar(value=float(self.config.get("mic_gain", 1.0)))
-        gain_lbl = self._lbl(gain_row, "1.0x", font=(self.FB, 10), text_color=C["muted"])
-        gain_lbl.pack(side="right", padx=(8, 0))
-        def _on_gain_change(val):
-            """Actualiza la ganancia y el label."""
-            try:
-                v = float(val)
-                gain_lbl.configure(text=f"{v:.1f}x")
-                self.config["mic_gain"] = v
-            except Exception:
-                pass
-        if CTK:
-            gain_slider = ctk.CTkSlider(gain_row, from_=1.0, to=5.0, number_of_steps=40,
-                                         variable=gain_var, command=_on_gain_change,
-                                         width=200, progress_color=C["accent"])
-            gain_slider.pack(side="left", padx=(0, 8))
-        else:
-            from tkinter import Scale as _Scale
-            gain_slider = _Scale(gain_row, from_=1.0, to=5.0, resolution=0.1,
-                                 orient="horizontal", variable=gain_var,
-                                 command=_on_gain_change, length=200)
-            gain_slider.pack(side="left", padx=(0, 8))
-        self._lbl(gain_row, "(si tu microfono es muy subido, sube la ganancia)",
-                  font=(self.FB, 9), text_color=C["muted"]).pack(side="left")
-
-        f0 = self._frame(body, fg_color=C["card"])
-        f0.pack(fill="x", padx=20, pady=10)
-        self._lbl(f0, "Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(f0, "Graba 8 segundos y comprueba que tu microfono capta bien tu voz.",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 8))
-        self._btn(f0, "Abrir prueba de microfono", self._test_mic, width=240, height=36,
-                  fg_color=C["err"], hover_color=C["err"]).pack(anchor="w", padx=15, pady=(0, 12))
-
-        f3 = self._frame(body, fg_color=C["card"])
-        f3.pack(fill="x", padx=20, pady=10)
-        self._lbl(f3, "Estado de Conexiones", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
-
-        status_frame = self._frame(f3, fg_color="transparent")
-        status_frame.pack(fill="x", padx=15, pady=(0, 12))
-
-        self._lbl(status_frame, "Modelo Local:", font=(self.FB, 11)).pack(side="left")
-        self._lbl(status_frame, "Listo" if self.local_engine.ready else "Cargando...", 
-                  font=(self.FB, 11), text_color=C["ok"] if self.local_engine.ready else C["warn"]).pack(side="left", padx=(5, 20))
-
-        self._lbl(status_frame, "Colab:", font=(self.FB, 11)).pack(side="left")
-        has_url = bool(self.config.get("colab_url"))
-        self._lbl(status_frame, "Configurado" if has_url else "Sin URL", 
-                  font=(self.FB, 11), text_color=C["ok"] if has_url else C["err"]).pack(side="left", padx=(5, 20))
-
-        self._lbl(status_frame, "Gemini:", font=(self.FB, 11)).pack(side="left")
-        has_key = bool(self.config.get("gemini_api_key"))
-        self._lbl(status_frame, "Configurado" if has_key else "Sin Key", 
-                  font=(self.FB, 11), text_color=C["ok"] if has_key else C["err"]).pack(side="left", padx=5)
-
-        self._lbl(status_frame, "OpenAI:", font=(self.FB, 11)).pack(side="left")
-        has_oai = bool(self.config.get("openai_api_key"))
-        self._lbl(status_frame, "Configurado" if has_oai else "Sin Key", 
-                  font=(self.FB, 11), text_color=C["ok"] if has_oai else C["err"]).pack(side="left", padx=5)
-
-        f4 = self._frame(body, fg_color=C["card"])
-        f4.pack(fill="x", padx=20, pady=10)
-        self._lbl(f4, "Google Docs (exportar transcripciones)", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
-        self._lbl(f4, "1. Crea credenciales OAuth en console.cloud.google.com (tipo 'App de escritorio') y habilita la Docs API",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 2))
-        self._lbl(f4, "2. Descarga el client_secret.json y seleccionalo:",
-                  font=(self.FB, 10), text_color=C["muted"]).pack(anchor="w", padx=15, pady=(0, 6))
-
-        gdoc_row = self._frame(f4, fg_color="transparent")
-        gdoc_row.pack(fill="x", padx=15, pady=(0, 8))
-        gdoc_entry = self._entry(gdoc_row, width=380, font=(self.FB, 10))
-        gdoc_entry.pack(side="left", padx=(0, 6))
-        gdoc_entry.insert(0, self.config.get("google_creds_path", ""))
-
-        def _pick_creds():
-            """Metodo interno: pick creds."""
-            fp = filedialog.askopenfilename(title="Selecciona client_secret.json",
-                                            filetypes=[("Credenciales JSON", "*.json")])
-            if fp:
-                gdoc_entry.delete(0, "end")
-                gdoc_entry.insert(0, fp)
-
-        self._btn(gdoc_row, "Examinar...", _pick_creds, width=100, height=30).pack(side="left", padx=(0, 10))
-        self.btn_gdoc_connect = self._btn(gdoc_row, "Conectar con Google",
-                                           lambda: self._connect_google(gdoc_entry.get().strip()),
-                                           width=150, height=30, fg_color=C["ok"])
-        self.btn_gdoc_connect.pack(side="left")
-
-        self.gdoc_lbl = self._lbl(f4, "", font=(self.FB, 10))
-        self.gdoc_lbl.pack(anchor="w", padx=15, pady=(0, 12))
-
-        # Estado inicial de Google Docs (sin abrir navegador ni refrescar token en el hilo principal)
-        if not _gdocs_importable():
-            try:
-                self.btn_gdoc_connect.configure(state="disabled")
-                self.gdoc_lbl.configure(text="No disponible en esta versión: falta google-auth-oauthlib "
-                                             "(no incluido en el instalador).", text_color=C["warn"])
-            except Exception:
-                pass
-        else:
-            try:
-                gok, gmsg = self.docs_exporter.test_connection(refresh=False)
-                self.gdoc_lbl.configure(text=("[OK] " if gok else "· ") + gmsg,
-                                        text_color=C["ok"] if gok else C["muted"])
-            except Exception:
-                pass
-
-        # ── Privacidad / consentimiento de IA ──
-        fp = self._frame(f1, fg_color="transparent")
-        fp.pack(fill="x", padx=15, pady=(8, 4))
-        self._lbl(fp, "Privacidad", font=(self.FH, 12, "bold")).pack(anchor="w", pady=(4, 2))
-        self._lbl(fp, "Las transcripciones se procesan en tu equipo. El análisis con IA envía el texto a Gemini/OpenAI (retención temporal del proveedor). El contenido generado por IA puede contener errores y no es consejo médico/legal ni acta oficial.",
-                  font=(self.FB, 10), text_color=C["muted"], wraplength=560, justify="left").pack(anchor="w", pady=(0, 4))
-        ia_consent_var = ctk.BooleanVar(value=bool(self.config.get("ia_consent", False)))
-        if CTK:
-            ctk.CTkCheckBox(fp, text="Permito el análisis con IA (envío de mis transcripciones a Gemini/OpenAI)",
-                            variable=ia_consent_var, font=(self.FB, 11), fg_color=C["accent"]).pack(anchor="w", pady=(0, 10))
-        else:
-            ctk.Checkbutton(fp, text="Permito el analisis con IA (envio a Gemini/OpenAI)", variable=ia_consent_var,
-                            bg=C["card"], fg=C["text"], selectcolor=C["accent"]).pack(anchor="w", pady=(0, 10))
-
-        def save():
-            """Metodo interno: save."""
-            self.config["adapt_provider"] = adapt_provider.get()
-            self.config["gemini_api_key"] = gemini_entry.get().strip()
-            self.config["gemini_model"] = gemini_model.get()
-            self.config["openai_api_key"] = openai_entry.get().strip()
-            self.config["openai_model"] = openai_model.get()
-            self.config["colab_url"] = colab_entry.get().strip()
-            self.config["colab_key"] = colab_key.get().strip()
-            self.config["google_creds_path"] = gdoc_entry.get().strip()
-            mic_sel = mic_var.get()
-            self.config["mic_device"] = "" if mic_sel == "Predeterminado del sistema" else mic_sel
-            self.config["ia_consent"] = bool(ia_consent_var.get())
-            save_config(self.config)
-
-            self.adapt_engine = self._build_adapt_engine()
-            self.cloud_engine = CloudColabEngine(
-                self.config["colab_url"], self.config["colab_key"],
-                self.config.get("whisper_language", "auto")
-            )
-            self.docs_exporter = GoogleDocsExporter(
-                self.config["google_creds_path"]
-            )
-            self._update_adapt_status()
-            self._chmode(self.mode_var.get())  # ya refresca el resumen de configuracion
-            top.destroy()
-            self._msg("info", "Guardado", "Configuracion actualizada correctamente.")
-
-        # Barra de acciones SIEMPRE visible (fuera del scroll): Guardar Cambios
-        # queda accesible en cualquier pantalla, igual que el boton del asistente.
-        bar = self._frame(top, fg_color=C["card"], border_width=1, border_color=C["border"])
-        bar.grid(row=1, column=0, sticky="ew")
-        self._btn(bar, "Guardar Cambios", save, width=200, height=40,
-                  fg_color=C["accent"]).pack(pady=12)
+        """Abre el diálogo de configuración (delega a ConfigDialogMixin)."""
+        self.open_config_dialog()
 
     def _loadhist(self):
         """Carga el historial de grabaciones desde disco."""
@@ -2560,16 +1920,26 @@ CONSEJOS:
     def _selhist(self, path):
         """Selecciona una entrada del historial."""
         self.sel = path
-        for btn in ("bplay", "btransh", "bdel", "bcompile"):
+        for btn in ("btransh", "bdel", "bcompile"):
             b = getattr(self, btn, None)
             if b is not None:
                 try:
                     b.configure(state="normal" if btn != "bcompile" or self.compile_buffer else "disabled")
                 except Exception:
                     pass
+        
+        # Cargar waveform del audio seleccionado
+        if hasattr(self, 'waveform_player') and self.waveform_player:
+            self.waveform_player.load(path)
+            # Habilitar botón de play
+            try:
+                self.waveform_player.play_btn.configure(state="normal")
+            except Exception:
+                pass
+        
         for c in self.hist_frame.winfo_children():
             if hasattr(c, '_path'):
-                col = C["accent"] if c._path == path else (C["button"] if CTK else C["card"])
+                col = C["accent"] if c._path == path else (C["button"] if CTK else "card")
                 if CTK: c.configure(fg_color=col)
                 else: c.config(bg=col)
 
@@ -2627,7 +1997,7 @@ CONSEJOS:
         try:
             import requests
             url = self.config["colab_url"].rstrip("/")
-            key = self.config.get("colab_key", "audioclass")
+            key = self.config.get("colab_key", "")
             r = requests.post(f"{url}/compile", data={"key": key, "title": "Compilacion AudioClass", "mode": "full"}, timeout=60)
             if r.status_code == 200:
                 data = r.json()
@@ -3896,7 +3266,19 @@ CONSEJOS:
                       f"Configura tu API Key de {prov_lbl} en Configuracion ({url})")
             return
 
-        info = GeminiAdaptationEngine.TEMPLATES.get(template_name, {})
+        # Check plugin templates first, then built-in
+        info = {}
+        if PLUGIN_SYSTEM_AVAILABLE:
+            try:
+                pm = get_plugin_manager()
+                pm.discover()
+                plugin = pm.get_template(template_name)
+                if plugin:
+                    info = pm.to_compatible_dict(template_name) or plugin.to_dict()
+            except Exception:
+                pass
+        if not info:
+            info = GeminiAdaptationEngine.TEMPLATES.get(template_name, {})
         self.adapt_info.configure(text=f"{info.get('icon','')} {info.get('desc','')}")
 
         self._disable_adapt_buttons()
@@ -3917,7 +3299,19 @@ CONSEJOS:
                 """Metodo interno: progress."""
                 self.q.put(("progress", (current / total, msg)))
 
-            result = self.adapt_engine.adapt(text, template_name, progress_callback=progress)
+            # Try plugin system first, fall back to built-in
+            result = None
+            if PLUGIN_SYSTEM_AVAILABLE:
+                try:
+                    pm = get_plugin_manager()
+                    pm.discover()
+                    plugin = pm.get_template(template_name)
+                    if plugin:
+                        result = pm.run_template(template_name, text, self.adapt_engine, progress_callback=progress)
+                except Exception:
+                    pass
+            if result is None:
+                result = self.adapt_engine.adapt(text, template_name, progress_callback=progress)
 
             if self.cancel:
                 self.q.put(("log", "\nCancelado.\n"))
@@ -4661,6 +4055,46 @@ CONSEJOS:
                     except Exception:
                         pass
 
+                elif mt == "update_available":
+                    latest, url, notes = d
+                    self._show_update_dialog(latest, url, notes)
+
+                elif mt == "update_progress":
+                    # Actualizar barra de progreso del diálogo de actualización
+                    if hasattr(self, "_update_progress_lbl"):
+                        try:
+                            self._update_progress_lbl.configure(text=d)
+                        except Exception:
+                            pass
+
+                elif mt == "update_error":
+                    # Error durante la actualización
+                    if hasattr(self, "_update_dialog") and self._update_dialog is not None:
+                        try:
+                            self._update_btn_download.configure(
+                                state="normal", text="Reintentar")
+                            self._update_btn_skip.configure(state="normal")
+                            self._update_progress_lbl.configure(
+                                text=f"Error: {d}", text_color=C["err"])
+                        except Exception:
+                            pass
+                    self._msg("error", "Error de actualización", d)
+
+                elif mt == "update_installed":
+                    # Actualización instalada exitosamente
+                    if hasattr(self, "_update_dialog") and self._update_dialog is not None:
+                        try:
+                            self._update_progress_bar.pack_forget()
+                            self._update_progress_lbl.configure(
+                                text="¡Instalación completada! Reiniciando...",
+                                text_color=C["ok"])
+                            self._update_btn_download.configure(
+                                state="disabled", text="Reiniciando...")
+                        except Exception:
+                            pass
+                    # Reiniciar después de un breve delay
+                    self.after(2000, lambda: self._restart_app())
+
                 elif mt == "addhist":
                     self._addhist(d)
 
@@ -4806,6 +4240,257 @@ CONSEJOS:
         else:
             self._show_toast("Primero transcribe una clase", kind="warn")
         return "break"
+
+    def _check_for_updates_async(self):
+        """Verifica si hay una versión más reciente en GitHub (hilo separado).
+        Si hay actualización disponible, muestra un toast informativo."""
+        def _worker():
+            try:
+                from update_checker import check_for_updates
+                result = check_for_updates(APP_VER)
+                if result.get("update_available"):
+                    self.q.put(("update_available",
+                                (result["latest_version"],
+                                 result["release_url"],
+                                 result.get("release_notes", ""))))
+            except Exception:
+                pass  # Silencioso: no molestar al usuario si falla
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _show_update_dialog(self, latest_version, release_url, release_notes=""):
+        """Muestra diálogo de actualización con opción de descargar e instalar.
+        
+        Args:
+            latest_version: Versión más reciente disponible.
+            release_url: URL de la release en GitHub.
+            release_notes: Notas de la release (texto con formato markdown básico).
+        """
+        C = self._C
+
+        top = ctk.CTkToplevel(self) if CTK else tk.Toplevel(self)
+        top.title("Actualización disponible")
+        top.geometry("520x520")
+        top.transient(self)
+        top.grab_set()
+
+        # Título
+        self._lbl(top, "¡Nueva versión disponible!",
+                  font=(self.FH, 16, "bold"), text_color=C["ok"]).pack(pady=(15, 5))
+        self._lbl(top, f"v{latest_version}  (actual: v{APP_VER})",
+                  font=(self.FB, 12), text_color=C["text"]).pack(pady=(0, 10))
+
+        # Notas de la release (scrollable con formato mejorado)
+        notes_frame = self._frame(top, fg_color=C["card"], corner_radius=8)
+        notes_frame.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+
+        # Formatear release notes (markdown básico → texto legible)
+        formatted_notes = self._format_release_notes(release_notes)
+
+        notes_text = tk.Text(
+            notes_frame,
+            font=(self.FB, 10),
+            bg=C["card"],
+            fg=C["text"],
+            wrap="word",
+            relief="flat",
+            highlightthickness=0,
+            padx=12,
+            pady=10,
+            state="normal",
+        )
+
+        # Scrollbar para las notas
+        notes_scroll = tk.Scrollbar(notes_frame, command=notes_text.yview)
+        notes_text.configure(yscrollcommand=notes_scroll.set)
+
+        notes_text.pack(side="left", fill="both", expand=True)
+        notes_scroll.pack(side="right", fill="y")
+
+        # Insertar texto formateado con tags
+        self._insert_formatted_notes(notes_text, formatted_notes, C)
+        notes_text.configure(state="disabled")  # Solo lectura
+
+        # Link a GitHub
+        if release_url:
+            def _open_url():
+                import webbrowser
+                webbrowser.open(release_url)
+            self._btn(top, "Ver novedades en GitHub", _open_url,
+                      width=200, height=28, fg_color=C["button"],
+                      text_color=C["text"]).pack(pady=(0, 10))
+
+    def _format_release_notes(self, notes: str) -> list:
+        """Formatea release notes de markdown básico a estructura legible.
+        
+        Returns:
+            Lista de tuplas (tipo, texto) donde tipo es:
+            'header', 'bullet', 'text', 'separator', 'blank'
+        """
+        if not notes or not notes.strip():
+            return [("text", "No hay notas de disponibles.")]
+
+        lines = notes.strip().split("\n")
+        formatted = []
+
+        for line in lines:
+            stripped = line.strip()
+
+            if not stripped:
+                formatted.append(("blank", ""))
+            elif stripped.startswith("---") or stripped.startswith("==="):
+                formatted.append(("separator", ""))
+            elif stripped.startswith("## "):
+                formatted.append(("header", stripped[3:]))
+            elif stripped.startswith("# "):
+                formatted.append(("header", stripped[2:]))
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                formatted.append(("bullet", stripped[2:]))
+            elif stripped.startswith("**") and stripped.endswith("**"):
+                formatted.append(("bold", stripped.strip("*")))
+            else:
+                # Limpiar markdown inline: **bold**, `code`, [link](url)
+                clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', stripped)
+                clean = re.sub(r'`([^`]+)`', r'\1', clean)
+                clean = re.sub(r'\[([^]]+)]\([^)]+\)', r'\1', clean)
+                formatted.append(("text", clean))
+
+        return formatted
+
+    def _insert_formatted_notes(self, text_widget, formatted: list, C: dict):
+        """Inserta las release notes formateadas en el widget de texto."""
+        # Definir tags de estilo
+        text_widget.tag_configure("header", font=(self.FH, 11, "bold"),
+                                  foreground=C["accent"])
+        text_widget.tag_configure("bold", font=(self.FB, 10, "bold"),
+                                  foreground=C["text"])
+        text_widget.tag_configure("bullet", font=(self.FB, 10),
+                                  foreground=C["text"], lmargin1=20, lmargin2=36)
+        text_widget.tag_configure("text", font=(self.FB, 10),
+                                  foreground=C["text"])
+        text_widget.tag_configure("muted", font=(self.FB, 10),
+                                  foreground=C["muted"])
+        text_widget.tag_configure("separator", font=(self.FB, 10),
+                                  foreground=C["border"])
+
+        for i, (kind, content) in enumerate(formatted):
+            if kind == "blank":
+                text_widget.insert("end", "\n")
+            elif kind == "separator":
+                text_widget.insert("end", "─" * 40 + "\n", "separator")
+            elif kind == "header":
+                text_widget.insert("end", f"{content}\n", "header")
+            elif kind == "bullet":
+                text_widget.insert("end", f"  • {content}\n", "bullet")
+            elif kind == "bold":
+                text_widget.insert("end", f"{content}\n", "bold")
+            else:
+                text_widget.insert("end", f"{content}\n", "text")
+
+        # Barra de progreso (oculta inicialmente)
+        progress_var = tk.DoubleVar(value=0)
+        progress_bar = ctk.CTkProgressBar(top, width=400, height=12,
+                                          variable=progress_var,
+                                          progress_color=C["ok"])
+        progress_lbl = self._lbl(top, "", font=(self.FB, 10), text_color=C["muted"])
+
+        # Botones
+        btn_frame = self._frame(top, fg_color="transparent")
+        btn_frame.pack(pady=(10, 15))
+
+        def _do_update():
+            """Descarga e instala la actualización."""
+            btn_download.configure(state="disabled", text="Descargando...")
+            btn_skip.configure(state="disabled")
+            progress_bar.pack(pady=(0, 5))
+            progress_lbl.pack(pady=(0, 10))
+
+            def _worker():
+                try:
+                    from update_checker import (
+                        check_for_updates, find_download_asset,
+                        download_update, verify_download, install_update
+                    )
+
+                    # Buscar asset correcto
+                    result = check_for_updates(APP_VER)
+                    asset = find_download_asset(result.get("assets", []))
+
+                    if not asset:
+                        self.q.put(("update_error", "No se encontró el archivo de actualización"))
+                        return
+
+                    # Descargar
+                    def _on_progress(downloaded, total, msg):
+                        if total > 0:
+                            progress_var.set(downloaded / total)
+                        self.q.put(("update_progress", msg))
+
+                    file_path, error = download_update(asset, on_progress=_on_progress)
+
+                    if error:
+                        self.q.put(("update_error", error))
+                        return
+
+                    # Verificar
+                    self.q.put(("update_progress", "Verificando integridad..."))
+                    ok, msg = verify_download(
+                        file_path,
+                        sha256_url=result.get("sha256_url")
+                    )
+                    if not ok:
+                        self.q.put(("update_error", f"Verificación falló: {msg}"))
+                        return
+
+                    # Instalar
+                    self.q.put(("update_progress", "Instalando actualización..."))
+                    success, msg = install_update(file_path)
+
+                    if success:
+                        self.q.put(("update_installed", msg))
+                    else:
+                        self.q.put(("update_error", msg))
+
+                except Exception as e:
+                    self.q.put(("update_error", str(e)[:100]))
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        def _do_later():
+            top.destroy()
+
+        btn_download = self._btn(btn_frame, "Descargar e instalar",
+                                 _do_update, width=180, height=36,
+                                 fg_color=C["ok"], hover_color=C["accent"])
+        btn_download.pack(side="left", padx=(0, 10))
+        btn_skip = self._btn(btn_frame, "Ahora no", _do_later,
+                             width=120, height=36, fg_color=C["button"],
+                             text_color=C["text"])
+        btn_skip.pack(side="left")
+
+        # Guardar referencias para que _poll pueda actualizar la UI
+        self._update_dialog = top
+        self._update_progress_var = progress_var
+        self._update_progress_bar = progress_bar
+        self._update_progress_lbl = progress_lbl
+        self._update_btn_download = btn_download
+        self._update_btn_skip = btn_skip
+
+    def _restart_app(self):
+        """Reinicia la aplicación después de una actualización."""
+        try:
+            from update_checker import restart_app
+            # Cerrar ventanas abiertas
+            for w in self.winfo_children():
+                try:
+                    if w.winfo_exists():
+                        w.destroy()
+                except Exception:
+                    pass
+            self.after(500, restart_app)
+        except Exception:
+            # Fallback: simplemente cerrar
+            self.destroy()
+            sys.exit(0)
 
     def _close(self):
         # Cancelar SIEMPRE el evento: cubre tanto la grabacion (recloop) como
