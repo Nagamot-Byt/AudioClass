@@ -1,0 +1,111 @@
+Third-Party Software Notices for AudioClass
+============================================
+
+AudioClass includes or depends on the following third-party software:
+
+------------------------------------------------------------------------
+
+customtkinter
+  License: MIT License
+  Copyright: Copyright (c) 2021 Tom Schimansky
+  Homepage: https://github.com/TomSchimansky/CustomTkinter
+
+NumPy
+  License: BSD-3-Clause
+  Copyright: Copyright (c) 2005-2024, NumPy Developers
+  Homepage: https://numpy.org
+
+SciPy
+  License: BSD-3-Clause
+  Copyright: Copyright (c) 2001-2024, SciPy Developers
+  Homepage: https://scipy.org
+
+sounddevice
+  License: MIT License
+  Copyright: Copyright (c) 2015-2024, Matthias Geier
+  Homepage: https://github.com/spatialaudio/python-sounddevice
+
+fpdf2
+  License: MIT License
+  Copyright: Copyright (c) 2010, Reviel Nathan
+  Homepage: https://github.com/reingart/pyfpdf
+
+matplotlib
+  License: PSF-based (Python Software Foundation License)
+  Copyright: Copyright (c) 2002-2024, Matplotlib Development Team
+  Homepage: https://matplotlib.org
+
+python-docx
+  License: MIT License
+  Copyright: Copyright (c) 2013, Steve Canny
+  Homepage: https://github.com/python-openxml/python-docx
+
+PyPDF
+  License: BSD-3-Clause
+  Copyright: Copyright (c) 2006-2024, Mathieu Fenniak
+  Homepage: https://github.com/py-pdf/pypdf
+
+Pillow
+  License: MIT-CMU License
+  Copyright: Copyright (c) 1997-2024, Secret Labs AB, A. Clark
+  Homepage: https://python-pillow.org
+
+Requests
+  License: Apache License 2.0
+  Copyright: Copyright (c) 2019, Kenneth Reitz
+  Homepage: https://requests.readthedocs.io
+
+psutil
+  License: BSD-3-Clause
+  Copyright: Copyright (c) 2009, Jay Loden, Giampaolo Rodola
+  Homepage: https://github.com/giampaolo/psutil
+
+PyYAML
+  License: MIT License
+  Copyright: Copyright (c) 2017-2024, Ingy dot Net, Kirill Simonov
+  Homepage: https://pyyaml.org
+
+PyInstaller
+  License: Apache License 2.0
+  Copyright: Copyright (c) 2010-2024, PyInstaller Development Team
+  Homepage: https://pyinstaller.org
+
+Whisper (OpenAI)
+  License: MIT License
+  Copyright: Copyright (c) 2022, OpenAI
+  Homepage: https://github.com/openai/whisper
+
+faster-whisper
+  License: MIT License
+  Copyright: Copyright (c) 2022, Guillaume Klein
+  Homepage: https://github.com/SYSTRAN/faster-whisper
+
+Torch (PyTorch)
+  License: BSD-3-Clause
+  Copyright: Copyright (c) 2016-2024, Facebook, Inc. and its affiliates
+  Homepage: https://pytorch.org
+
+OpenAI Python SDK
+  License: Apache License 2.0
+  Copyright: Copyright (c) 2024, OpenAI
+  Homepage: https://github.com/openai/openai-python
+
+Google Generative AI Python SDK
+  License: Apache License 2.0
+  Copyright: Copyright (c) 2023, Google LLC
+  Homepage: https://github.com/google/generative-ai-python
+
+noisereduce
+  License: MIT License
+  Homepage: https://github.com/timsainb/noisereduce
+
+Tkinter
+  License: PSF License
+  Homepage: https://docs.python.org/3/library/tkinter.html
+
+------------------------------------------------------------------------
+
+For the complete license texts, please refer to each project's
+repository or official website.
+
+This file was generated on 2026-08-24.

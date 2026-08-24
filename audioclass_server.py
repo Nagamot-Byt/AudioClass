@@ -36,7 +36,7 @@ from pathlib import Path
 # ── Verificar dependencias mínimas ───────────────────────────────────────────
 try:
     import uvicorn
-    from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+    from fastapi import FastAPI, File, Form, Header, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 except ImportError:
@@ -169,6 +169,28 @@ def _check_rate_limit(ip: str):
 async def health():
     """Health check para monitoreo."""
     return {"status": "ok", "uptime": time.time() - _start_time if _start_time else 0}
+
+
+@app.get("/metrics")
+async def metrics():
+    """Endpoint Prometheus para monitoreo.
+
+    Expone metricas en formato Prometheus text exposition.
+    No requiere autenticacion (es para scraping de Prometheus).
+    """
+    try:
+        from app_metrics import to_prometheus_text
+
+        return Response(
+            content=to_prometheus_text(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+    except Exception as e:
+        return Response(
+            content=f"# Error generating metrics: {e}\n",
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+            status_code=500,
+        )
 
 
 @app.get("/status")
@@ -308,6 +330,14 @@ async def transcribe(
 
         _request_count += 1
 
+        # Registrar metricas
+        try:
+            from app_metrics import record_transcription
+
+            record_transcription(duration=elapsed, model=model, provider=model)
+        except Exception:
+            pass
+
         return {
             "success": True,
             "text": text,
@@ -320,8 +350,15 @@ async def transcribe(
     except HTTPException:
         raise
     except Exception as e:
+        # Registrar error en metricas
+        try:
+            from app_metrics import record_error
+
+            record_error(error_type=type(e).__name__)
+        except Exception:
+            pass
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error en transcripción: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail=f"Error en transcripcion: {str(e)[:200]}")
     finally:
         # Limpiar archivo temporal
         try:

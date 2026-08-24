@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.1.2] - 2026-08-24
+
+### Security
+- **Path traversal protection**: `validate_export_path()` en `export_utils.py` bloquea paths con `..`, `~`, o escapes fuera del directorio permitido
+- Integrado en `_pdf()` y `_export_docx()` — valida el path después del file dialog
+- Tests: 12 tests de seguridad en `test_security_audit.py`
+
+### Added
+- **`app_metrics.py`**: Módulo de métricas de uso con formato Prometheus-compatible (`to_prometheus_text()`)
+- **`config_backup.py`**: Backup/restore de configuración con metadata (versión, timestamp, app version)
+- **`PRIVACY.md`**: Política de privacidad declarando manejo de datos de audio y servicios externos
+- **`NOTICE`**: Licencias de terceros para todas las dependencias principales
+- **`test_integration_mocks.py`**: 35 tests de integración con mocks de APIs (AI providers, update checker, config, theme, plugins, i18n, metrics, backup)
+- **`test_security_audit.py`**: 16 tests de auditoría (path traversal, hardcoded credentials, config integrity)
+- **CI security job**: Bandit SAST scan + Safety dependency check + artifact upload
+- **CI audit-tests job**: Tests de seguridad automatizados
+
+### Architecture
+- **UI extraction**: `_show_toast` extraído a `toast_ui.py` (ToastMixin, 231 líneas)
+- **UI extraction**: `_show_update_dialog` + `_format_release_notes` + `_insert_formatted_notes` extraídos a `update_dialog_ui.py` (UpdateDialogMixin, 329 líneas)
+- `audioclass_v91.py` reducido de 5604 → 5208 líneas (-396, -7%)
+- App class ahora hereda de: ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin
+
+### Improved
+- `export_utils.py`: Type hints completos con `from __future__ import annotations`
+- `app_metrics.py`: Type hints completos en todas las funciones públicas
+- Ruff linting: 5 unused imports eliminados automáticamente
+
 ## [9.1.1] - 2026-08-24
 
 ### Fixed

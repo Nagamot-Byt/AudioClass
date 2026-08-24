@@ -202,6 +202,10 @@ audioclass_v91.py          # App GUI principal (migrando lógica a módulos)
 ├── theme.py               # Paletas WCAG AA
 ├── recording_engine.py    # Mixin de grabación
 ├── mic_optimizer_ui.py    # Mixin de optimización de micrófono
+├── toast_ui.py            # Mixin de notificaciones toast animadas
+├── update_dialog_ui.py    # Mixin de diálogo de actualización
+├── app_metrics.py         # Métricas de uso (Prometheus)
+├── config_backup.py       # Backup/restore de configuración
 ├── transcription_engines.py # Registro legacy de motores
 ├── export_utils.py        # Helpers PDF/DOCX
 ├── update_checker.py      # Verificador de actualizaciones

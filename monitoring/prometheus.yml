@@ -1,0 +1,44 @@
+# =============================================================================
+# Prometheus configuration for AudioClass
+# =============================================================================
+# Scrapes the /metrics endpoint of the AudioClass transcription server.
+#
+# Usage:
+#   docker compose -f monitoring/docker-compose.yml up -d
+#   Grafana: http://localhost:3000 (admin/admin)
+#   Prometheus: http://localhost:9090
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # AudioClass transcription server
+  - job_name: "audioclass-server"
+    metrics_path: "/metrics"
+    scheme: "http"
+    static_configs:
+      - targets: ["audioclass-server:8000"]
+        labels:
+          app: "audioclass"
+          component: "server"
+
+  # AudioClass desktop (if running metrics server)
+  - job_name: "audioclass-desktop"
+    metrics_path: "/metrics"
+    scheme: "http"
+    static_configs:
+      - targets: ["host.docker.internal:9091"]
+        labels:
+          app: "audioclass"
+          component: "desktop"
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+# Alert rules (optional)
+rule_files:
+  - "alerts.yml"

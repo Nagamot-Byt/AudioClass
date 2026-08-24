@@ -10,12 +10,79 @@ Uso:
 Estas funciones son deterministas y testables sin instanciar la GUI.
 """
 
+from __future__ import annotations
+
+import os
 import re
+import tempfile
+from typing import Optional, Union
+
+# ── Seguridad: Validacion de paths ────────────────────────────────────────
+
+
+def validate_export_path(filepath: str, allowed_dir: str | None = None) -> str:
+    """Valida que un path de exportacion no contenga path traversal.
+
+    Protege contra ataques donde un usuario (o input malicioso) intenta
+    escribir fuera del directorio permitido usando '..', '~', o paths absolutos.
+
+    Args:
+        filepath: Path de destino para la exportacion.
+        allowed_dir: Directorio permitido (default: OUTPUT_DIR o temp dir).
+
+    Returns:
+        str: Path absoluto validado y seguro.
+
+    Raises:
+        ValueError: Si el path contiene path traversal o esta fuera del
+            directorio permitido.
+    """
+    if allowed_dir is None:
+        allowed_dir = os.environ.get("AUDIOCLASS_OUTPUT_DIR", tempfile.gettempdir())
+    allowed_dir = os.path.realpath(allowed_dir)
+
+    # Rechazar paths vacios
+    if not filepath or not str(filepath).strip():
+        raise ValueError("El path de exportacion no puede estar vacio")
+
+    # Expandir ~ y resolver al absoluto
+    expanded = os.path.expanduser(str(filepath))
+    real = os.path.realpath(expanded)
+
+    # Verificar que no escapa del directorio permitido
+    if not real.startswith(allowed_dir + os.sep) and real != allowed_dir:
+        raise ValueError(f"Path de exportacion fuera del directorio permitido: {real} (permitido: {allowed_dir})")
+
+    # Rechazar componentes sospechosos
+    parts = os.path.normpath(expanded).split(os.sep)
+    if ".." in parts or "~" in parts:
+        raise ValueError(f"Path contiene componentes no permitidos: {filepath}")
+
+    return real
+
+
+def safe_export_path(filepath: str, allowed_dir: str | None = None, suffix: str = ".pdf") -> str:
+    """Version segura de validate_export_path que auto-genera nombre si hay conflicto.
+
+    Args:
+        filepath: Path deseado.
+        allowed_dir: Directorio permitido.
+        suffix: Extension por defecto si el path no tiene extension.
+
+    Returns:
+        str: Path validado y seguro para escritura.
+    """
+    validated = validate_export_path(filepath, allowed_dir)
+    # Asegurar que tiene extension
+    if not os.path.splitext(validated)[1]:
+        validated += suffix
+    return validated
+
 
 # ── Timestamps ─────────────────────────────────────────────────────────────
 
 
-def fmt_timestamp(sec):
+def fmt_timestamp(sec: Union[int, float, None]) -> str:
     """Convierte segundos a formato mm:ss para timestamps de exportacion.
 
     Args:
@@ -40,7 +107,9 @@ def fmt_timestamp(sec):
 # ── Lineas de exportacion ─────────────────────────────────────────────────
 
 
-def export_lines(last_text, last_segments=None, max_len=90):
+def export_lines(
+    last_text: str, last_segments: list[dict] | None = None, max_len: int = 90
+) -> tuple[bool, list[tuple]]:
     """Devuelve (has_timestamps, lines) para exportar transcripcion.
 
     Si hay segmentos (transcripcion 'Con tiempos') cada linea lleva
@@ -88,7 +157,15 @@ def export_lines(last_text, last_segments=None, max_len=90):
 # ── DOCX helpers ──────────────────────────────────────────────────────────
 
 
-def docx_paragraph(text, bold=False, size=22, color=None, shading=None, center=False, mono=False):
+def docx_paragraph(
+    text: str,
+    bold: bool = False,
+    size: int = 22,
+    color: str | None = None,
+    shading: str | None = None,
+    center: bool = False,
+    mono: bool = False,
+) -> str:
     """Genera un parrafo WordprocessingML a partir de texto plano.
 
     El orden de los hijos de w:pPr debe seguir la secuencia del esquema
@@ -134,7 +211,7 @@ def docx_paragraph(text, bold=False, size=22, color=None, shading=None, center=F
     )
 
 
-def docx_heading(text, size=24):
+def docx_heading(text: str, size: int = 24) -> str:
     """Encabezado de seccion del informe (negrita, azul marino academico).
 
     Args:
@@ -168,7 +245,7 @@ _PDF_FALLBACK_CHARS = {
 }
 
 
-def pdf_safe_latin1(text):
+def pdf_safe_latin1(text: str) -> str:
     """Convierte simbolos tipograficos a ASCII para fuentes latin-1.
 
     Args:
@@ -182,7 +259,7 @@ def pdf_safe_latin1(text):
     return text.encode("latin-1", "replace").decode("latin-1")
 
 
-def pdf_badge(pdf, fam, tit_style, full_unicode):
+def pdf_badge(pdf, fam: str, tit_style: str, full_unicode: bool) -> None:
     """Dibuja insignia verde '[OK] Revisado por IA' en el PDF.
 
     Args:
@@ -214,7 +291,7 @@ def pdf_badge(pdf, fam, tit_style, full_unicode):
 # ── Adaptacion academica ──────────────────────────────────────────────────
 
 
-def parse_adapt_sections(text):
+def parse_adapt_sections(text: str) -> list[tuple[str, str]]:
     """Parsea la adaptacion academica de Gemini en secciones.
 
     Soporta dos formatos: encabezado en su propia linea con el cuerpo

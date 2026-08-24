@@ -1,0 +1,46 @@
+# =============================================================================
+# Prometheus alert rules for AudioClass
+# =============================================================================
+
+groups:
+  - name: audioclass_alerts
+    rules:
+      # Server is down
+      - alert: AudioClassServerDown
+        expr: up{job="audioclass-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AudioClass server is down"
+          description: "AudioClass transcription server has been unreachable for more than 1 minute."
+
+      # High error rate
+      - alert: HighErrorRate
+        expr: rate(audioclass_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "AudioClass error rate is {{ $value }} errors/second over the last 5 minutes."
+
+      # High transcription duration
+      - alert: SlowTranscriptions
+        expr: audioclass_transcription_duration_avg > 120
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transcriptions are slow"
+          description: "Average transcription duration is {{ $value }} seconds (> 2 minutes)."
+
+      # No transcriptions in 24h (usage drop)
+      - alert: NoUsage
+        expr: increase(audioclass_transcriptions_total[24h]) == 0
+        for: 24h
+        labels:
+          severity: info
+        annotations:
+          summary: "No transcriptions in 24 hours"
+          description: "AudioClass has not processed any transcriptions in the last 24 hours."

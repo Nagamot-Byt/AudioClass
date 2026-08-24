@@ -209,6 +209,8 @@ C = PALETTES["dark"].copy()
 # ── Modulos extraidos ──────────────────────────────────────────────────
 from config_dialog import ConfigDialogMixin
 from mic_optimizer_ui import MicTestMixin
+from toast_ui import ToastMixin
+from update_dialog_ui import UpdateDialogMixin
 
 try:
     from waveform_widget import WaveformPlayer
@@ -411,7 +413,7 @@ def _same_mic(a, b):
         return False
 
 
-class App(ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
+class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
     """Aplicacion principal de AudioClass v9.1.
 
     Interfaz grafica para grabar, transcribir y exportar clases universitarias.
@@ -1409,182 +1411,7 @@ class App(ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
             if hasattr(self, "brec") and self.brec.winfo_exists():
                 self.brec.configure(fg_color=C["mic"], hover_color=C["err"])
         except Exception:
-            pass
-
-    def _show_toast(self, msg, kind="ok", retry=None):
-        """Muestra un toast animado (ok/err/warn) junto al indicador de pasos.
-        kind='err' admite 'Reintentar': boton que invoca la callback retry.
-        Animacion: entra deslizandose con pulso, permanece ~1.5 s y se desvanece."""
-        if not hasattr(self, "steps_frame"):
-            return
-        try:
-            if not self.steps_frame.winfo_exists():
-                return
-        except Exception:
-            return
-        # Limpiar un toast anterior que aun se estuviera animando
-        if getattr(self, "_toast_after", None):
-            try:
-                self.after_cancel(self._toast_after)
-            except Exception:
-                pass
-            self._toast_after = None
-        if getattr(self, "_toast_lbl", None) is not None:
-            try:
-                self._toast_lbl.destroy()
-            except Exception:
-                pass
-            self._toast_lbl = None
-        if getattr(self, "_toast_btn", None) is not None:
-            try:
-                self._toast_btn.destroy()
-            except Exception:
-                pass
-            self._toast_btn = None
-
-        # Toasts: colores derivados de la paleta activa C para que siempre
-        # tengan contraste y sigan el tema (claro/oscuro).
-        _TOAST_STYLES = {
-            "ok": {"bg_key": "card", "fg": C["ok"]},
-            "err": {"bg_key": "card", "fg": C["err"]},
-            "warn": {"bg_key": "card", "fg": C["warn"]},
-        }
-        style = _TOAST_STYLES.get(kind, _TOAST_STYLES["ok"])
-        pill_bg = C.get(style["bg_key"], C["card"])
-        pill_fg = style["fg"]
-        pulse_col = C.get(kind, C["accent"])
-        self._toast_btn = None
-        if CTK:
-            lbl = ctk.CTkLabel(
-                self.steps_frame,
-                text="[OK] " + msg,
-                font=(self.FH, 12, "bold"),
-                text_color=pill_fg,
-                fg_color=pill_bg,
-                corner_radius=10,
-                padx=12,
-                pady=3,
-            )
-        else:
-            lbl = ctk.Label(
-                self.steps_frame,
-                text="[OK] " + msg,
-                font=(self.FH, 12, "bold"),
-                bg=pill_bg,
-                fg=pill_fg,
-                padx=12,
-                pady=3,
-            )
-        lbl.pack(side="left", padx=(42, 0))  # comienza desplazado a la derecha
-        self._toast_lbl = lbl
-        color_opt = "text_color" if CTK else "fg"
-        bg_opt = "fg_color" if CTK else "bg"
-        page_bg = C["bg"]  # fondo de la pagina, para el desvanecido final
-
-        if retry is not None:
-
-            def _do_retry():
-                """Metodo interno: do retry."""
-                for w_ in (self._toast_lbl, self._toast_btn):
-                    try:
-                        if w_ is not None:
-                            w_.destroy()
-                    except Exception:
-                        pass
-                self._toast_lbl = self._toast_btn = None
-                if getattr(self, "_toast_after", None):
-                    try:
-                        self.after_cancel(self._toast_after)
-                    except Exception:
-                        pass
-                    self._toast_after = None
-                try:
-                    retry()
-                except Exception:
-                    pass
-
-            if CTK:
-                rb = ctk.CTkButton(
-                    self.steps_frame,
-                    text="Reintentar",
-                    command=_do_retry,
-                    width=84,
-                    height=26,
-                    corner_radius=8,
-                    font=(self.FH, 10, "bold"),
-                    fg_color=pill_fg,
-                    text_color=pill_bg,
-                    hover_color=pulse_col,
-                )
-            else:
-                rb = ctk.Button(
-                    self.steps_frame,
-                    text="Reintentar",
-                    command=_do_retry,
-                    bg=pill_fg,
-                    fg=pill_bg,
-                    font=(self.FB, 10, "bold"),
-                )
-            rb.pack(side="left", padx=(6, 0))
-            self._toast_btn = rb
-
-        def _lerp(c1, c2, t):
-            """Metodo interno: lerp."""
-            r1, g1, b1 = (int(c1[i : i + 2], 16) for i in (1, 3, 5))
-            r2, g2, b2 = (int(c2[i : i + 2], 16) for i in (1, 3, 5))
-            return "#%02x%02x%02x" % (int(r1 + (r2 - r1) * t), int(g1 + (g2 - g1) * t), int(b1 + (b2 - b1) * t))
-
-        def _pulse(step, total=8):
-            """Metodo interno: pulse."""
-            lbl2 = getattr(self, "_toast_lbl", None)
-            if lbl2 is None or not lbl2.winfo_exists():
-                return
-            try:
-                # Deslizarse hasta la posicion final (junto al indicador)
-                padx_left = max(8, 42 - int(34 * step / total))
-                lbl2.pack_configure(padx=(padx_left, 0))
-                # Pulso: alterna entre dos tonos del color del toast
-                lbl2.configure(**{color_opt: pulse_col if step % 2 == 0 else pill_fg})
-            except Exception:
-                return
-            if step < total:
-                self._toast_after = self.after(35, lambda: _pulse(step + 1))
-            else:
-                lbl2.configure(**{color_opt: pill_fg})
-                # Los toasts de error con Reintentar duran mas para dar tiempo a leerlos
-                self._toast_after = self.after(4500 if kind == "err" else 1500, _fade)
-
-        def _fade(step=0, total=8):
-            """Metodo interno: fade."""
-            lbl2 = getattr(self, "_toast_lbl", None)
-            if lbl2 is None or not lbl2.winfo_exists():
-                return
-            try:
-                # Desvanecer el texto hacia el fondo de la insignia y el fondo
-                # de la insignia hacia el fondo de la pagina (salida suave)
-                # min(1.0, ...) evita que el ultimo frame (step == total)
-                # genere colores hex invalidos por extrapolacion
-                t = min(1.0, (step + 1) / total)
-                lbl2.configure(**{color_opt: _lerp(pill_fg, pill_bg, t), bg_opt: _lerp(pill_bg, page_bg, t)})
-            except Exception:
-                pass
-            if step < total:
-                self._toast_after = self.after(40, lambda: _fade(step + 1))
-            else:
-                try:
-                    lbl2.destroy()
-                except Exception:
-                    pass
-                self._toast_lbl = None
-                self._toast_after = None
-                if getattr(self, "_toast_btn", None) is not None:
-                    try:
-                        self._toast_btn.destroy()
-                    except Exception:
-                        pass
-                    self._toast_btn = None
-
-        self._toast_after = self.after(60, lambda: _pulse(0))
+            pass  # _show_toast movido a toast_ui.py (ToastMixin)
 
     def _open_guide(self, step=None):
         """Ventana de ayuda en lenguaje simple. Si step (1-4) se indica,
@@ -3987,6 +3814,14 @@ CONSEJOS:
         )
         if not fp:
             return
+        # Seguridad: validar contra path traversal
+        try:
+            from export_utils import validate_export_path
+
+            fp = validate_export_path(fp, allowed_dir=OUTPUT_DIR)
+        except ValueError as ve:
+            self._msg("error", "Path no valido", str(ve))
+            return
         try:
             pdf = FPDF()
             # Fuente Unicode (DejaVu de assets/ o fuente del sistema) para que
@@ -4086,7 +3921,6 @@ CONSEJOS:
         el cuerpo debajo, o encabezado INLINE ("**Resumen Ejecutivo:** texto").
         Si no encuentra encabezados conocidos, devuelve una sola seccion con
         el texto completo."""
-        import re
 
         text = text.replace("\r", "")  # robustez ante CRLF
         HEADERS = [
@@ -4165,6 +3999,14 @@ CONSEJOS:
             initialfile=f"trans_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
         )
         if not fp:
+            return
+        # Seguridad: validar contra path traversal
+        try:
+            from export_utils import validate_export_path
+
+            fp = validate_export_path(fp, allowed_dir=OUTPUT_DIR)
+        except ValueError as ve:
+            self._msg("error", "Path no valido", str(ve))
             return
         try:
             import zipfile
@@ -4765,231 +4607,8 @@ CONSEJOS:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _show_update_dialog(self, latest_version, release_url, release_notes=""):
-        """Muestra diálogo de actualización con opción de descargar e instalar.
-
-        Args:
-            latest_version: Versión más reciente disponible.
-            release_url: URL de la release en GitHub.
-            release_notes: Notas de la release (texto con formato markdown básico).
-        """
-        C = self._C
-
-        top = ctk.CTkToplevel(self) if CTK else tk.Toplevel(self)
-        top.title("Actualización disponible")
-        top.geometry("520x520")
-        top.transient(self)
-        top.grab_set()
-
-        # Título
-        self._lbl(top, "¡Nueva versión disponible!", font=(self.FH, 16, "bold"), text_color=C["ok"]).pack(pady=(15, 5))
-        self._lbl(top, f"v{latest_version}  (actual: v{APP_VER})", font=(self.FB, 12), text_color=C["text"]).pack(
-            pady=(0, 10)
-        )
-
-        # Notas de la release (scrollable con formato mejorado)
-        notes_frame = self._frame(top, fg_color=C["card"])
-        notes_frame.pack(fill="both", expand=True, padx=20, pady=(0, 10))
-
-        # Formatear release notes (markdown básico → texto legible)
-        formatted_notes = self._format_release_notes(release_notes)
-
-        notes_text = tk.Text(
-            notes_frame,
-            font=(self.FB, 10),
-            bg=C["card"],
-            fg=C["text"],
-            wrap="word",
-            relief="flat",
-            highlightthickness=0,
-            padx=12,
-            pady=10,
-            state="normal",
-        )
-
-        # Scrollbar para las notas
-        notes_scroll = tk.Scrollbar(notes_frame, command=notes_text.yview)
-        notes_text.configure(yscrollcommand=notes_scroll.set)
-
-        notes_text.pack(side="left", fill="both", expand=True)
-        notes_scroll.pack(side="right", fill="y")
-
-        # Insertar texto formateado con tags
-        self._insert_formatted_notes(notes_text, formatted_notes, C, top)
-        notes_text.configure(state="disabled")  # Solo lectura
-
-        # Link a GitHub
-        if release_url:
-
-            def _open_url():
-                import webbrowser
-
-                webbrowser.open(release_url)
-
-            self._btn(
-                top,
-                "Ver novedades en GitHub",
-                _open_url,
-                width=200,
-                height=28,
-                fg_color=C["button"],
-                text_color=C["text"],
-            ).pack(pady=(0, 10))
-
-    def _format_release_notes(self, notes: str) -> list:
-        """Formatea release notes de markdown básico a estructura legible.
-
-        Returns:
-            Lista de tuplas (tipo, texto) donde tipo es:
-            'header', 'bullet', 'text', 'separator', 'blank'
-        """
-        if not notes or not notes.strip():
-            return [("text", "No hay notas de disponibles.")]
-
-        lines = notes.strip().split("\n")
-        formatted = []
-
-        for line in lines:
-            stripped = line.strip()
-
-            if not stripped:
-                formatted.append(("blank", ""))
-            elif stripped.startswith("---") or stripped.startswith("==="):
-                formatted.append(("separator", ""))
-            elif stripped.startswith("## "):
-                formatted.append(("header", stripped[3:]))
-            elif stripped.startswith("# "):
-                formatted.append(("header", stripped[2:]))
-            elif stripped.startswith("- ") or stripped.startswith("* "):
-                formatted.append(("bullet", stripped[2:]))
-            elif stripped.startswith("**") and stripped.endswith("**"):
-                formatted.append(("bold", stripped.strip("*")))
-            else:
-                # Limpiar markdown inline: **bold**, `code`, [link](url)
-                clean = re.sub(r"\*\*([^*]+)\*\*", r"\1", stripped)
-                clean = re.sub(r"`([^`]+)`", r"\1", clean)
-                clean = re.sub(r"\[([^]]+)]\([^)]+\)", r"\1", clean)
-                formatted.append(("text", clean))
-
-        return formatted
-
-    def _insert_formatted_notes(self, text_widget, formatted: list, C: dict, parent=None):
-        """Inserta las release notes formateadas en el widget de texto."""
-        # Definir tags de estilo
-        text_widget.tag_configure("header", font=(self.FH, 11, "bold"), foreground=C["accent"])
-        text_widget.tag_configure("bold", font=(self.FB, 10, "bold"), foreground=C["text"])
-        text_widget.tag_configure("bullet", font=(self.FB, 10), foreground=C["text"], lmargin1=20, lmargin2=36)
-        text_widget.tag_configure("text", font=(self.FB, 10), foreground=C["text"])
-        text_widget.tag_configure("muted", font=(self.FB, 10), foreground=C["muted"])
-        text_widget.tag_configure("separator", font=(self.FB, 10), foreground=C["border"])
-
-        for i, (kind, content) in enumerate(formatted):
-            if kind == "blank":
-                text_widget.insert("end", "\n")
-            elif kind == "separator":
-                text_widget.insert("end", "─" * 40 + "\n", "separator")
-            elif kind == "header":
-                text_widget.insert("end", f"{content}\n", "header")
-            elif kind == "bullet":
-                text_widget.insert("end", f"  • {content}\n", "bullet")
-            elif kind == "bold":
-                text_widget.insert("end", f"{content}\n", "bold")
-            else:
-                text_widget.insert("end", f"{content}\n", "text")
-
-        # Barra de progreso (oculta inicialmente)
-        progress_var = tk.DoubleVar(value=0)
-        _parent = parent or self
-        progress_bar = ctk.CTkProgressBar(_parent, width=400, height=12, variable=progress_var, progress_color=C["ok"])
-        progress_lbl = self._lbl(_parent, "", font=(self.FB, 10), text_color=C["muted"])
-
-        # Botones
-        btn_frame = self._frame(_parent, fg_color="transparent")
-        btn_frame.pack(pady=(10, 15))
-
-        def _do_update():
-            """Descarga e instala la actualización."""
-            btn_download.configure(state="disabled", text="Descargando...")
-            btn_skip.configure(state="disabled")
-            progress_bar.pack(pady=(0, 5))
-            progress_lbl.pack(pady=(0, 10))
-
-            def _worker():
-                try:
-                    from update_checker import (
-                        check_for_updates,
-                        download_update,
-                        find_download_asset,
-                        install_update,
-                        verify_download,
-                    )
-
-                    # Buscar asset correcto
-                    result = check_for_updates(APP_VER)
-                    asset = find_download_asset(result.get("assets", []))
-
-                    if not asset:
-                        self.q.put(("update_error", "No se encontró el archivo de actualización"))
-                        return
-
-                    # Descargar
-                    def _on_progress(downloaded, total, msg):
-                        if total > 0:
-                            progress_var.set(downloaded / total)
-                        self.q.put(("update_progress", msg))
-
-                    file_path, error = download_update(asset, on_progress=_on_progress)
-
-                    if error:
-                        self.q.put(("update_error", error))
-                        return
-
-                    # Verificar
-                    self.q.put(("update_progress", "Verificando integridad..."))
-                    ok, msg = verify_download(file_path, sha256_url=result.get("sha256_url"))
-                    if not ok:
-                        self.q.put(("update_error", f"Verificación falló: {msg}"))
-                        return
-
-                    # Instalar
-                    self.q.put(("update_progress", "Instalando actualización..."))
-                    success, msg = install_update(file_path)
-
-                    if success:
-                        self.q.put(("update_installed", msg))
-                    else:
-                        self.q.put(("update_error", msg))
-
-                except Exception as e:
-                    self.q.put(("update_error", str(e)[:100]))
-
-            threading.Thread(target=_worker, daemon=True).start()
-
-        def _do_later():
-            _parent.destroy()
-
-        btn_download = self._btn(
-            btn_frame,
-            "Descargar e instalar",
-            _do_update,
-            width=180,
-            height=36,
-            fg_color=C["ok"],
-            hover_color=C["accent"],
-        )
-        btn_download.pack(side="left", padx=(0, 10))
-        btn_skip = self._btn(
-            btn_frame, "Ahora no", _do_later, width=120, height=36, fg_color=C["button"], text_color=C["text"]
-        )
-        btn_skip.pack(side="left")
-
-        # Guardar referencias para que _poll pueda actualizar la UI
-        self._update_dialog = _parent
-        self._update_progress_var = progress_var
-        self._update_progress_bar = progress_bar
-        self._update_progress_lbl = progress_lbl
-        self._update_btn_download = btn_download
-        self._update_btn_skip = btn_skip
+    # _show_update_dialog, _format_release_notes, _insert_formatted_notes
+    # movidos a update_dialog_ui.py (UpdateDialogMixin)
 
     def _restart_app(self):
         """Reinicia la aplicación después de una actualización."""
