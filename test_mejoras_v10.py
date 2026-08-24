@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_mejoras_v10.py — Verifica las mejoras de la iteracion v10:
 
   #2 PRE-VALIDACION DE SILENCIO: un WAV de silencio digital (>50% muestras en
@@ -18,6 +17,7 @@
 Los tests de silencio y streaming usan un WAV sintetico (sin voz real); el de
 faster usa voz TTS real (tts_clase.wav) si existe; si no, genera ruido rosa.
 """
+
 import os
 import sys
 import tempfile
@@ -64,7 +64,7 @@ def _voice_wav(dur, fn):
     if os.path.exists("tts_clase.wav"):
         sr, d = wavfile.read("tts_clase.wav")
         p = os.path.join(TMP, fn)
-        wavfile.write(p, sr, d[:int(sr * dur)])
+        wavfile.write(p, sr, d[: int(sr * dur)])
         return p
     return _wav(dur, fn)
 
@@ -89,8 +89,7 @@ def test_silencio_digital_detectado():
     assert r.get("workers", 0) == 0, "no debe lanzar workers"
     assert "silencio" in r.get("silence_msg", "").lower(), r.get("silence_msg")
     assert el < 5, f"la pre-validacion debe ser instantanea, tardo {el:.1f}s"
-    print(f"  S1 OK: silencio digital -> aviso en {el:.1f}s sin transcribir "
-          f"| msg: {r.get('silence_msg','')[:60]}...")
+    print(f"  S1 OK: silencio digital -> aviso en {el:.1f}s sin transcribir | msg: {r.get('silence_msg', '')[:60]}...")
 
 
 def test_silencio_no_marca_voz():
@@ -114,8 +113,7 @@ def test_streaming_secuencial_y_paralelo():
     os.remove(p1)
     assert len(parts1) >= 1, f"secuencial debe emitir >= 1 partial, tengo {len(parts1)}"
     assert parts1[-1].strip(), "el ultimo partial no puede estar vacio"
-    print(f"  P1 OK: secuencial emitio {len(parts1)} partial(s), "
-          f"ultimo len={len(parts1[-1])}")
+    print(f"  P1 OK: secuencial emitio {len(parts1)} partial(s), ultimo len={len(parts1[-1])}")
 
     # Camino paralelo (>= 2 chunks): progresion del texto
     parts2 = []
@@ -126,15 +124,15 @@ def test_streaming_secuencial_y_paralelo():
     # El texto parcial crece de forma monotona (no se encoge)
     lens = [len(x) for x in parts2]
     assert lens[-1] >= lens[0], f"el texto parcial no crece: {lens}"
-    print(f"  P2 OK: paralelo emitio {len(parts2)} partials, "
-          f"crecimiento {lens[0]} -> {lens[-1]} chars")
+    print(f"  P2 OK: paralelo emitio {len(parts2)} partials, crecimiento {lens[0]} -> {lens[-1]} chars")
 
 
 def _faster_skip():
     """True si faster-whisper no esta instalado: los tests del backend faster
     hacen SKIP limpio (exit 0) como el resto de la suite, sin ImportError."""
     try:
-        import faster_whisper  # noqa: F401
+        import faster_whisper
+
         return False
     except Exception:
         return True
@@ -158,9 +156,11 @@ def test_faster_backend_funciona_y_detecta_idioma():
     assert r.get("backend") == "faster", r
     assert r.get("text"), "debe producir texto"
     assert r.get("language"), r
-    print(f"  F1 OK: faster tiny en {el:.0f}s ({el/max(r.get('chunks',1),1):.1f}s/chunk) "
-          f"| idioma={r.get('language')} | chunks={r.get('chunks')} | "
-          f"texto len={len(r.get('text',''))}")
+    print(
+        f"  F1 OK: faster tiny en {el:.0f}s ({el / max(r.get('chunks', 1), 1):.1f}s/chunk) "
+        f"| idioma={r.get('language')} | chunks={r.get('chunks')} | "
+        f"texto len={len(r.get('text', ''))}"
+    )
 
 
 def test_faster_paralelo_consistente():
@@ -175,8 +175,7 @@ def test_faster_paralelo_consistente():
     assert r.get("workers", 1) > 1, f"esperaba paralelo: {r.get('workers')}"
     assert r.get("backend") == "faster"
     assert r.get("language"), r
-    print(f"  F2 OK: faster paralelo ({r.get('workers')} workers, "
-          f"{r.get('chunks')} chunks) idioma={r.get('language')}")
+    print(f"  F2 OK: faster paralelo ({r.get('workers')} workers, {r.get('chunks')} chunks) idioma={r.get('language')}")
 
 
 def test_detecta_alucinacion_por_frase_y_repeticion():
@@ -189,8 +188,7 @@ def test_detecta_alucinacion_por_frase_y_repeticion():
     una transcripcion real."""
     # Frase conocida de alucinacion (el prompt academico filtrado)
     m = core.detect_hallucination(
-        "Transcribe faithfully only what the main speaker said. "
-        "Transcribe faithfully only what the main speaker said."
+        "Transcribe faithfully only what the main speaker said. Transcribe faithfully only what the main speaker said."
     )
     assert m, "la frase del prompt academico debe detectarse"
     assert "debil" in m.lower(), m
@@ -210,8 +208,7 @@ def test_detecta_alucinacion_por_frase_y_repeticion():
     # Texto real (una sola mencion) NO se marca
     m3 = core.detect_hallucination(
         "Hoy hablaremos de la celula. La membrana regula el paso de moleculas.",
-        segments=[{"text": "Hoy hablaremos de la celula."},
-                  {"text": "La membrana regula el paso de moleculas."}],
+        segments=[{"text": "Hoy hablaremos de la celula."}, {"text": "La membrana regula el paso de moleculas."}],
     )
     assert m3 is None, m3
 

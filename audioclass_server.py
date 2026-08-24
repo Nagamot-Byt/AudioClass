@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 audioclass_server.py — Servidor de transcripción headless para AudioClass
 ==========================================================================
@@ -24,25 +23,22 @@ Uso:
     # Como servicio systemd
     sudo systemctl start audioclass
 """
+
 import argparse
-import asyncio
-import hashlib
 import hmac
-import json
 import os
 import sys
 import tempfile
 import time
 import traceback
 from pathlib import Path
-from typing import Optional
 
 # ── Verificar dependencias mínimas ───────────────────────────────────────────
 try:
-    from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Header, WebSocket, WebSocketDisconnect
-    from fastapi.responses import JSONResponse
-    from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
+    from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
 except ImportError:
     print("ERROR: Dependencias del servidor no instaladas.")
     print("  pip install fastapi uvicorn python-multipart websockets")
@@ -53,8 +49,13 @@ import numpy as np
 # ── Imports del core ─────────────────────────────────────────────────────────
 try:
     from audioclass_core import (
-        AudioPipeline, LocalWhisperEngine, GeminiAdaptationEngine,
-        OpenAIAdaptationEngine, SAMPLE_RATE, CHANNELS, DTYPE,
+        CHANNELS,
+        DTYPE,
+        SAMPLE_RATE,
+        AudioPipeline,
+        GeminiAdaptationEngine,
+        LocalWhisperEngine,
+        OpenAIAdaptationEngine,
     )
     from config_manager import load_config
 except ImportError as e:
@@ -134,7 +135,7 @@ def _init_engines():
 
 
 # ── Seguridad ────────────────────────────────────────────────────────────────
-def _check_api_key(authorization: Optional[str] = Header(None)):
+def _check_api_key(authorization: str | None = Header(None)):
     """Verifica la API key si está configurada."""
     if not API_KEY:
         return  # Sin key configurada: acceso abierto (desarrollo)
@@ -158,10 +159,7 @@ def _check_rate_limit(ip: str):
     _rate_limits[ip] = [t for t in _rate_limits[ip] if now - t < 60]
 
     if len(_rate_limits[ip]) >= RATE_LIMIT_PER_MIN:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit: máximo {RATE_LIMIT_PER_MIN} requests/minuto"
-        )
+        raise HTTPException(status_code=429, detail=f"Rate limit: máximo {RATE_LIMIT_PER_MIN} requests/minuto")
 
     _rate_limits[ip].append(now)
 
@@ -174,7 +172,7 @@ async def health():
 
 
 @app.get("/status")
-async def status(authorization: Optional[str] = Header(None)):
+async def status(authorization: str | None = Header(None)):
     """Estado del servidor y modelos."""
     _check_api_key(authorization)
 
@@ -203,32 +201,38 @@ async def status(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/models")
-async def models(authorization: Optional[str] = Header(None)):
+async def models(authorization: str | None = Header(None)):
     """Lista de modelos disponibles."""
     _check_api_key(authorization)
 
     available = []
     if _local_engine and _local_engine.ready:
-        available.append({
-            "id": "local",
-            "name": f"Local Whisper ({CONFIG.get('local_model', 'base')})",
-            "type": "local",
-            "requires_key": False,
-        })
+        available.append(
+            {
+                "id": "local",
+                "name": f"Local Whisper ({CONFIG.get('local_model', 'base')})",
+                "type": "local",
+                "requires_key": False,
+            }
+        )
     if _adapt_engine_gemini:
-        available.append({
-            "id": "gemini",
-            "name": "Gemini (Google AI)",
-            "type": "adaptation",
-            "requires_key": True,
-        })
+        available.append(
+            {
+                "id": "gemini",
+                "name": "Gemini (Google AI)",
+                "type": "adaptation",
+                "requires_key": True,
+            }
+        )
     if _adapt_engine_openai:
-        available.append({
-            "id": "openai",
-            "name": "OpenAI (GPT)",
-            "type": "adaptation",
-            "requires_key": True,
-        })
+        available.append(
+            {
+                "id": "openai",
+                "name": "OpenAI (GPT)",
+                "type": "adaptation",
+                "requires_key": True,
+            }
+        )
 
     return {"models": available}
 
@@ -239,7 +243,7 @@ async def transcribe(
     language: str = Form("auto"),
     model: str = Form("local"),
     fast_mode: bool = Form(False),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Transcribe un archivo de audio.
 
@@ -261,8 +265,7 @@ async def transcribe(
     size_mb = len(content) / (1024 * 1024)
     if size_mb > MAX_UPLOAD_MB:
         raise HTTPException(
-            status_code=413,
-            detail=f"Archivo demasiado grande: {size_mb:.1f}MB (máximo {MAX_UPLOAD_MB}MB)"
+            status_code=413, detail=f"Archivo demasiado grande: {size_mb:.1f}MB (máximo {MAX_UPLOAD_MB}MB)"
         )
 
     # Guardar archivo temporal
@@ -289,10 +292,7 @@ async def transcribe(
             # Transcripción en la nube
             engine = _adapt_engine_gemini if model == "gemini" else _adapt_engine_openai
             if not engine:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Motor {model} no configurado (falta API key)"
-                )
+                raise HTTPException(status_code=503, detail=f"Motor {model} no configurado (falta API key)")
             # Para motores cloud, primero transcribimos local y luego adaptamos
             if not _local_engine or not _local_engine.ready:
                 raise HTTPException(status_code=503, detail="Motor local no disponible para pre-procesamiento")
@@ -336,7 +336,7 @@ async def transcribe_advanced(
     language: str = Form("auto"),
     template: str = Form("resumen"),
     provider: str = Form("gemini"),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Transcribe un audio y genera un análisis estructurado con IA.
 
@@ -355,8 +355,7 @@ async def transcribe_advanced(
     size_mb = len(content) / (1024 * 1024)
     if size_mb > MAX_UPLOAD_MB:
         raise HTTPException(
-            status_code=413,
-            detail=f"Archivo demasiado grande: {size_mb:.1f}MB (máximo {MAX_UPLOAD_MB}MB)"
+            status_code=413, detail=f"Archivo demasiado grande: {size_mb:.1f}MB (máximo {MAX_UPLOAD_MB}MB)"
         )
 
     # Guardar archivo temporal
@@ -381,10 +380,7 @@ async def transcribe_advanced(
         # Paso 2: Adaptar con IA
         engine = _adapt_engine_gemini if provider == "gemini" else _adapt_engine_openai
         if not engine:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Proveedor {provider} no configurado (falta API key)"
-            )
+            raise HTTPException(status_code=503, detail=f"Proveedor {provider} no configurado (falta API key)")
 
         adapted = engine.adapt(
             text,
@@ -437,7 +433,7 @@ async def websocket_transcribe(
     chunk_duration: float = 2.0,
 ):
     """WebSocket para transcripción en tiempo real.
-    
+
     Protocolo:
       1. Cliente se conecta
       2. Servidor envía: {"type": "connected", "session_id": "..."}
@@ -445,88 +441,94 @@ async def websocket_transcribe(
       4. Servidor envía resultados parciales: {"type": "partial", "text": "...", "is_final": false}
       5. Cliente envía fin: {"type": "end"}
       6. Servidor envía resultado final: {"type": "final", "text": "...", "duration": 1.23}
-    
+
     Args:
         websocket: Conexión WebSocket.
         language: Código de idioma ISO 639-1 o "auto".
         chunk_duration: Duración del chunk en segundos para transcripción parcial.
     """
     import uuid
-    import threading
-    
+
     session_id = str(uuid.uuid4())[:8]
     _ws_connections[session_id] = websocket
     _ws_buffers[session_id] = []
-    
+
     try:
         await websocket.accept()
-        
+
         # Enviar confirmación de conexión
-        await websocket.send_json({
-            "type": "connected",
-            "session_id": session_id,
-            "language": language,
-            "chunk_duration": chunk_duration,
-        })
-        
+        await websocket.send_json(
+            {
+                "type": "connected",
+                "session_id": session_id,
+                "language": language,
+                "chunk_duration": chunk_duration,
+            }
+        )
+
         # Buffer acumulado para transcripción parcial
         accumulated_audio = []
         chunk_samples = int(chunk_duration * SAMPLE_RATE)
         last_transcription = ""
-        
+
         while True:
             # Recibir mensaje
             data = await websocket.receive_json()
             msg_type = data.get("type", "")
-            
+
             if msg_type == "audio":
                 # Recibir chunk de audio
                 audio_data = data.get("data", [])
                 if audio_data:
                     audio_array = np.array(audio_data, dtype=np.float32)
                     accumulated_audio.extend(audio_data)
-                    
+
                     # Transcribir parcialmente si hay suficiente audio
                     if len(accumulated_audio) >= chunk_samples:
                         # Transcribir el chunk actual
                         partial_audio = np.array(accumulated_audio[-chunk_samples:], dtype=np.float32)
-                        
+
                         try:
                             # Guardar temporalmente
                             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                                 from scipy.io import wavfile
+
                                 wavfile.write(tmp.name, SAMPLE_RATE, (partial_audio * 32767).astype(np.int16))
-                                
+
                                 # Transcribir
                                 if _local_engine and _local_engine.ready:
                                     partial_text = _local_engine.transcribe(
                                         tmp.name,
                                         language=language if language != "auto" else None,
                                     )
-                                    
+
                                     # Enviar resultado parcial solo si cambió
                                     if partial_text != last_transcription:
                                         last_transcription = partial_text
-                                        await websocket.send_json({
-                                            "type": "partial",
-                                            "text": partial_text,
-                                            "is_final": False,
-                                            "samples": len(accumulated_audio),
-                                            "duration": len(accumulated_audio) / SAMPLE_RATE,
-                                        })
-                                
+                                        await websocket.send_json(
+                                            {
+                                                "type": "partial",
+                                                "text": partial_text,
+                                                "is_final": False,
+                                                "samples": len(accumulated_audio),
+                                                "duration": len(accumulated_audio) / SAMPLE_RATE,
+                                            }
+                                        )
+
                                 # Limpiar temporal
                                 try:
                                     os.unlink(tmp.name)
                                 except Exception:
                                     pass
-                                    
+
                         except Exception as e:
-                            await websocket.send_json({
-                                "type": "error",
-                                "message": f"Error en transcripción parcial: {str(e)[:100]}",
-                            })
-            
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": f"Error en transcripción parcial: {str(e)[:100]}",
+                                }
+                            )
+
             elif msg_type == "end":
                 # Fin de la transmisión - transcripción final
                 if accumulated_audio:
@@ -535,8 +537,9 @@ async def websocket_transcribe(
                         full_audio = np.array(accumulated_audio, dtype=np.float32)
                         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                             from scipy.io import wavfile
+
                             wavfile.write(tmp.name, SAMPLE_RATE, (full_audio * 32767).astype(np.int16))
-                            
+
                             t0 = time.time()
                             if _local_engine and _local_engine.ready:
                                 final_text = _local_engine.transcribe(
@@ -544,39 +547,45 @@ async def websocket_transcribe(
                                     language=language if language != "auto" else None,
                                 )
                                 elapsed = time.time() - t0
-                                
-                                await websocket.send_json({
-                                    "type": "final",
-                                    "text": final_text,
-                                    "is_final": True,
-                                    "samples": len(accumulated_audio),
-                                    "duration": len(accumulated_audio) / SAMPLE_RATE,
-                                    "processing_time": elapsed,
-                                })
-                            
+
+                                await websocket.send_json(
+                                    {
+                                        "type": "final",
+                                        "text": final_text,
+                                        "is_final": True,
+                                        "samples": len(accumulated_audio),
+                                        "duration": len(accumulated_audio) / SAMPLE_RATE,
+                                        "processing_time": elapsed,
+                                    }
+                                )
+
                             try:
                                 os.unlink(tmp.name)
                             except Exception:
                                 pass
-                                
+
                     except Exception as e:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": f"Error en transcripción final: {str(e)[:100]}",
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "message": f"Error en transcripción final: {str(e)[:100]}",
+                            }
+                        )
                 else:
-                    await websocket.send_json({
-                        "type": "final",
-                        "text": "",
-                        "is_final": True,
-                        "samples": 0,
-                        "duration": 0,
-                    })
-                
+                    await websocket.send_json(
+                        {
+                            "type": "final",
+                            "text": "",
+                            "is_final": True,
+                            "samples": 0,
+                            "duration": 0,
+                        }
+                    )
+
                 # Limpiar
                 accumulated_audio.clear()
                 last_transcription = ""
-            
+
             elif msg_type == "config":
                 # Actualizar configuración de la sesión
                 if "language" in data:
@@ -584,24 +593,28 @@ async def websocket_transcribe(
                 if "chunk_duration" in data:
                     chunk_duration = data["chunk_duration"]
                     chunk_samples = int(chunk_duration * SAMPLE_RATE)
-                
-                await websocket.send_json({
-                    "type": "config_updated",
-                    "language": language,
-                    "chunk_duration": chunk_duration,
-                })
-            
+
+                await websocket.send_json(
+                    {
+                        "type": "config_updated",
+                        "language": language,
+                        "chunk_duration": chunk_duration,
+                    }
+                )
+
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
-    
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
         try:
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Error de conexión: {str(e)[:100]}",
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": f"Error de conexión: {str(e)[:100]}",
+                }
+            )
         except Exception:
             pass
     finally:
@@ -616,61 +629,64 @@ async def websocket_stream(
     language: str = "auto",
 ):
     """WebSocket simplificado para streaming de audio bidireccional.
-    
+
     Envía y recibe chunks de audio en formato binario.
-    
+
     Protocolo:
       - Cliente envía: bytes de audio (float32, little-endian)
       - Servidor responde: JSON con texto parcial/final
-    
+
     Más eficiente que /ws/transcribe para streaming de alta frecuencia.
     """
     import uuid
-    
+
     session_id = str(uuid.uuid4())[:8]
     _ws_connections[session_id] = websocket
-    
+
     try:
         await websocket.accept()
         await websocket.send_json({"type": "connected", "session_id": session_id})
-        
+
         accumulated = []
         chunk_size = int(2.0 * SAMPLE_RATE)  # 2 segundos
-        
+
         while True:
             # Recibir audio binario
             data = await websocket.receive_bytes()
-            
+
             # Convertir bytes a numpy array
             audio_chunk = np.frombuffer(data, dtype=np.float32)
             accumulated.extend(audio_chunk.tolist())
-            
+
             # Transcribir parcialmente
             if len(accumulated) >= chunk_size:
                 try:
                     partial = np.array(accumulated[-chunk_size:], dtype=np.float32)
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                         from scipy.io import wavfile
+
                         wavfile.write(tmp.name, SAMPLE_RATE, (partial * 32767).astype(np.int16))
-                        
+
                         if _local_engine and _local_engine.ready:
                             text = _local_engine.transcribe(
                                 tmp.name,
                                 language=language if language != "auto" else None,
                             )
-                            await websocket.send_json({
-                                "type": "partial",
-                                "text": text,
-                                "is_final": False,
-                            })
-                        
+                            await websocket.send_json(
+                                {
+                                    "type": "partial",
+                                    "text": text,
+                                    "is_final": False,
+                                }
+                            )
+
                         try:
                             os.unlink(tmp.name)
                         except Exception:
                             pass
                 except Exception:
                     pass
-    
+
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -691,7 +707,7 @@ def main():
     global _start_time
     _start_time = time.time()
 
-    print(f"AudioClass Server v9.1.0")
+    print("AudioClass Server v9.1.0")
     print(f"Host: {args.host}:{args.port}")
     print(f"API Key: {'configurada' if API_KEY else 'sin autenticación (desarrollo)'}")
     print()

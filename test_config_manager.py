@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_config_manager.py — Tests unitarios para config_manager.py
 ================================================================
 Valida: defaults, carga/guardado, cifrado/descifrado de secretos,
         integridad de campos secretos, backward compat.
 """
+
+import json
 import os
 import sys
-import json
-import tempfile
+
 import pytest
 
 # Asegurar que el directorio del proyecto esta en el path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config_manager import (
-    DEFAULT_CONFIG,
     _SECRET_FIELDS,
-    _encrypt_secret,
+    DEFAULT_CONFIG,
     _decrypt_secret,
+    _encrypt_secret,
     load_config,
     save_config,
 )
@@ -30,11 +30,20 @@ class TestDefaults:
 
     def test_has_required_keys(self):
         required = [
-            "gemini_api_key", "colab_url", "colab_key",
-            "transcription_mode", "local_model", "whisper_language",
-            "adapt_provider", "openai_api_key", "openai_model",
-            "theme", "mic_device", "first_run",
-            "ia_consent", "rec_consent_ack",
+            "gemini_api_key",
+            "colab_url",
+            "colab_key",
+            "transcription_mode",
+            "local_model",
+            "whisper_language",
+            "adapt_provider",
+            "openai_api_key",
+            "openai_model",
+            "theme",
+            "mic_device",
+            "first_run",
+            "ia_consent",
+            "rec_consent_ack",
         ]
         for k in required:
             assert k in DEFAULT_CONFIG, f"Missing key: {k}"
@@ -51,9 +60,12 @@ class TestDefaults:
                 # Check for common emoji ranges
                 for c in v:
                     cp = ord(c)
-                    assert not (0x1F600 <= cp <= 0x1F64F or 0x1F300 <= cp <= 0x1F5FF or
-                               0x1F680 <= cp <= 0x1F6FF or 0x1F1E0 <= cp <= 0x1F1FF), \
-                        f"Emoji found in DEFAULT_CONFIG['{k}']"
+                    assert not (
+                        0x1F600 <= cp <= 0x1F64F
+                        or 0x1F300 <= cp <= 0x1F5FF
+                        or 0x1F680 <= cp <= 0x1F6FF
+                        or 0x1F1E0 <= cp <= 0x1F1FF
+                    ), f"Emoji found in DEFAULT_CONFIG['{k}']"
 
 
 class TestEncryptDecrypt:
@@ -148,13 +160,12 @@ class TestLoadSaveConfig:
 
         save_config(cfg, path=cfg_path)
 
-        with open(cfg_path, "r") as f:
+        with open(cfg_path) as f:
             raw = json.load(f)
 
         # En disco debe estar cifrado, no en texto plano
         assert raw["gemini_api_key"] != "super_secret"
-        assert raw["gemini_api_key"].startswith("b64:") or \
-               raw["gemini_api_key"].startswith("dpapi:")
+        assert raw["gemini_api_key"].startswith("b64:") or raw["gemini_api_key"].startswith("dpapi:")
 
     def test_backward_compat_with_legacy_config(self, tmp_path):
         """Configurations antiguas sin campos nuevos se actualizan con defaults."""
@@ -179,8 +190,10 @@ class TestLoadSaveConfig:
 
 if __name__ == "__main__":
     import sys
+
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import pytest
+
     rc = pytest.main([__file__, "-v", "--tb=line", "-q"])
     if rc == 0:
         print("CONFIG_MANAGER_OK")

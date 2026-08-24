@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """transcription_engines.py — Registro y seleccion de motores de transcripcion.
 
 Modulo extraido de audioclass_v91.py. Contiene el diccionario de
@@ -9,8 +8,8 @@ Uso:
     from transcription_engines import TRANSCRIPTION_ENGINES, select_engine
     engine = select_engine(config)
 """
+
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -24,6 +23,7 @@ class TranscriptionEngine:
         requires_url: True si necesita URL de servidor (ej: Colab).
         description: Descripcion corta para el usuario.
     """
+
     name: str
     key: str
     requires_key: bool = False
@@ -40,32 +40,32 @@ TRANSCRIPTION_ENGINES = {
         name="Local (faster-whisper)",
         key="local",
         requires_key=False,
-        description="Transcripcion offline con modelos Tiny/Base/Small. Sin internet."
+        description="Transcripcion offline con modelos Tiny/Base/Small. Sin internet.",
     ),
     "local_whisper": TranscriptionEngine(
         name="Local (openai-whisper)",
         key="local_whisper",
         requires_key=False,
-        description="Transcripcion offline con openai-whisper. Mas lento que faster-whisper."
+        description="Transcripcion offline con openai-whisper. Mas lento que faster-whisper.",
     ),
     "gemini": TranscriptionEngine(
         name="Gemini (Google AI)",
         key="gemini",
         requires_key=True,
-        description="Transcripcion remota via Google Gemini. Rapido y preciso."
+        description="Transcripcion remota via Google Gemini. Rapido y preciso.",
     ),
     "openai": TranscriptionEngine(
         name="OpenAI (GPT)",
         key="openai",
         requires_key=True,
-        description="Transcripcion remota via OpenAI API. Alta calidad."
+        description="Transcripcion remota via OpenAI API. Alta calidad.",
     ),
     "colab": TranscriptionEngine(
         name="Colab (GPU remota)",
         key="colab",
         requires_key=False,
         requires_url=True,
-        description="Transcripcion via Google Colab con GPU. Requiere URL del servidor."
+        description="Transcripcion via Google Colab con GPU. Requiere URL del servidor.",
     ),
 }
 

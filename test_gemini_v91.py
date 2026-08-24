@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 AudioClass v9.1 — Verificador de Gemini 2.5 (sin abrir la GUI)
 ==============================================================
@@ -56,7 +55,7 @@ def obtener_key(arg_key):
     cfg = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings", "audioclass_config.json")
     if os.path.exists(cfg):
         try:
-            with open(cfg, "r", encoding="utf-8") as f:
+            with open(cfg, encoding="utf-8") as f:
                 return (json.load(f).get("gemini_api_key") or "").strip()
         except Exception:
             pass
@@ -79,6 +78,7 @@ def cargar_motor_gemini():
     try:
         sys.path.insert(0, here)
         import audioclass_v91
+
         return audioclass_v91.GeminiAdaptationEngine, "modulo completo de la app"
     except Exception as e:
         print(f"No se pudo importar audioclass_v91.py ({e})")
@@ -86,14 +86,14 @@ def cargar_motor_gemini():
 
     # Intento 2: extraer solo la clase (evita numpy/scipy/sounddevice/customtkinter)
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             src = f.read()
         m = re.search(r"class GeminiAdaptationEngine:\n", src)
         if not m:
             raise ValueError("clase no encontrada en el archivo")
         start = m.start()
         nxt = src.find("\nclass ", start + 10)
-        class_src = src[start:nxt if nxt != -1 else len(src)]
+        class_src = src[start : nxt if nxt != -1 else len(src)]
         ns = {}
         exec(compile(class_src, "audioclass_v91.py", "exec"), ns)
         return ns["GeminiAdaptationEngine"], "clase extraida"
@@ -237,7 +237,7 @@ def main():
     if len(key) < 10:
         print("[X] No se encontro una API Key valida.")
         print("  Opciones:")
-        print("    1) python test_gemini_v91.py --key \"TU_CLAVE\"")
+        print('    1) python test_gemini_v91.py --key "TU_CLAVE"')
         print("    2) Abre la app (Configuracion) y guarda tu key en aistudio.google.com/app/apikey")
         print("    3) Variable de entorno GEMINI_API_KEY")
         sys.exit(1)

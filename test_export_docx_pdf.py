@@ -1,6 +1,11 @@
 """Test de exportacion PDF/DOCX: genera archivos reales con timestamps,
 numeracion de lineas e insignia 'Revisado por IA' y verifica su contenido."""
-import os, sys, json, zipfile, tempfile, traceback
+
+import json
+import os
+import sys
+import tempfile
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # La consola de Windows (cp1252) no imprime '[OK]' ni emojis: reconfigure a utf-8
@@ -28,12 +33,15 @@ with open(SMOKE_CFG, "w", encoding="utf-8") as f:
 # ── Simular el App sin abrir dialogo de guardado ─────────────────────────────
 _saved = {}
 
+
 def fake_save(**kw):
     def _f(**kwargs):
         p = os.path.join(tempfile.mkdtemp(), kwargs.get("initialfile", "out.pdf"))
         _saved[kwargs.get("defaultextension", ".pdf")] = p
         return p
+
     return _f
+
 
 appmod.filedialog.asksaveasfilename = fake_save()
 
@@ -48,12 +56,17 @@ app = appmod.App()
 app._msg = lambda kind, title, msg: print(f"MSGBOX [{kind}] {title}: {msg}")
 # En el informe DOCX pedimos 'incluir informe' -> True; para el resto False
 _ask_calls = []
+
+
 def fake_ask(*a, **k):
     _ask_calls.append(a[1] if len(a) > 1 else "")
     return True
+
+
 app._ask = fake_ask
-app.last_text = ("Hola. Esta es una prueba de transcripción. El proceso ocurre en "
-                 "los cloroplastos y produce glucosa y oxígeno. " * 3)
+app.last_text = (
+    "Hola. Esta es una prueba de transcripción. El proceso ocurre en los cloroplastos y produce glucosa y oxígeno. " * 3
+)
 app.last_segments = [
     {"start": 0.0, "end": 5.2, "text": "Hola, esta es una prueba de transcripción."},
     {"start": 5.2, "end": 12.8, "text": "El proceso ocurre en los cloroplastos."},
@@ -78,7 +91,7 @@ adapt_txt = (
 try:
     app.adapt_txt.configure(state="normal")
     app.adapt_txt.delete("1.0", "end")
-    app.adapt_txt.insert("end", f"Análisis Académico Profundo\n{'='*55}\n\n{adapt_txt}\n")
+    app.adapt_txt.insert("end", f"Análisis Académico Profundo\n{'=' * 55}\n\n{adapt_txt}\n")
     app.adapt_txt.configure(state="disabled")
 except Exception as e:
     print("WARN adapt_txt:", e)
@@ -94,9 +107,11 @@ app._pdf()
 pdf_path = _saved.get(".pdf")
 print("PDF:", pdf_path, os.path.getsize(pdf_path) if pdf_path else "NO")
 if not pdf_path or not os.path.exists(pdf_path):
-    print("PDF_FAIL"); sys.exit(1)
+    print("PDF_FAIL")
+    sys.exit(1)
 
 from pypdf import PdfReader
+
 reader = PdfReader(pdf_path)
 txt = "\n".join(p.extract_text() or "" for p in reader.pages)
 print("=== PDF TEXT ===")
@@ -115,7 +130,8 @@ app._export_docx()
 docx_path = _saved.get(".docx")
 print("DOCX:", docx_path, os.path.getsize(docx_path) if docx_path else "NO")
 if not docx_path or not os.path.exists(docx_path):
-    print("DOCX_FAIL"); sys.exit(1)
+    print("DOCX_FAIL")
+    sys.exit(1)
 
 with zipfile.ZipFile(docx_path) as z:
     names = z.namelist()
@@ -149,6 +165,7 @@ all_ok = all(checks.values()) and all(c_checks.values()) and len(sections) >= 6
 print("EXPORT_OK" if all_ok else "EXPORT_FAIL")
 # Limpiar
 import tkinter as tk
+
 try:
     app.destroy()
     app.update_idletasks()
@@ -156,7 +173,7 @@ except Exception:
     pass
 try:
     # Cerrar la ventana raiz para que el proceso termine
-    roots = [w for w in tk._default_root and [tk._default_root] or []]
+    roots = [w for w in (tk._default_root and [tk._default_root]) or []]
     for r in roots:
         try:
             r.destroy()

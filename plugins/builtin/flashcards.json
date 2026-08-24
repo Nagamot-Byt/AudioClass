@@ -1,0 +1,16 @@
+{
+  "id": "flashcards",
+  "name": "Flashcards (Preguntas)",
+  "description": "Preguntas y respuestas para memorizar",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "🃏",
+  "tags": ["flashcards", "preguntas", "respuestas", "memorizar"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Genera FLASHCARDS de estudio a partir de esta transcripción de clase.\n\nInstrucciones:\n- Crea 10-15 preguntas y respuestas\n- Cada flashcard debe ser concisa\n- Formato exacto:\n  Q: [Pregunta]\n  A: [Respuesta]\n  ---\n- Cubre los conceptos más importantes\n\nTranscripción:\n{TEXT}\n\nFlashcards:",
+  "desc": "Preguntas y respuestas para memorizar",
+  "max_tokens": 4096,
+  "temperature": 0.2
+}

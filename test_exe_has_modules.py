@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_exe_has_modules.py — Verifica que el exe empaquetado incluye
 audio_quality_checker y sound_error_solver, y que funcionan correctamente.
 
 Patron de exito: EXE_MODULES_OK
 """
+
 import os
 import sys
-import glob
+
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -80,13 +80,16 @@ print(f"\n  Exe encontrado: {os.path.basename(exe)} ({size_mb:.1f} MB)")
 print("\n--- Modulo audio_quality_checker ---")
 
 aqc_found = _module_in_binary(exe, "audio_quality_checker")
-check("audio_quality_checker encontrado en exe", aqc_found,
-      "Modulo no esta en el PYZ del exe — recompila con hiddenimports")
+check(
+    "audio_quality_checker encontrado en exe",
+    aqc_found,
+    "Modulo no esta en el PYZ del exe — recompila con hiddenimports",
+)
 
 # Verificar que funciona importandolo desde el fuente
 try:
-    from audio_quality_checker import check_audio_quality, check_wav_file
-    from audio_quality_checker import format_report_text, AudioQualityReport
+    from audio_quality_checker import AudioQualityReport, check_audio_quality, check_wav_file, format_report_text
+
     check("check_audio_quality importable", True)
     check("check_wav_file importable", True)
     check("format_report_text importable", True)
@@ -99,9 +102,9 @@ try:
     np.random.seed(42)
     audio = 0.3 * np.sin(2 * np.pi * 440 * t).astype(np.float32)
     report = check_audio_quality(audio, SR)
-    check("check_audio_quality funciona con audio normal",
-          report.verdict in ("OK", "WARN"),
-          f"verdict={report.verdict}")
+    check(
+        "check_audio_quality funciona con audio normal", report.verdict in ("OK", "WARN"), f"verdict={report.verdict}"
+    )
 except ImportError as e:
     check("audio_quality_checker importable desde fuente", False, str(e))
 
@@ -112,12 +115,13 @@ except ImportError as e:
 print("\n--- Modulo sound_error_solver ---")
 
 ses_found = _module_in_binary(exe, "sound_error_solver")
-check("sound_error_solver encontrado en exe", ses_found,
-      "Modulo no esta en el PYZ del exe — recompila con hiddenimports")
+check(
+    "sound_error_solver encontrado en exe", ses_found, "Modulo no esta en el PYZ del exe — recompila con hiddenimports"
+)
 
 try:
-    from sound_error_solver import solve_audio_issues, suggest_manual_actions
-    from sound_error_solver import format_fix_report, SoundFix
+    from sound_error_solver import SoundFix, format_fix_report, solve_audio_issues, suggest_manual_actions
+
     check("solve_audio_issues importable", True)
     check("suggest_manual_actions importable", True)
     check("format_fix_report importable", True)
@@ -127,9 +131,11 @@ try:
     SR = 16000
     weak_audio = (np.random.randn(SR * 2) * 0.001).astype(np.float32)
     result = solve_audio_issues(weak_audio, SR)
-    check("solve_audio_issues funciona con audio debil",
-          isinstance(result, tuple) and len(result) == 2,
-          f"type={type(result)}")
+    check(
+        "solve_audio_issues funciona con audio debil",
+        isinstance(result, tuple) and len(result) == 2,
+        f"type={type(result)}",
+    )
 except ImportError as e:
     check("sound_error_solver importable desde fuente", False, str(e))
 
@@ -145,14 +151,13 @@ check("audioclass_v91 encontrado en exe", aqc_in_app)
 # Verificar que audioclass_v91 importa los modulos
 try:
     import importlib.util
+
     spec = importlib.util.find_spec("audioclass_v91")
     if spec and spec.origin:
-        with open(spec.origin, "r", encoding="utf-8") as f:
+        with open(spec.origin, encoding="utf-8") as f:
             src = f.read()
-        check("AUDIO_QA flag esta definido",
-              "AUDIO_QA = True" in src or "AUDIO_QA=True" in src)
-        check("check_audio_quality importado en app",
-              "from audio_quality_checker import" in src)
+        check("AUDIO_QA flag esta definido", "AUDIO_QA = True" in src or "AUDIO_QA=True" in src)
+        check("check_audio_quality importado en app", "from audio_quality_checker import" in src)
         check("_procsave existe", "def _procsave" in src)
         check("_starttrans existe", "def _starttrans" in src)
     else:
@@ -167,14 +172,17 @@ except Exception as e:
 print("\n--- Integridad del bundle ---")
 
 # Verificar que ambos modulos estan en el binario (no como archivos sueltos)
-check("audio_quality_checker en PYZ",
-      _module_in_binary(exe, "audio_quality_checker"),
-      "Modulo no encontrado en el PYZ — necesitas recompilar el exe")
-check("sound_error_solver en PYZ",
-      _module_in_binary(exe, "sound_error_solver"),
-      "Modulo no encontrado en el PYZ — necesitas recompilar el exe")
-check("audioclass_v91 en PYZ",
-      _module_in_binary(exe, "audioclass_v91"))
+check(
+    "audio_quality_checker en PYZ",
+    _module_in_binary(exe, "audio_quality_checker"),
+    "Modulo no encontrado en el PYZ — necesitas recompilar el exe",
+)
+check(
+    "sound_error_solver en PYZ",
+    _module_in_binary(exe, "sound_error_solver"),
+    "Modulo no encontrado en el PYZ — necesitas recompilar el exe",
+)
+check("audioclass_v91 en PYZ", _module_in_binary(exe, "audioclass_v91"))
 
 
 # ============================================================================

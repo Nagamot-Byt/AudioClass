@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """run_ci_suite.py — SUITE ÚNICA de tests del código fuente (AudioClass v9.1).
 
 Es la ÚNICA fuente de verdad de qué tests valida el repo: la consume el CI
@@ -22,6 +21,7 @@ Salida por test:  "OK   nombre (Ns)"  /  "FAIL nombre (rc=N, sin patron ...)"
 Resumen final:    "CI_SUITE_OK (17/17)"  /  "CI_SUITE_FAIL (N/17)"
 Exit code 0 si TODOS pasan, 1 si alguno falla, 2 si el nombre no existe.
 """
+
 import os
 import re
 import shutil
@@ -37,37 +37,43 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ── SUITE ÚNICA: (nombre, patrón de éxito) ────────────────────────────────────
 # GUI = instancia App() -> necesita display (xvfb-run en Linux sin DISPLAY).
-GUI = frozenset({
-    "test_ui_smoke", "test_ui_v91", "test_wcag_contrast",
-    "test_privacy_consent", "test_export_docx_pdf", "test_e2e_ui",
-})
+GUI = frozenset(
+    {
+        "test_ui_smoke",
+        "test_ui_v91",
+        "test_wcag_contrast",
+        "test_privacy_consent",
+        "test_export_docx_pdf",
+        "test_e2e_ui",
+    }
+)
 
 SUITE = [
     # Rápidos de UI / privacidad / seguridad (fallan pronto si algo se rompe)
-    ("test_ui_smoke",          r"SMOKE_OK"),
-    ("test_ui_v91",            r"UI_V91 OK|TODO OK"),
-    ("test_wcag_contrast",     r"RESULTADO: TODO OK"),
-    ("test_privacy_consent",   r"PRIVACY_SMOKE: \d+ OK, 0 fallos"),
+    ("test_ui_smoke", r"SMOKE_OK"),
+    ("test_ui_v91", r"UI_V91 OK|TODO OK"),
+    ("test_wcag_contrast", r"RESULTADO: TODO OK"),
+    ("test_privacy_consent", r"PRIVACY_SMOKE: \d+ OK, 0 fallos"),
     ("test_colab_server_security", r"COLAB_SERVER_SECURITY: \d+ OK, 0 fallos"),
-    ("test_code_signing",       r"CODESIGN_OK"),
+    ("test_code_signing", r"CODESIGN_OK"),
     ("test_refactored_modules", r"REFACTORED_OK"),
     # Motor y exportación (voz real + modelos)
     ("test_parallel_transcribe", r"ALL_OK"),
-    ("test_export_docx_pdf",   r"EXPORT_OK"),
-    ("test_e2e_ui",            r"E2E_UI_OK"),
+    ("test_export_docx_pdf", r"EXPORT_OK"),
+    ("test_e2e_ui", r"E2E_UI_OK"),
     ("test_stress_transcripcion", r"STRESS_ALL_OK"),
-    ("test_mejoras_v10",       r"MEJORAS_V10_OK"),
-    ("test_lang_auto",         r"LANG_AUTO_ALL_OK"),
-    ("test_watchdog",          r"WATCHDOG_ALL_OK"),
+    ("test_mejoras_v10", r"MEJORAS_V10_OK"),
+    ("test_lang_auto", r"LANG_AUTO_ALL_OK"),
+    ("test_watchdog", r"WATCHDOG_ALL_OK"),
     # Tests de integracion y unitarios de modulos extraidos
-    ("test_config_manager",    r"CONFIG_MANAGER_OK"),
-    ("test_api_integration",   r"API_INTEGRATION_OK"),
-    ("test_mic_detection",     r"MIC_DETECTION_OK"),
+    ("test_config_manager", r"CONFIG_MANAGER_OK"),
+    ("test_api_integration", r"API_INTEGRATION_OK"),
+    ("test_mic_detection", r"MIC_DETECTION_OK"),
     ("test_audio_quality_solver", r"Todos los tests pasaron."),
     ("test_quality_gate_e2e", r"QUALITY_GATE_E2E_OK"),
     ("test_exe_has_modules", r"EXE_MODULES_OK"),
     # Benchmark lento (opcional con --skip-benchmark)
-    ("test_benchmark_models",  r"BENCH_MODELS_OK"),
+    ("test_benchmark_models", r"BENCH_MODELS_OK"),
 ]
 
 # Timeouts por test (s). Observados en 4 corridas del driver (14-ago-2026):
@@ -75,13 +81,10 @@ SUITE = [
 # margen de ~35s) -> se sube a 480s para no dar falso timeout en runners
 # lentos. El benchmark (118-183s reales) ya tenía 600s; el resto nunca pasó
 # de 68s (default 300s).
-TIMEOUTS = {"test_benchmark_models": 600,
-            "test_stress_transcripcion": 480}
+TIMEOUTS = {"test_benchmark_models": 600, "test_stress_transcripcion": 480}
 SKIP_BENCHMARK = "--skip-benchmark" in sys.argv
 
-USE_XVFB = (os.name != "nt"
-            and not os.environ.get("DISPLAY")
-            and shutil.which("xvfb-run") is not None)
+USE_XVFB = os.name != "nt" and not os.environ.get("DISPLAY") and shutil.which("xvfb-run") is not None
 
 
 def run_one(name, pattern):
@@ -100,8 +103,7 @@ def run_one(name, pattern):
     t0 = time.time()
     try:
         with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
-            p = subprocess.run(args, stdout=fh, stderr=subprocess.STDOUT,
-                               timeout=TIMEOUTS.get(name, 300))
+            p = subprocess.run(args, stdout=fh, stderr=subprocess.STDOUT, timeout=TIMEOUTS.get(name, 300))
         # Los tests reconfiguran su stdout a UTF-8; se lee explícitamente en
         # UTF-8 (si no, cp1252 rompe con bytes no imprimibles y el patrón
         # nunca aparece aunque el test pase).
@@ -171,14 +173,14 @@ def main():
         print("CI_SUITE_OK (1/1)" if ok else "CI_SUITE_FAIL (0/1)")
         return 0 if ok else 1
     # Suite completa (la usa desplegar_produccion.sh fase [1]).
-    suite = [e for e in SUITE if e[0] != "test_benchmark_models"] if SKIP_BENCHMARK \
-        else list(SUITE)
+    suite = [e for e in SUITE if e[0] != "test_benchmark_models"] if SKIP_BENCHMARK else list(SUITE)
     passed = 0
     for name, pattern in suite:
         ok, _, _, _ = run_one_test(name, pattern)
         passed += int(ok)
-    summary = f"CI_SUITE_OK ({passed}/{len(suite)})" if passed == len(suite) \
-        else f"CI_SUITE_FAIL ({passed}/{len(suite)})"
+    summary = (
+        f"CI_SUITE_OK ({passed}/{len(suite)})" if passed == len(suite) else f"CI_SUITE_FAIL ({passed}/{len(suite)})"
+    )
     print(summary + (" [benchmark omitido]" if SKIP_BENCHMARK else ""))
     return 0 if passed == len(suite) else 1
 

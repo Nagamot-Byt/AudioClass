@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 AudioClass v9.1 — NUCLEO DE PROCESAMIENTO (separado de la UI, mejora #9)
 =======================================================================
@@ -8,10 +7,17 @@ transcripcion (local Whisper paralelo / Cloud Colab), adaptacion inteligente
 con Gemini y exportacion a Google Docs. audioclass_v91.py importa estas clases
 para mantener el archivo de la interfaz enfocado en la UI.
 """
-import os, sys, threading, time, copy, warnings, logging, base64, json
+
+import copy
+import logging
+import os
+import sys
+import threading
+import time
+import warnings
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
-from datetime import datetime, timedelta
-from pathlib import Path
+from typing import Any
 
 import numpy as np
 from scipy import signal
@@ -47,8 +53,8 @@ def _free_ram_mb():
                 return int(ms.ullAvailPhys // (1024 * 1024))
         elif sys.platform == "darwin":
             import subprocess
-            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"],
-                                         stderr=subprocess.DEVNULL, timeout=5)
+
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], stderr=subprocess.DEVNULL, timeout=5)
             total_mb = int(out.strip()) // (1024 * 1024)
             # macOS no expone RAM disponible directamente; estimar ~70% libre
             return int(total_mb * 0.7)
@@ -68,7 +74,7 @@ APP_VER = "9.1 Académica"
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = np.float32
-CHUNK_DUR = 0.1   # 100 ms por bloque: reduce desbordamientos (estatica/cortes)
+CHUNK_DUR = 0.1  # 100 ms por bloque: reduce desbordamientos (estatica/cortes)
 CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DUR)
 VISUAL_SAMPLES = int(SAMPLE_RATE * 2.0)
 # Presupuesto global de la cache de modelos Whisper (deepcopies entre corridas):
@@ -82,7 +88,7 @@ _MODEL_CACHE_MAX = 6
 # cubre maquinas lentas (tiny/base terminan un chunk de 30s en < 60s). Los
 # tests lo bajan para verificar el watchdog sin esperar 2 minutos.
 CHUNK_BUDGET_FLOOR = 120.0
-CHUNK_EST_SEED = 30.0   # estimacion inicial de segundos por chunk (1x 30s)
+CHUNK_EST_SEED = 30.0  # estimacion inicial de segundos por chunk (1x 30s)
 
 OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -90,14 +96,17 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ─── LOGGING ROTATIVO ────────────────────────────────────────────────────────
 LOG_DIR = os.path.join(OUTPUT_DIR, "logs")
 _logger = None
+
+
 def _setup_logger():
     global _logger
     if _logger is not None:
         return _logger
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
-        fh = RotatingFileHandler(os.path.join(LOG_DIR, "audioclass.log"),
-                                 maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")
+        fh = RotatingFileHandler(
+            os.path.join(LOG_DIR, "audioclass.log"), maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
         fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(message)s"))
         _logger = logging.getLogger("audioclass")
         _logger.setLevel(logging.INFO)
@@ -108,6 +117,7 @@ def _setup_logger():
         _logger.addHandler(logging.NullHandler())
     return _logger
 
+
 def log_exc(msg="Error no controlado"):
     """Registra la excepcion actual (desde except) con su traceback."""
     try:
@@ -115,15 +125,18 @@ def log_exc(msg="Error no controlado"):
     except Exception:
         pass
 
+
 def log_info(msg):
     try:
         _setup_logger().info(msg)
     except Exception:
         pass
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PIPELINE DE AUDIO PROFESIONAL (9 ETAPAS)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class AudioPipeline:
     """Pipeline profesional de 9 etapas para clases y conferencias."""
@@ -131,47 +144,85 @@ class AudioPipeline:
     PROFILES = {
         "Clase Universitaria": {
             "desc": "Auditorios grandes con eco y ruido de fondo",
-            "hp_freq": 150, "lp_freq": 7000,
-            "noise_prof_sec": 1.0, "noise_decrease": 0.8,
-            "comp_th": 0.12, "comp_ratio": 5.0,
-            "eq_low": (250, 3.0), "eq_mid": (2500, 5.0), "eq_high": (5000, 2.5),
-            "agc_target": 0.20, "vad_threshold": 0.01,
-            "min_silence_sec": 0.4, "deesser_freq": 6500, "deesser_db": -4.0,
-            "noise_gate": 0.005, "limiter": 0.92
+            "hp_freq": 150,
+            "lp_freq": 7000,
+            "noise_prof_sec": 1.0,
+            "noise_decrease": 0.8,
+            "comp_th": 0.12,
+            "comp_ratio": 5.0,
+            "eq_low": (250, 3.0),
+            "eq_mid": (2500, 5.0),
+            "eq_high": (5000, 2.5),
+            "agc_target": 0.20,
+            "vad_threshold": 0.01,
+            "min_silence_sec": 0.4,
+            "deesser_freq": 6500,
+            "deesser_db": -4.0,
+            "noise_gate": 0.005,
+            "limiter": 0.92,
         },
         "Conferencia / Webinar": {
             "desc": "Balanceado para presentaciones online o presenciales",
-            "hp_freq": 120, "lp_freq": 8000,
-            "noise_prof_sec": 0.8, "noise_decrease": 0.7,
-            "comp_th": 0.15, "comp_ratio": 4.0,
-            "eq_low": (300, 2.5), "eq_mid": (2800, 4.0), "eq_high": (5500, 2.0),
-            "agc_target": 0.22, "vad_threshold": 0.008,
-            "min_silence_sec": 0.3, "deesser_freq": 7000, "deesser_db": -3.0,
-            "noise_gate": 0.004, "limiter": 0.94
+            "hp_freq": 120,
+            "lp_freq": 8000,
+            "noise_prof_sec": 0.8,
+            "noise_decrease": 0.7,
+            "comp_th": 0.15,
+            "comp_ratio": 4.0,
+            "eq_low": (300, 2.5),
+            "eq_mid": (2800, 4.0),
+            "eq_high": (5500, 2.0),
+            "agc_target": 0.22,
+            "vad_threshold": 0.008,
+            "min_silence_sec": 0.3,
+            "deesser_freq": 7000,
+            "deesser_db": -3.0,
+            "noise_gate": 0.004,
+            "limiter": 0.94,
         },
         "Podcast / Entrevista": {
             "desc": "Voz cálida y profesional, mínimo procesamiento",
-            "hp_freq": 80, "lp_freq": 8500,
-            "noise_prof_sec": 0.6, "noise_decrease": 0.6,
-            "comp_th": 0.18, "comp_ratio": 3.0,
-            "eq_low": (200, 3.5), "eq_mid": (2200, 3.0), "eq_high": (6000, 3.5),
-            "agc_target": 0.25, "vad_threshold": 0.006,
-            "min_silence_sec": 0.25, "deesser_freq": 6000, "deesser_db": -2.5,
-            "noise_gate": 0.003, "limiter": 0.95
+            "hp_freq": 80,
+            "lp_freq": 8500,
+            "noise_prof_sec": 0.6,
+            "noise_decrease": 0.6,
+            "comp_th": 0.18,
+            "comp_ratio": 3.0,
+            "eq_low": (200, 3.5),
+            "eq_mid": (2200, 3.0),
+            "eq_high": (6000, 3.5),
+            "agc_target": 0.25,
+            "vad_threshold": 0.006,
+            "min_silence_sec": 0.25,
+            "deesser_freq": 6000,
+            "deesser_db": -2.5,
+            "noise_gate": 0.003,
+            "limiter": 0.95,
         },
         "Cerca del Micrófono": {
             "desc": "Estudio o micrófono de solapa, calidad máxima",
-            "hp_freq": 80, "lp_freq": 9000,
-            "noise_prof_sec": 0.5, "noise_decrease": 0.5,
-            "comp_th": 0.20, "comp_ratio": 2.5,
-            "eq_low": (180, 2.0), "eq_mid": (2500, 2.5), "eq_high": (5000, 1.5),
-            "agc_target": 0.28, "vad_threshold": 0.005,
-            "min_silence_sec": 0.2, "deesser_freq": 7500, "deesser_db": -2.0,
-            "noise_gate": 0.002, "limiter": 0.96
-        }
+            "hp_freq": 80,
+            "lp_freq": 9000,
+            "noise_prof_sec": 0.5,
+            "noise_decrease": 0.5,
+            "comp_th": 0.20,
+            "comp_ratio": 2.5,
+            "eq_low": (180, 2.0),
+            "eq_mid": (2500, 2.5),
+            "eq_high": (5000, 1.5),
+            "agc_target": 0.28,
+            "vad_threshold": 0.005,
+            "min_silence_sec": 0.2,
+            "deesser_freq": 7500,
+            "deesser_db": -2.0,
+            "noise_gate": 0.002,
+            "limiter": 0.96,
+        },
     }
 
-    def __init__(self, profile_name="Clase Universitaria", fast_mode=False, use_vad=True):
+    def __init__(
+        self, profile_name: str = "Clase Universitaria", fast_mode: bool = False, use_vad: bool = True
+    ) -> None:
         """Inicializa el pipeline de audio con un perfil de procesamiento.
 
         Args:
@@ -188,7 +239,7 @@ class AudioPipeline:
         # transcripcion misma en clases de 1h+.
         self.long_audio_sec = 1200.0
 
-    def process(self, audio, progress_callback=None):
+    def process(self, audio: np.ndarray, progress_callback: Callable | None = None) -> np.ndarray:
         """Procesa audio crudo y devuelve audio mejorado.
 
         Aplica la cadena completa: reduccion de ruido, normalizacion,
@@ -218,7 +269,7 @@ class AudioPipeline:
             audio *= 0.18 / rms
         report("Normalización de nivel")
 
-        sos_hp = signal.butter(8, self.p["hp_freq"], btype='high', fs=SAMPLE_RATE, output='sos')
+        sos_hp = signal.butter(8, self.p["hp_freq"], btype="high", fs=SAMPLE_RATE, output="sos")
         audio = signal.sosfilt(sos_hp, audio)
         report(f"Filtro pasa-altas ({self.p['hp_freq']}Hz)")
 
@@ -226,31 +277,40 @@ class AudioPipeline:
         # perfiles con lp_freq >= 8000 romperian butter() con un ValueError
         # (Wn debe ser 0 < Wn < fs/2).
         lp_freq = min(self.p["lp_freq"], SAMPLE_RATE // 2 - 1)
-        sos_lp = signal.butter(8, lp_freq, btype='low', fs=SAMPLE_RATE, output='sos')
+        sos_lp = signal.butter(8, lp_freq, btype="low", fs=SAMPLE_RATE, output="sos")
         audio = signal.sosfilt(sos_lp, audio)
         report(f"Filtro pasa-bajas ({lp_freq}Hz)")
 
         if not self.fast_mode:
             try:
                 import noisereduce as nr
+
                 ns = int(self.p["noise_prof_sec"] * SAMPLE_RATE)
-                npf = audio[:ns] if len(audio) > ns else audio[:max(1, len(audio)//10)]
+                npf = audio[:ns] if len(audio) > ns else audio[: max(1, len(audio) // 10)]
                 if long_audio:
                     # Archivo largo: ruido estacionario + n_fft 512 (mucho mas
                     # rapido) en vez de no-estacionario con n_fft 1024. La
                     # perdida de calidad es minima y evita que el pipeline
                     # tarde mas que la transcripcion en clases de 1h+.
                     audio = nr.reduce_noise(
-                        y=audio, y_noise=npf, sr=SAMPLE_RATE,
+                        y=audio,
+                        y_noise=npf,
+                        sr=SAMPLE_RATE,
                         prop_decrease=min(self.p["noise_decrease"], 0.6),
-                        stationary=True, n_fft=512, n_jobs=2
+                        stationary=True,
+                        n_fft=512,
+                        n_jobs=2,
                     )
                     report("Reducción de ruido (modo archivo largo)")
                 else:
                     audio = nr.reduce_noise(
-                        y=audio, y_noise=npf, sr=SAMPLE_RATE,
-                        prop_decrease=self.p["noise_decrease"], stationary=False,
-                        n_fft=1024, n_jobs=1
+                        y=audio,
+                        y_noise=npf,
+                        sr=SAMPLE_RATE,
+                        prop_decrease=self.p["noise_decrease"],
+                        stationary=False,
+                        n_fft=1024,
+                        n_jobs=1,
                     )
                     report("Reducción de ruido avanzada")
             except Exception:
@@ -287,17 +347,17 @@ class AudioPipeline:
         w0 = 2 * np.pi * freq / SAMPLE_RATE
         Q = 3.0
         alpha = np.sin(w0) / (2 * Q)
-        A = 10**(db_reduction / 40)
-        b0, b1, b2 = 1 + alpha*A, -2*np.cos(w0), 1 - alpha*A
-        a0, a1, a2 = 1 + alpha/A, -2*np.cos(w0), 1 - alpha/A
+        A = 10 ** (db_reduction / 40)
+        b0, b1, b2 = 1 + alpha * A, -2 * np.cos(w0), 1 - alpha * A
+        a0, a1, a2 = 1 + alpha / A, -2 * np.cos(w0), 1 - alpha / A
         if abs(a0) < 1e-10:
             return audio
-        return signal.lfilter(np.array([b0,b1,b2])/a0, np.array([a0,a1,a2])/a0, audio)
+        return signal.lfilter(np.array([b0, b1, b2]) / a0, np.array([a0, a1, a2]) / a0, audio)
 
     def _multiband_comp(self, audio):
-        sos_low = signal.butter(4, 500, btype='low', fs=SAMPLE_RATE, output='sos')
-        sos_mid = signal.butter(4, [500, 4000], btype='band', fs=SAMPLE_RATE, output='sos')
-        sos_high = signal.butter(4, 4000, btype='high', fs=SAMPLE_RATE, output='sos')
+        sos_low = signal.butter(4, 500, btype="low", fs=SAMPLE_RATE, output="sos")
+        sos_mid = signal.butter(4, [500, 4000], btype="band", fs=SAMPLE_RATE, output="sos")
+        sos_high = signal.butter(4, 4000, btype="high", fs=SAMPLE_RATE, output="sos")
 
         low = signal.sosfilt(sos_low, audio)
         mid = signal.sosfilt(sos_mid, audio)
@@ -321,12 +381,12 @@ class AudioPipeline:
     def _eq(self, audio, fc, gdb, Q=2.0):
         w0 = 2 * np.pi * fc / SAMPLE_RATE
         alpha = np.sin(w0) / (2 * Q)
-        A = 10**(gdb / 40)
-        b0, b1, b2 = 1 + alpha*A, -2*np.cos(w0), 1 - alpha*A
-        a0, a1, a2 = 1 + alpha/A, -2*np.cos(w0), 1 - alpha/A
+        A = 10 ** (gdb / 40)
+        b0, b1, b2 = 1 + alpha * A, -2 * np.cos(w0), 1 - alpha * A
+        a0, a1, a2 = 1 + alpha / A, -2 * np.cos(w0), 1 - alpha / A
         if abs(a0) < 1e-10:
             return audio
-        return signal.lfilter(np.array([b0,b1,b2])/a0, np.array([a0,a1,a2])/a0, audio)
+        return signal.lfilter(np.array([b0, b1, b2]) / a0, np.array([a0, a1, a2]) / a0, audio)
 
     def _frame_rms(self, audio, window, hop, batch=16384):
         """RMS de cada trama (inicios 0, hop, 2*hop, ... < len-window) en UNA
@@ -339,8 +399,8 @@ class AudioPipeline:
         sw = np.lib.stride_tricks.sliding_window_view(audio, window)[0 : n - window : hop]
         out = np.empty(sw.shape[0], dtype=np.float64)
         for b in range(0, sw.shape[0], batch):
-            rows = sw[b:b + batch]
-            out[b:b + rows.shape[0]] = np.sqrt(np.mean(rows * rows, axis=1))
+            rows = sw[b : b + batch]
+            out[b : b + rows.shape[0]] = np.sqrt(np.mean(rows * rows, axis=1))
         return out
 
     def _agc_vad_limiter(self, audio):
@@ -381,16 +441,16 @@ class AudioPipeline:
             silence_thr = self.p["vad_threshold"] * 0.4
 
         for k, i in enumerate(range(0, len(audio) - window, hop)):
-            chunk = audio[i:i + window]
+            chunk = audio[i : i + window]
             rms = float(frames_rms[k])
 
             if rms > vad_thr:
                 target = self.p["agc_target"]
                 gain = target / rms if rms > 0 else 1.0
                 gain = min(gain, 10.0)
-                output[i:i + window] += chunk * gain * window_fn
+                output[i : i + window] += chunk * gain * window_fn
             else:
-                output[i:i + window] += chunk * 0.05 * window_fn
+                output[i : i + window] += chunk * 0.05 * window_fn
 
         output = np.clip(output, -self.p["limiter"], self.p["limiter"])
 
@@ -411,7 +471,7 @@ class AudioPipeline:
         silent_frames = 0
 
         for i in range(0, len(audio), window):
-            chunk = audio[i:i+window]
+            chunk = audio[i : i + window]
             rms = np.sqrt(np.mean(chunk**2)) if len(chunk) > 0 else 0
 
             if rms > threshold:
@@ -459,7 +519,7 @@ def is_digital_silence(stats, min_sec=1.0, sample_rate=SAMPLE_RATE):
 
 
 _HALLUC_PHRASES = (
-    "transcribe faithfully",      # el prompt academico filtrado (patron mas comun)
+    "transcribe faithfully",  # el prompt academico filtrado (patron mas comun)
     "thank you very much for watching this video",  # alucinacion clasica #1 de whisper en silencio
     "thank you for watching",
     "thanks for watching",
@@ -501,11 +561,14 @@ def detect_hallucination(text, segments=None):
 
     if not hits and not rep:
         return None
-    why = ("contiene frases repetidas que whisper produce sobre audio casi vacio"
-           if hits else "repite el mismo segmento (whisper en bucle)")
+    why = (
+        "contiene frases repetidas que whisper produce sobre audio casi vacio"
+        if hits
+        else "repite el mismo segmento (whisper en bucle)"
+    )
     return (
         "El audio parece demasiado debil o sin voz clara: la transcripcion "
-        f"{why} (ej. \"{t[:80]}...\"). Revisa el microfono, el nivel de "
+        f'{why} (ej. "{t[:80]}..."). Revisa el microfono, el nivel de '
         "entrada o el cable, y vuelve a grabar la clase."
     )
 
@@ -513,6 +576,7 @@ def detect_hallucination(text, segments=None):
 # ═══════════════════════════════════════════════════════════════════════════════
 # MOTORES DE TRANSCRIPCIÓN
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class LocalWhisperEngine:
     """Motor de transcripción local con tiny/base/small.
@@ -528,7 +592,7 @@ class LocalWhisperEngine:
     openai en el exe compilado. Se puede forzar con backend="...".
     """
 
-    def __init__(self, model_name="base", language="es", backend=None):
+    def __init__(self, model_name: str = "base", language: str = "es", backend: str | None = None) -> None:
         self.model_name = model_name
         # Idioma de transcripcion: "auto" = whisper detecta el idioma del audio
         # con detect_language; si no, un codigo ISO (es, en, pt, fr, ...) que
@@ -549,8 +613,8 @@ class LocalWhisperEngine:
         # Caché de modelos entre corridas: deepcopies listas para reutilizar
         # (evita recargar + re-deepcopy por cada transcripción; baja el pico de
         # RAM y la latencia en transcripciones repetidas).
-        self._model_cache = {}        # ruta -> [modelos listos]
-        self._cache_order = []        # rutas por primer uso (eviccion LRU)
+        self._model_cache = {}  # ruta -> [modelos listos]
+        self._cache_order = []  # rutas por primer uso (eviccion LRU)
         self._cache_lock = threading.Lock()
         # Plantilla de carga: UNA carga de disco por ruta de modelo. La plantilla
         # NUNCA se transcribe directamente (solo se clona con deepcopy), asi que
@@ -580,13 +644,15 @@ class LocalWhisperEngine:
             root = LocalWhisperEngine._bundle_ct2_root()
             if root is not None:
                 try:
-                    import faster_whisper  # noqa: F401
+                    import faster_whisper
+
                     return "faster"
                 except Exception:
                     pass
             return "openai"
         try:
-            import faster_whisper  # noqa: F401
+            import faster_whisper
+
             return "faster"
         except Exception:
             return "openai"
@@ -597,9 +663,10 @@ class LocalWhisperEngine:
         con set_num_threads(1), para no hacer oversubscription)."""
         if self.backend == "faster":
             from faster_whisper import WhisperModel
-            return WhisperModel(path, device="cpu", compute_type="int8",
-                                cpu_threads=1)
+
+            return WhisperModel(path, device="cpu", compute_type="int8", cpu_threads=1)
         import whisper
+
         return whisper.load_model(path)
 
     def _cache_get(self, path):
@@ -683,8 +750,15 @@ class LocalWhisperEngine:
 
         threading.Thread(target=_load, daemon=True).start()
 
-    def transcribe(self, audio_path, timestamps=False, cancel_event=None,
-                   progress_callback=None, check_silence=True, partial_callback=None):
+    def transcribe(
+        self,
+        audio_path: str,
+        timestamps: bool = False,
+        cancel_event: threading.Event | None = None,
+        progress_callback: Callable | None = None,
+        check_silence: bool = True,
+        partial_callback: Callable | None = None,
+    ) -> dict[str, Any]:
         # Anti-congestión: si una transcripción anterior fue cancelada, su pool
         # sigue drenando workers con sus modelos deepcopy. Esperamos a que
         # termine antes de arrancar otra (el camino secuencial no crea pool,
@@ -700,8 +774,7 @@ class LocalWhisperEngine:
             now = time.time()
             if progress_callback and now - _last_wait_msg >= 1.0:
                 _last_wait_msg = now
-                progress_callback(0, 1,
-                                  "Esperando a que terminen los hilos de la transcripción anterior...")
+                progress_callback(0, 1, "Esperando a que terminen los hilos de la transcripción anterior...")
             self._drain_ev.wait(timeout=0.25)
 
         sr, data = wavfile.read(audio_path)
@@ -738,7 +811,7 @@ class LocalWhisperEngine:
                     "language": (self.language or "es").strip().lower(),
                     "silence_msg": (
                         "El audio parece SILENCIO DIGITAL ("
-                        f"{_stats['zero_frac']*100:.0f}% de muestras en cero, "
+                        f"{_stats['zero_frac'] * 100:.0f}% de muestras en cero, "
                         f"RMS {_stats['rms']:.2e}). Revisa que el microfono este "
                         "conectado y capte voz; transcribir esto no daria texto."
                     ),
@@ -761,13 +834,19 @@ class LocalWhisperEngine:
             # (< 2s) creando la primera ventana igualmente.
             if len(data) - i <= int(OVERLAP_S * SAMPLE_RATE) and chunks:
                 break
-            chunks.append(data[i:i + chunk_samples])
+            chunks.append(data[i : i + chunk_samples])
             starts.append(i / SAMPLE_RATE)
         total = len(chunks)
         if total == 0:
-            return {"text": "", "segments": [], "model": self.model_name,
-                    "device": "cpu", "chunks": 0, "backend": self.backend,
-                    "language": (self.language or "es").strip().lower()}
+            return {
+                "text": "",
+                "segments": [],
+                "model": self.model_name,
+                "device": "cpu",
+                "chunks": 0,
+                "backend": self.backend,
+                "language": (self.language or "es").strip().lower(),
+            }
 
         # ── Procesamiento PARALELO de chunks (ThreadPoolExecutor) ────────────
         # Un worker por nucleo de CPU. openai-whisper 20250625 NO es thread-safe
@@ -781,7 +860,7 @@ class LocalWhisperEngine:
         # copias del modelo.
         cores = os.cpu_count() or 4
         mb = {"tiny": 75, "base": 142, "small": 466}.get(self.model_name, 150)
-        by_mem = max(1, min(8, int(1536 / mb)))   # piso: presupuesto base 1.5 GB
+        by_mem = max(1, min(8, int(1536 / mb)))  # piso: presupuesto base 1.5 GB
         free_mb = _free_ram_mb()
         if free_mb and free_mb >= 8192:
             # Solo en maquinas con RAM de sobra (>= 8 GB libres) se sube el
@@ -835,8 +914,11 @@ class LocalWhisperEngine:
                         # initial_prompt=None: un prompt en espanol durante la
                         # deteccion podria sesgar el idioma detectado.
                         _segs, _info = mdl.transcribe(
-                            audio, language=None, task="transcribe",
-                            beam_size=5, initial_prompt=None,
+                            audio,
+                            language=None,
+                            task="transcribe",
+                            beam_size=5,
+                            initial_prompt=None,
                             condition_on_previous_text=False,
                             without_timestamps=True,
                         )
@@ -845,6 +927,7 @@ class LocalWhisperEngine:
                         # y el decode real lo hara _transcribe_with por chunk.
                     else:
                         import whisper as _w
+
                         mel = _w.log_mel_spectrogram(audio)
                         probs = mdl.detect_language(mel)
                         # whisper devuelve (tokens, {lang: prob}) en la version
@@ -875,29 +958,33 @@ class LocalWhisperEngine:
             # confirmado en ~/AudioClass_Recordings/logs/audioclass.log).
             if self.backend == "faster":
                 segs, _info = mdl.transcribe(
-                    chunk, language=_lang, task="transcribe",
-                    beam_size=5, initial_prompt=_prompt,
+                    chunk,
+                    language=_lang,
+                    task="transcribe",
+                    beam_size=5,
+                    initial_prompt=_prompt,
                     condition_on_previous_text=use_cond,
                     without_timestamps=not timestamps,
                 )
-                seg_list = [
-                    {"start": float(s.start), "end": float(s.end), "text": s.text.strip()}
-                    for s in segs
-                ]
+                seg_list = [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()} for s in segs]
                 return {
                     "text": " ".join(s["text"] for s in seg_list if s["text"]),
                     "segments": seg_list,
                 }
             return mdl.transcribe(
-                chunk, language=_lang, task="transcribe",
-                fp16=False, verbose=None,
+                chunk,
+                language=_lang,
+                task="transcribe",
+                fp16=False,
+                verbose=None,
                 condition_on_previous_text=use_cond,
-                initial_prompt=_prompt
+                initial_prompt=_prompt,
             )
 
         if workers == 1:
             # ── Camino secuencial (1 chunk, 1 nucleo o modelo grande) ─────────
             from concurrent.futures import ThreadPoolExecutor as _TPE
+
             if self.model is None:
                 self.model = self._load_model_obj(self._resolve_model())
             # Idioma: detectar UNA vez con el primer chunk (modo auto) y
@@ -905,9 +992,9 @@ class LocalWhisperEngine:
             _resolve_lang(self.model, chunks[0])
 
             parts, segs = [], []
-            chunk_times = []       # tiempos reales -> media movil (ultimos 3)
-            est_dur = CHUNK_EST_SEED   # seed del 1er chunk: 1x su duracion (30s)
-            chunks_omitidos = 0    # chunks descartados por timeout de whisper
+            chunk_times = []  # tiempos reales -> media movil (ultimos 3)
+            est_dur = CHUNK_EST_SEED  # seed del 1er chunk: 1x su duracion (30s)
+            chunks_omitidos = 0  # chunks descartados por timeout de whisper
             for i, chunk in enumerate(chunks, 1):
                 if cancel_event and cancel_event.is_set():
                     return {"cancelled": True}
@@ -940,8 +1027,7 @@ class LocalWhisperEngine:
                                 # El chunk ya supero la media: el restante no se
                                 # congela en 0, se estima desde el tiempo real.
                                 rem = max(1, int(el * 0.12))
-                            progress_callback(i - 1 + frac, total,
-                                              f"Chunk {i}/{total} · {pct}% · ~{rem}s rest")
+                            progress_callback(i - 1 + frac, total, f"Chunk {i}/{total} · {pct}% · ~{rem}s rest")
                         stop.wait(0.25)
 
                 rthread = threading.Thread(target=_report, daemon=True)
@@ -966,8 +1052,10 @@ class LocalWhisperEngine:
                         result = {}
                         chunks_omitidos += 1
                         self.model = None
-                        log_info(f"chunk {i}/{total} omitido: whisper no termino "
-                                 f"en {_budget:.0f}s (posible bucle de timestamps)")
+                        log_info(
+                            f"chunk {i}/{total} omitido: whisper no termino "
+                            f"en {_budget:.0f}s (posible bucle de timestamps)"
+                        )
                 finally:
                     stop.set()
                     rthread.join(timeout=1.0)
@@ -1026,7 +1114,7 @@ class LocalWhisperEngine:
                 "workers": 1,
                 "language": _lang,
                 "backend": self.backend,
-                "chunks_omitidos": chunks_omitidos
+                "chunks_omitidos": chunks_omitidos,
             }
             if _hall:
                 _res["hallucination"] = True
@@ -1038,18 +1126,20 @@ class LocalWhisperEngine:
         # sus hilos con cpu_threads=1; openai-whisper (torch) necesita
         # set_num_threads(1) para no hacer oversubscription con N workers.
         _is_faster = self.backend == "faster"
-        import copy
-        from concurrent.futures import ThreadPoolExecutor, wait as _cf_wait
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import wait as _cf_wait
+
         if not _is_faster:
             import torch
+
             prev_threads = torch.get_num_threads()
             torch.set_num_threads(1)
 
-        results = {}     # indice -> resultado (acceso bajo lock)
-        started = {}     # indice -> t0 real de inicio del worker
-        times = []       # tiempos reales por chunk -> media movil (ultimos 3)
-        est = [CHUNK_EST_SEED]     # seed del 1er chunk: 1x su duracion (30s)
-        last_num = [0.0] # maximo reportado: la barra nunca retrocede
+        results = {}  # indice -> resultado (acceso bajo lock)
+        started = {}  # indice -> t0 real de inicio del worker
+        times = []  # tiempos reales por chunk -> media movil (ultimos 3)
+        est = [CHUNK_EST_SEED]  # seed del 1er chunk: 1x su duracion (30s)
+        last_num = [0.0]  # maximo reportado: la barra nunca retrocede
         lock = threading.Lock()
         stop = threading.Event()
         _local = threading.local()
@@ -1078,6 +1168,7 @@ class LocalWhisperEngine:
             if _is_faster:
                 return self._load_model_obj(_model_path)
             import whisper
+
             with self._template_lock:
                 mdl = self._cache_get(_model_path)
                 if mdl is not None:
@@ -1131,11 +1222,11 @@ class LocalWhisperEngine:
                     rem = max(0, int((total - done) / workers * est[0]))
                     if progress_callback:
                         if done >= total:
-                            progress_callback(total, total,
-                                              f"{total}/{total} chunks listos")
+                            progress_callback(total, total, f"{total}/{total} chunks listos")
                         else:
-                            progress_callback(num, total,
-                                              f"{workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest")
+                            progress_callback(
+                                num, total, f"{workers} núcleos · {done}/{total} chunks · {pct}% · ~{rem}s rest"
+                            )
                 stop.wait(0.25)
 
         def _transcribe_one(idx, chunk):
@@ -1182,8 +1273,8 @@ class LocalWhisperEngine:
         rthread.start()
 
         cancelled = False
-        skipped = []       # chunks omitidos por timeout o error (whisper colgado)
-        skipped_err = []   # subconjunto de skipped que fallaron con excepcion
+        skipped = []  # chunks omitidos por timeout o error (whisper colgado)
+        skipped_err = []  # subconjunto de skipped que fallaron con excepcion
         fut_index = {f: i for i, f in enumerate(futures)}
         fut_start = {f: time.time() for f in futures}
         try:
@@ -1228,8 +1319,8 @@ class LocalWhisperEngine:
                             with lock:
                                 _partial = " ".join(
                                     results[i].get("text", "").strip()
-                                    for i in range(total) if i in results
-                                    and results[i].get("text")
+                                    for i in range(total)
+                                    if i in results and results[i].get("text")
                                 )
                             if _partial.strip():
                                 partial_callback(_partial)
@@ -1255,7 +1346,7 @@ class LocalWhisperEngine:
                     with lock:
                         _st = started.get(_idx)
                     if _st is not None:
-                        _age = now - _st          # transcribiendose desde _st
+                        _age = now - _st  # transcribiendose desde _st
                     else:
                         _age = now - fut_start[fut]  # esperando en cola
                     if _age > _budget:
@@ -1263,8 +1354,7 @@ class LocalWhisperEngine:
                         skipped.append(_idx)
                         with lock:
                             started.pop(_idx, None)
-                        log_info(f"chunk {_idx} omitido por presupuesto "
-                                 f"({_budget:.0f}s): whisper no respondio")
+                        log_info(f"chunk {_idx} omitido por presupuesto ({_budget:.0f}s): whisper no respondio")
         finally:
             stop.set()
             rthread.join(timeout=1.0)
@@ -1297,10 +1387,8 @@ class LocalWhisperEngine:
             elif skipped_err:
                 _razon = f"errores y timeouts ({len(skipped)}/{total} chunks omitidos)"
             else:
-                _razon = (f"{len(skipped)}/{total} chunks omitidos por timeout "
-                          "(whisper colgado en este audio)")
-            raise RuntimeError(f"Transcripcion local fallida: {_razon}. "
-                               "Revisa el modelo y el log (audioclass.log).")
+                _razon = f"{len(skipped)}/{total} chunks omitidos por timeout (whisper colgado en este audio)"
+            raise RuntimeError(f"Transcripcion local fallida: {_razon}. Revisa el modelo y el log (audioclass.log).")
 
         # Reconstruir en ORDEN original (los chunks terminan desordenados)
         parts, segs = [], []
@@ -1336,7 +1424,7 @@ class LocalWhisperEngine:
             "workers": workers,
             "language": _lang,
             "backend": self.backend,
-            "chunks_omitidos": len(skipped)
+            "chunks_omitidos": len(skipped),
         }
         if _hall:
             _res["hallucination"] = True
@@ -1347,7 +1435,7 @@ class LocalWhisperEngine:
 class CloudColabEngine:
     """Motor de transcripción vía Google Colab (Medium/Large)."""
 
-    def __init__(self, url="", api_key="audioclass", language="es"):
+    def __init__(self, url="", api_key="", language="es"):
         self.url = url.rstrip("/") if url else ""
         self.api_key = api_key
         # Idioma pedido al servidor: "auto" delega la deteccion al whisper
@@ -1360,16 +1448,18 @@ class CloudColabEngine:
             return False, "Sin URL configurada"
         try:
             import requests
+
             r = requests.get(f"{self.url}/status", timeout=10)
             if r.status_code == 200:
                 data = r.json()
-                return True, f"Conectado: {data.get('model','?')} en {data.get('device','?')}"
+                return True, f"Conectado: {data.get('model', '?')} en {data.get('device', '?')}"
             return False, f"Error HTTP {r.status_code}"
         except Exception as e:
             return False, str(e)
 
     def transcribe(self, audio_path, timestamps=False, cancel_event=None, progress_callback=None):
         import requests
+
         endpoint = f"{self.url}/transcribe_ts" if timestamps else f"{self.url}/transcribe"
 
         if progress_callback:
@@ -1400,6 +1490,7 @@ class CloudColabEngine:
 # MOTOR DE ADAPTACIÓN INTELIGENTE (GEMINI API)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class GeminiAdaptationEngine:
     """Adapta transcripciones en bruto a formatos útiles usando Gemini API."""
 
@@ -1412,57 +1503,57 @@ class GeminiAdaptationEngine:
             "icon": "",
             "desc": "Filtro cognitivo con tesis, pilares, evidencia y registro de filtrado",
             "max_tokens": 4096,
-            "temperature": 0.1
+            "temperature": 0.1,
         },
         "Resumen Ejecutivo": {
             "prompt": "Analiza la siguiente transcripción de una clase o conferencia y genera un RESUMEN EJECUTIVO profesional.\n\nInstrucciones:\n- Extrae los 5-7 puntos más importantes\n- Usa bullets claros y concisos\n- Incluye conclusiones clave\n- Máximo 500 palabras\n- Formato: Markdown simple\n\nTranscripción:\n{TEXT}\n\nResumen Ejecutivo:",
             "icon": "",
             "desc": "Puntos clave y conclusiones",
             "max_tokens": 2048,
-            "temperature": 0.3
+            "temperature": 0.3,
         },
         "Guía de Estudio": {
             "prompt": "Convierte la siguiente transcripción de clase en una GUÍA DE ESTUDIO estructurada para estudiantes.\n\nInstrucciones:\n1. Identifica el tema principal y subtemas\n2. Crea secciones con títulos claros\n3. Destaca definiciones importantes en negrita\n4. Lista fórmulas, fechas o datos clave\n5. Añade una sección de 'Puntos Clave para Recordar'\n6. Formato: Markdown con headers (# ## ###)\n\nTranscripción:\n{TEXT}\n\nGuía de Estudio:",
             "icon": "",
             "desc": "Secciones, definiciones y puntos clave",
             "max_tokens": 4096,
-            "temperature": 0.2
+            "temperature": 0.2,
         },
         "Flashcards (Preguntas)": {
             "prompt": "Genera FLASHCARDS de estudio a partir de esta transcripción de clase.\n\nInstrucciones:\n- Crea 10-15 preguntas y respuestas\n- Cada flashcard debe ser concisa\n- Formato exacto:\n  Q: [Pregunta]\n  A: [Respuesta]\n  ---\n- Cubre los conceptos más importantes\n\nTranscripción:\n{TEXT}\n\nFlashcards:",
             "icon": "",
             "desc": "Preguntas y respuestas para memorizar",
             "max_tokens": 4096,
-            "temperature": 0.2
+            "temperature": 0.2,
         },
         "Preguntas de Examen": {
             "prompt": "Genera PREGUNTAS DE EXAMEN tipo test a partir de esta transcripción.\n\nInstrucciones:\n- 10 preguntas de opción múltiple (A, B, C, D)\n- 3 preguntas de respuesta corta\n- 2 preguntas de desarrollo\n- Indica la respuesta correcta para las de opción múltiple\n- Formato claro y ordenado\n\nTranscripción:\n{TEXT}\n\nPreguntas de Examen:",
             "icon": "",
             "desc": "Test, respuesta corta y desarrollo",
             "max_tokens": 4096,
-            "temperature": 0.2
+            "temperature": 0.2,
         },
         "Mapa Conceptual (Texto)": {
             "prompt": "Genera un MAPA CONCEPTUAL en formato texto jerárquico a partir de esta transcripción.\n\nInstrucciones:\n- Usa indentación con tabs para mostrar jerarquía\n- Concepto principal al nivel 0\n- Subconceptos indentados\n- Relaciones claras entre ideas\n- Formato:\n  CONCEPTO PRINCIPAL\n    ├─ Subconcepto A\n    │  ├─ Detalle 1\n    │  └─ Detalle 2\n    └─ Subconcepto B\n\nTranscripción:\n{TEXT}\n\nMapa Conceptual:",
             "icon": "",
             "desc": "Jerarquía visual en texto",
             "max_tokens": 4096,
-            "temperature": 0.2
+            "temperature": 0.2,
         },
         "Texto Limpio (Corrección)": {
             "prompt": "Corrige y limpia la siguiente transcripción en bruto.\n\nInstrucciones:\n- Corrige errores gramaticales y ortográficos obvios\n- Elimina repeticiones ('eh', 'mmm', 'este...')\n- Mejora la puntuación\n- Divide en párrafos lógicos\n- Mantén TODO el contenido, no resumas\n- Formato: texto corrido y limpio\n\nTranscripción:\n{TEXT}\n\nTexto Corregido:",
             "icon": "",
             "desc": "Corrección de errores y muletillas",
             "max_tokens": 4096,
-            "temperature": 0.1
+            "temperature": 0.1,
         },
         "Cronología / Timeline": {
             "prompt": "Extrae una CRONOLOGÍA o timeline de eventos, fechas o procesos mencionados en esta transcripción.\n\nInstrucciones:\n- Lista en orden cronológico\n- Formato: [Fecha/Evento] -> Descripción\n- Si no hay fechas exactas, usa orden lógico (primero, luego, después, finalmente)\n- Destaca causas y consecuencias\n\nTranscripción:\n{TEXT}\n\nCronología:",
             "icon": "",
             "desc": "Orden cronológico de eventos",
             "max_tokens": 2048,
-            "temperature": 0.2
-        }
+            "temperature": 0.2,
+        },
     }
 
     # Modelos Gemini vigentes (gemini-1.5 fue retirado en 2025)
@@ -1474,7 +1565,7 @@ class GeminiAdaptationEngine:
 
     PROVIDER = "Gemini"
 
-    def __init__(self, api_key="", model="flash"):
+    def __init__(self, api_key: str = "", model: str = "flash") -> None:
         self.api_key = api_key
         self.model = model
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -1486,15 +1577,12 @@ class GeminiAdaptationEngine:
     def _call(self, prompt, max_tokens, temperature, timeout=120):
         """Una llamada a la API del proveedor. Devuelve {'text': ...} o {'error': ...}."""
         import requests
+
         model_name = self._model_name()
         url = f"{self.base_url}/{model_name}:generateContent?key={self.api_key}"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-                "topP": 0.9
-            }
+            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens, "topP": 0.9},
         }
         try:
             r = requests.post(url, json=payload, timeout=timeout)
@@ -1558,9 +1646,8 @@ class GeminiAdaptationEngine:
         except Exception as e:
             return False, f"Error inesperado: {e}"
 
-    def adapt(self, text, template_name, progress_callback=None):
+    def adapt(self, text: str, template_name: str, progress_callback: Callable | None = None) -> dict[str, Any]:
         """Adapta texto usando el proveedor. Segmenta automáticamente si es muy largo."""
-        import requests
 
         if template_name not in self.TEMPLATES:
             return {"error": f"Template '{template_name}' no existe"}
@@ -1576,12 +1663,12 @@ class GeminiAdaptationEngine:
             if progress_callback:
                 progress_callback(1, 3, "Texto largo detectado. Segmentando para análisis profundo...")
 
-            chunks = [text[i:i+MAX_CHARS] for i in range(0, len(text), MAX_CHARS)]
+            chunks = [text[i : i + MAX_CHARS] for i in range(0, len(text), MAX_CHARS)]
             partial_results = []
 
             for i, chunk in enumerate(chunks):
                 if progress_callback:
-                    progress_callback(1, 3, f"Analizando parte {i+1}/{len(chunks)}...")
+                    progress_callback(1, 3, f"Analizando parte {i + 1}/{len(chunks)}...")
 
                 # Para análisis académico, usamos un prompt reducido por chunk
                 if template_name == "Análisis Académico Profundo":
@@ -1589,14 +1676,14 @@ class GeminiAdaptationEngine:
                         "Eres un filtro cognitivo académico. Analiza este FRAGMENTO de una clase "
                         "y extrae: 1) Ideas principales del orador, 2) Datos duros exactos, 3) "
                         "Tesis si es evidente. Ignora murmullos e interrupciones. NO inventes nada.\n\n"
-                        f"FRAGMENTO {i+1}/{len(chunks)}:\n{chunk}\n\nEXTRACCIÓN:"
+                        f"FRAGMENTO {i + 1}/{len(chunks)}:\n{chunk}\n\nEXTRACCIÓN:"
                     )
                 else:
                     chunk_prompt = template["prompt"].replace("{TEXT}", chunk)
 
                 res = self._call(chunk_prompt, 2048, template.get("temperature", 0.3), timeout=60)
                 if "error" in res:
-                    return {"error": f"Error en chunk {i+1}: {res['error']}"}
+                    return {"error": f"Error en chunk {i + 1}: {res['error']}"}
                 partial_results.append(res["text"])
 
             # Reduce: combinar resultados parciales con el prompt completo
@@ -1619,15 +1706,13 @@ class GeminiAdaptationEngine:
             else:
                 final_prompt = template["prompt"].replace("{TEXT}", combined)
 
-            result = self._call(final_prompt, template.get("max_tokens", 4096),
-                                template.get("temperature", 0.2))
+            result = self._call(final_prompt, template.get("max_tokens", 4096), template.get("temperature", 0.2))
         else:
             # Texto corto: proceso directo con prompt completo
             prompt = template["prompt"].replace("{TEXT}", text)
             if progress_callback:
                 progress_callback(2, 3, f"Generando con {self.PROVIDER}...")
-            result = self._call(prompt, template.get("max_tokens", 4096),
-                                template.get("temperature", 0.3))
+            result = self._call(prompt, template.get("max_tokens", 4096), template.get("temperature", 0.3))
 
         if "error" in result:
             return result
@@ -1640,7 +1725,7 @@ class GeminiAdaptationEngine:
             "template": template_name,
             "model": model_name,
             "icon": template["icon"],
-            "provider": self.PROVIDER
+            "provider": self.PROVIDER,
         }
 
 
@@ -1648,6 +1733,7 @@ class GeminiAdaptationEngine:
 # ═══════════════════════════════════════════════════════════════════════════════
 # MOTOR DE ADAPTACIÓN INTELIGENTE (OPENAI API) — alternativa a Gemini
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class OpenAIAdaptationEngine(GeminiAdaptationEngine):
     """Adapta transcripciones usando OpenAI (Chat Completions / GPT).
@@ -1677,6 +1763,7 @@ class OpenAIAdaptationEngine(GeminiAdaptationEngine):
 
     def _call(self, prompt, max_tokens, temperature, timeout=120):
         import requests
+
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self._model_name(),
@@ -1736,8 +1823,9 @@ class OpenAIAdaptationEngine(GeminiAdaptationEngine):
             return False, f"Error inesperado: {e}"
 
 
-def build_adaptation_engine(provider="gemini", gemini_api_key="", gemini_model="flash",
-                            openai_api_key="", openai_model="mini"):
+def build_adaptation_engine(
+    provider="gemini", gemini_api_key="", gemini_model="flash", openai_api_key="", openai_model="mini"
+):
     """Devuelve el motor de adaptacion segun el proveedor elegido por el usuario."""
     if provider == "openai":
         return OpenAIAdaptationEngine(openai_api_key, openai_model)
@@ -1746,6 +1834,7 @@ def build_adaptation_engine(provider="gemini", gemini_api_key="", gemini_model="
 
 # EXPORTACIÓN A GOOGLE DOCS (OAUTH 2.0)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class GoogleDocsExporter:
     """Exporta transcripciones y adaptaciones a Google Docs usando OAuth 2.0.
@@ -1772,8 +1861,8 @@ class GoogleDocsExporter:
 
     def _load_creds(self, refresh=True):
         try:
-            from google.oauth2.credentials import Credentials
             from google.auth.transport.requests import Request
+            from google.oauth2.credentials import Credentials
         except ImportError:
             self.error = "Faltan librerías: pip install google-auth-oauthlib google-api-python-client"
             return None
@@ -1864,7 +1953,7 @@ class GoogleDocsExporter:
             requests_list = []
             idx = 1
             for i in range(0, len(text), CHUNK):
-                chunk = text[i:i+CHUNK]
+                chunk = text[i : i + CHUNK]
                 requests_list.append({"insertText": {"location": {"index": idx}, "text": chunk}})
                 idx += len(chunk)
 
@@ -1876,5 +1965,3 @@ class GoogleDocsExporter:
             return {"url": f"https://docs.google.com/document/d/{doc_id}/edit", "doc_id": doc_id, "title": title}
         except Exception as e:
             return {"error": f"Error al exportar: {e}"}
-
-

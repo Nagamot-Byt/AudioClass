@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_config_migration.py — Tests del sistema de migración de configuración
 ==========================================================================
@@ -9,28 +8,27 @@ campos, y que configs ya actualizadas no se rompen.
 Ejecutar:
     python test_config_migration.py
 """
+
 import json
 import os
 import sys
 import tempfile
 
 from config_manager import (
-    CONFIG_VERSION,
-    DEFAULT_CONFIG,
+    _MIGRATIONS,
     _migrate_config,
     _migrate_v1_to_v2,
     _migrate_v2_to_v3,
     _migrate_v3_to_v4,
     _migrate_v4_to_v5,
-    _MIGRATIONS,
     load_config,
     save_config,
 )
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # v1 → v2: colab_key trivial
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def test_v1_to_v2_resets_trivial_key():
     """'audioclass' se resetea a vacío."""
@@ -99,6 +97,7 @@ def test_v1_to_v2_missing_key():
 # ══════════════════════════════════════════════════════════════════════════════
 # v2 → v3: normalización de modelos Gemini
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def test_v2_to_v3_old_flash():
     """'gemini-1.5-flash' → 'flash'."""
@@ -175,6 +174,7 @@ def test_v2_to_v3_missing_field():
 # v3 → v4: renombrar cloud_model → colab_model
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def test_v3_to_v4_renames_cloud_to_colab():
     """'cloud_model' se renombra a 'colab_model'."""
     cfg = {"cloud_model": "large-v3"}
@@ -220,6 +220,7 @@ def test_v3_to_v4_missing_cloud_model():
 # ══════════════════════════════════════════════════════════════════════════════
 # v4 → v5: normalización de tema
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def test_v4_to_v5_dark_normalized():
     """'Dark' → 'dark'."""
@@ -280,6 +281,7 @@ def test_v4_to_v5_numeric_theme():
 # ══════════════════════════════════════════════════════════════════════════════
 # Migración completa (v1 → v5)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def test_full_migration_v1_to_v5():
     """Config v1 sin versión migra completamente a v5."""
@@ -367,6 +369,7 @@ def test_full_migration_already_v5():
 # Edge cases
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def test_empty_config():
     """Config vacía migra sin errores."""
     result = _migrate_config({})
@@ -406,14 +409,16 @@ def test_migration_count():
     assert len(_MIGRATIONS) == 4
     # Verify sequential ordering
     for i in range(len(_MIGRATIONS) - 1):
-        assert _MIGRATIONS[i][1] == _MIGRATIONS[i + 1][0], \
-            f"Migración {i} termina en v{_MIGRATIONS[i][1]} pero la siguiente empieza en v{_MIGRATIONS[i+1][0]}"
+        assert _MIGRATIONS[i][1] == _MIGRATIONS[i + 1][0], (
+            f"Migración {i} termina en v{_MIGRATIONS[i][1]} pero la siguiente empieza en v{_MIGRATIONS[i + 1][0]}"
+        )
     print("  OK  4 migraciones en orden secuencial")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Integración con load_config / save_config
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def test_load_save_roundtrip():
     """Guardar y cargar preserva la config migrada."""
@@ -430,7 +435,7 @@ def test_load_save_roundtrip():
         }
         with open(tmp, "w") as f:
             json.dump(cfg_old, f)
-        
+
         # Cargar: debe migrar automáticamente
         loaded = load_config(tmp)
         assert loaded["_config_version"] == 5
@@ -439,7 +444,7 @@ def test_load_save_roundtrip():
         assert loaded.get("colab_model") == "large-v3"
         assert loaded["theme"] == "dark"
         assert loaded["audio_profile"] == "Podcast"
-        
+
         # Guardar y recargar: no debe re-migrar
         save_config(loaded, tmp)
         loaded2 = load_config(tmp)
@@ -460,7 +465,7 @@ def test_load_new_defaults_after_migration():
         cfg_old = {"_config_version": 1}
         with open(tmp, "w") as f:
             json.dump(cfg_old, f)
-        
+
         loaded = load_config(tmp)
         # Defaults nuevos deben existir
         assert "openai_api_key" in loaded
@@ -475,6 +480,7 @@ def test_load_new_defaults_after_migration():
 # ══════════════════════════════════════════════════════════════════════════════
 # Runner
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def main():
     tests = [

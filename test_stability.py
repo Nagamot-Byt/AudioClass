@@ -9,6 +9,7 @@ D) Higiene de hilos: tras una transcripcion real, threading.active_count()
 E) Barrido de temporales: _sweep_stale_temps borra .raw viejos y respeta los
    recientes (no borra una grabacion en curso).
 """
+
 import os
 import sys
 import tempfile
@@ -18,8 +19,8 @@ import time
 sys.path.insert(0, os.getcwd())
 import numpy as np
 
-from audioclass_core import LocalWhisperEngine, _MODEL_CACHE_MAX
 import audioclass_v91 as ac  # _sweep_stale_temps
+from audioclass_core import _MODEL_CACHE_MAX, LocalWhisperEngine
 
 BASE = threading.active_count()
 
@@ -61,6 +62,7 @@ def test_churn():
 
 def test_thread_hygiene():
     from scipy.io import wavfile
+
     sr, v = wavfile.read("prueba_voz_es.wav")
     if v.dtype == np.int16:
         v = v.astype(np.float32) / 32768.0

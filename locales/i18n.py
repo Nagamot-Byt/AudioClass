@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 i18n.py — Motor de internacionalización para AudioClass
 ======================================================
@@ -19,15 +18,14 @@ Uso:
     # Obtener idioma actual
     print(get_language())  # "es"
 """
+
 import json
-import os
 from pathlib import Path
-from typing import Optional
 
 # ── Estado global ────────────────────────────────────────────────────────────
 _current_language = "es"  # Idioma por defecto
-_translations = {}        # Cache de traducciones cargadas
-_fallback = {}            # Traducciones en inglés (fallback)
+_translations = {}  # Cache de traducciones cargadas
+_fallback = {}  # Traducciones en inglés (fallback)
 
 LOCALES_DIR = Path(__file__).parent
 AVAILABLE_LANGUAGES = {
@@ -47,7 +45,7 @@ def _load_translations(lang: str) -> dict:
         return {}
 
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             data = json.load(f)
         _translations[lang] = data
         return data

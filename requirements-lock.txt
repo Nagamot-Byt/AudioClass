@@ -1,0 +1,65 @@
+# =============================================================================
+# AudioClass v9.1.1 — Dependency Lockfile (requirements-lock.txt)
+# =============================================================================
+# Generated: 2026-08-24
+# Python:    3.12.3
+# Platform:  Linux x86_64
+#
+# Usage:
+#   pip install -r requirements-lock.txt              # full install
+#   pip install -r requirements-lock.txt --no-deps    # core only (skip optional)
+#
+# For CI reproducibility, use:
+#   pip install -r requirements-lock.txt --hash sha256:<hash>
+#   (add --require-hashes to enforce hash verification)
+# =============================================================================
+
+# ── UI ────────────────────────────────────────────────────────────────────────
+customtkinter==6.0.0
+
+# ── Audio / DSP ──────────────────────────────────────────────────────────────
+numpy==1.26.4
+scipy==1.11.4
+sounddevice==0.5.6
+# noisereduce==3.0.3          # optional: noise reduction, install if needed
+
+# ── Transcription (optional — install per your provider) ─────────────────────
+# openai-whisper==20250625     # optional: local Whisper transcription
+# faster-whisper==1.2.1        # optional: faster local Whisper (CT2)
+# torch==2.13.0+cpu            # optional: required by whisper/faster-whisper
+
+# ── Export ────────────────────────────────────────────────────────────────────
+fpdf2==2.8.8
+matplotlib==3.6.3
+python-docx==1.2.0
+pypdf==6.16.2
+Pillow==10.2.0
+
+# ── API / Network ────────────────────────────────────────────────────────────
+requests==2.31.0
+# openai==1.x                  # optional: OpenAI API provider
+# google-auth>=2.20.0          # optional: Google API auth
+# google-auth-oauthlib>=1.2.0  # optional: Google OAuth
+# google-api-python-client>=2.100.0  # optional: Google Docs export
+# tiktoken==0.x                # optional: OpenAI token counting
+
+# ── System / Utilities ───────────────────────────────────────────────────────
+psutil==5.9.8
+PyYAML==6.0.1
+
+# ── Build (dev only — not needed at runtime) ─────────────────────────────────
+# pyinstaller==6.22.2          # dev: for building executables
+
+# ── Transitive dependencies (pinned for reproducibility) ─────────────────────
+# These are sub-dependencies pulled in by the packages above.
+# They are pinned to prevent silent upgrades from breaking builds.
+certifi==2023.11.17
+idna==3.6
+urllib3==2.0.7
+packaging==24.0
+contourpy==1.0.7
+cycler==0.10.0
+kiwisolver==1.4.4
+pyparsing==3.1.1
+python-dateutil==2.8.2
+six==1.16.0

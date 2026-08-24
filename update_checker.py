@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 update_checker.py — Sistema de actualización de AudioClass
 ==========================================================
@@ -18,8 +17,8 @@ Uso:
     if result["update_available"]:
         download_update(result["assets"], callback=progress_callback)
 """
+
 import hashlib
-import json
 import os
 import platform
 import re
@@ -27,9 +26,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -51,10 +49,10 @@ def _parse_version(version_str: str) -> tuple:
         >>> _parse_version("9.1 Académica")
         (9, 1)
     """
-    match = re.search(r'(\d+(?:\.\d+)*)', str(version_str))
+    match = re.search(r"(\d+(?:\.\d+)*)", str(version_str))
     if not match:
         return (0,)
-    parts = match.group(1).split('.')
+    parts = match.group(1).split(".")
     return tuple(int(p) for p in parts)
 
 
@@ -112,11 +110,13 @@ def check_for_updates(current_version: str, timeout: int = 10) -> dict:
 
         # Recopilar assets
         for asset in data.get("assets", []):
-            result["assets"].append({
-                "name": asset.get("name", ""),
-                "url": asset.get("browser_download_url", ""),
-                "size": asset.get("size", 0),
-            })
+            result["assets"].append(
+                {
+                    "name": asset.get("name", ""),
+                    "url": asset.get("browser_download_url", ""),
+                    "size": asset.get("size", 0),
+                }
+            )
 
         # Buscar archivo SHA-256
         for asset in data.get("assets", []):
@@ -141,7 +141,7 @@ def check_for_updates(current_version: str, timeout: int = 10) -> dict:
     return result
 
 
-def find_download_asset(assets: List[dict]) -> Optional[dict]:
+def find_download_asset(assets: list[dict]) -> dict | None:
     """Encuentra el asset correcto para descargar según la plataforma.
 
     Args:
@@ -153,19 +153,19 @@ def find_download_asset(assets: List[dict]) -> Optional[dict]:
     # Patrones de nombre por plataforma
     patterns = {
         "Windows": [
-            r"AudioClass.*\.zip$",           # ZIP con exe
-            r"AudioClass.*\.exe$",           # EXE directo
-            r"COMPLETA.*\.zip$",             # ZIP completo
+            r"AudioClass.*\.zip$",  # ZIP con exe
+            r"AudioClass.*\.exe$",  # EXE directo
+            r"COMPLETA.*\.zip$",  # ZIP completo
         ],
         "Darwin": [
-            r"MACOS.*\.dmg$",                # DMG (mejor experiencia)
-            r"MACOS.*APP.*\.zip$",           # ZIP con .app bundle
-            r"MACOS.*\.zip$",                # ZIP con ejecutable
+            r"MACOS.*\.dmg$",  # DMG (mejor experiencia)
+            r"MACOS.*APP.*\.zip$",  # ZIP con .app bundle
+            r"MACOS.*\.zip$",  # ZIP con ejecutable
         ],
         "Linux": [
-            r"LINUX.*\.AppImage$",           # AppImage (mejor experiencia)
-            r"LINUX.*\.tar\.xz$",            # Tar.xz
-            r"LINUX.*part_0*$",              # Primera parte de split
+            r"LINUX.*\.AppImage$",  # AppImage (mejor experiencia)
+            r"LINUX.*\.tar\.xz$",  # Tar.xz
+            r"LINUX.*part_0*$",  # Primera parte de split
         ],
     }
 
@@ -192,9 +192,9 @@ def find_download_asset(assets: List[dict]) -> Optional[dict]:
 def download_update(
     asset: dict,
     dest_dir: str = None,
-    on_progress: Optional[Callable[[int, int, str], None]] = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
     timeout: int = 300,
-) -> Tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Descarga la actualización desde GitHub.
 
     Args:
@@ -236,9 +236,9 @@ def download_update(
                     f.write(chunk)
                     downloaded += len(chunk)
                     if on_progress:
-                        on_progress(downloaded, total_size,
-                                    f"Descargado {downloaded // 1024}KB / "
-                                    f"{total_size // 1024}KB")
+                        on_progress(
+                            downloaded, total_size, f"Descargado {downloaded // 1024}KB / {total_size // 1024}KB"
+                        )
 
         if on_progress:
             on_progress(total_size, total_size, "Descarga completada")
@@ -257,7 +257,7 @@ def verify_download(
     file_path: str,
     sha256_url: str = None,
     expected_sha256: str = None,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Verifica la integridad del archivo descargado con SHA-256.
 
     Args:
@@ -296,7 +296,7 @@ def verify_download(
                 if computed == content:
                     return True, f"SHA-256 verificado: {computed[:16]}..."
                 else:
-                    return False, f"SHA-256 no coincide con el publicado"
+                    return False, "SHA-256 no coincide con el publicado"
         except Exception:
             pass
 
@@ -307,8 +307,8 @@ def verify_download(
 def install_update(
     downloaded_path: str,
     app_dir: str = None,
-    on_progress: Optional[Callable[[str, str], None]] = None,
-) -> Tuple[bool, str]:
+    on_progress: Callable[[str, str], None] | None = None,
+) -> tuple[bool, str]:
     """Instala la actualización reemplazando la instalación actual.
 
     Args:
@@ -334,11 +334,20 @@ def install_update(
 
         # Respaldar archivos críticos
         critical_files = [
-            "audioclass_v91.py", "audioclass_core.py", "config_manager.py",
-            "config_dialog.py", "mic_optimizer_ui.py", "ai_providers.py",
-            "update_checker.py", "ui_builder.py", "theme.py",
-            "recording_engine.py", "transcription_engines.py",
-            "export_utils.py", "audio_quality_checker.py", "sound_error_solver.py",
+            "audioclass_v91.py",
+            "audioclass_core.py",
+            "config_manager.py",
+            "config_dialog.py",
+            "mic_optimizer_ui.py",
+            "ai_providers.py",
+            "update_checker.py",
+            "ui_builder.py",
+            "theme.py",
+            "recording_engine.py",
+            "transcription_engines.py",
+            "export_utils.py",
+            "audio_quality_checker.py",
+            "sound_error_solver.py",
         ]
         for f in critical_files:
             src = os.path.join(app_dir, f)
@@ -363,8 +372,7 @@ def install_update(
             return False, f"Tipo de archivo no soportado: {file_ext}"
 
         if on_progress:
-            on_progress("¡Instalación completada!",
-                       "Reinicia AudioClass para usar la nueva versión")
+            on_progress("¡Instalación completada!", "Reinicia AudioClass para usar la nueva versión")
 
         return True, "Instalación completada"
 
@@ -383,15 +391,14 @@ def install_update(
         return False, f"Error durante la instalación: {str(e)[:100]}"
 
 
-def _install_from_zip(zip_path: str, app_dir: str,
-                       on_progress: Optional[Callable] = None):
+def _install_from_zip(zip_path: str, app_dir: str, on_progress: Callable | None = None):
     """Extrae un ZIP sobre la instalación actual."""
     import zipfile
 
     if on_progress:
         on_progress("Extrayendo archivos...", "")
 
-    with zipfile.ZipFile(zip_path, 'r') as z:
+    with zipfile.ZipFile(zip_path, "r") as z:
         for member in z.namelist():
             # Evitar path traversal
             member_path = os.path.join(app_dir, member)
@@ -403,8 +410,7 @@ def _install_from_zip(zip_path: str, app_dir: str,
         on_progress("Archivos extraídos", "")
 
 
-def _install_from_exe(exe_path: str, app_dir: str,
-                       on_progress: Optional[Callable] = None):
+def _install_from_exe(exe_path: str, app_dir: str, on_progress: Callable | None = None):
     """Reemplaza el ejecutable actual."""
     if on_progress:
         on_progress("Reemplazando ejecutable...", "")
@@ -421,8 +427,7 @@ def _install_from_exe(exe_path: str, app_dir: str,
             # Programar eliminación al reiniciar
             try:
                 subprocess.run(
-                    ['cmd', '/c', 'timeout', '/t', '3', '/f', '&&', 'del', old_exe],
-                    capture_output=True, timeout=10
+                    ["cmd", "/c", "timeout", "/t", "3", "/f", "&&", "del", old_exe], capture_output=True, timeout=10
                 )
             except Exception:
                 pass
@@ -434,15 +439,14 @@ def _install_from_exe(exe_path: str, app_dir: str,
         os.chmod(current_exe, 0o755)
 
 
-def _install_from_tarxz(tar_path: str, app_dir: str,
-                         on_progress: Optional[Callable] = None):
+def _install_from_tarxz(tar_path: str, app_dir: str, on_progress: Callable | None = None):
     """Extrae un tar.xz sobre la instalación actual."""
     import tarfile
 
     if on_progress:
         on_progress("Extrayendo archivos...", "")
 
-    with tarfile.open(tar_path, 'r:xz') as tar:
+    with tarfile.open(tar_path, "r:xz") as tar:
         # Extraer solo archivos seguros
         for member in tar.getmembers():
             member_path = os.path.join(app_dir, member.name)
@@ -451,8 +455,7 @@ def _install_from_tarxz(tar_path: str, app_dir: str,
             tar.extract(member, app_dir)
 
 
-def _install_from_appimage(appimage_path: str, app_dir: str,
-                           on_progress: Optional[Callable] = None):
+def _install_from_appimage(appimage_path: str, app_dir: str, on_progress: Callable | None = None):
     """Reemplaza la AppImage actual."""
     if on_progress:
         on_progress("Reemplazando AppImage...", "")
@@ -472,7 +475,7 @@ def restart_app():
         # Windows: usar start para lanzar nuevo proceso
         subprocess.Popen(
             [sys.executable, app_script],
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
         )
     elif SO == "Darwin":
         # macOS: usar open
@@ -480,10 +483,7 @@ def restart_app():
     else:
         # Linux: usar nohup
         subprocess.Popen(
-            [sys.executable, app_script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
+            [sys.executable, app_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
 
     # Cerrar el proceso actual
@@ -497,20 +497,21 @@ def restart_app():
 # Funciones específicas para AppImage (Linux)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def is_appimage() -> bool:
     """Detecta si AudioClass se ejecuta como AppImage."""
     # AppImage establece APPIMAGE y APPDIR variables de entorno
     return bool(os.environ.get("APPIMAGE"))
 
 
-def get_appimage_path() -> Optional[str]:
+def get_appimage_path() -> str | None:
     """Retorna la ruta al AppImage actual."""
     return os.environ.get("APPIMAGE")
 
 
-def get_appimage_update_info() -> Optional[str]:
+def get_appimage_update_info() -> str | None:
     """Extrae la update info embebida en el AppImage.
-    
+
     La update info tiene el formato:
     gh-releases-zsync|owner|repo|tag|filename.zsync
     """
@@ -526,15 +527,12 @@ def get_appimage_update_info() -> Optional[str]:
 
         # Buscar patrón de update info
         # gh-releases-zsync|owner|repo|tag|filename.zsync
-        match = re.search(
-            r'(gh-releases-zsync\|[\w.-]+\|[\w.-]+\|[\w.-]+\|[\w._-]+\.zsync)',
-            tail
-        )
+        match = re.search(r"(gh-releases-zsync\|[\w.-]+\|[\w.-]+\|[\w.-]+\|[\w._-]+\.zsync)", tail)
         if match:
             return match.group(1)
 
         # También buscar URL directa a .zsync
-        match = re.search(r'(https?://[\w./-]+\.zsync)', tail)
+        match = re.search(r"(https?://[\w./-]+\.zsync)", tail)
         if match:
             return match.group(1)
 
@@ -549,14 +547,14 @@ def check_appimage_update(
     timeout: int = 10,
 ) -> dict:
     """Verifica si hay una actualización AppImage disponible.
-    
+
     Usa la update info embebida para buscar el archivo .zsync
     y determinar si hay una versión más reciente.
-    
+
     Args:
         current_version: Versión actual del AppImage.
         timeout: Timeout de la petición HTTP.
-    
+
     Returns:
         dict con:
             - update_available (bool)
@@ -632,16 +630,16 @@ def check_appimage_update(
 
 def update_appimage(
     zsync_url: str,
-    on_progress: Optional[Callable[[int, int, str], None]] = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
     timeout: int = 600,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Actualiza el AppImage usando zsync (descarga diferencial).
-    
+
     Args:
         zsync_url: URL del archivo .zsync.
         on_progress: Callback(bytes_downloaded, total_bytes, status_msg).
         timeout: Timeout de la descarga en segundos.
-    
+
     Returns:
         Tuple (success, message).
     """
@@ -650,8 +648,7 @@ def update_appimage(
         return False, "No se encontró la ruta del AppImage"
 
     # Intentar usar appimageupdatetool si está disponible
-    update_tool = shutil.which("appimageupdatetool") or \
-                  shutil.which("AppImageUpdate")
+    update_tool = shutil.which("appimageupdatetool") or shutil.which("AppImageUpdate")
 
     if update_tool:
         return _update_with_tool(update_tool, appimage_path, on_progress, timeout)
@@ -662,9 +659,9 @@ def update_appimage(
 def _update_with_tool(
     tool_path: str,
     appimage_path: str,
-    on_progress: Optional[Callable] = None,
+    on_progress: Callable | None = None,
     timeout: int = 600,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Actualiza usando appimageupdatetool (si está instalado)."""
     try:
         if on_progress:
@@ -692,11 +689,11 @@ def _update_with_tool(
 def _update_with_zsync(
     zsync_url: str,
     appimage_path: str,
-    on_progress: Optional[Callable] = None,
+    on_progress: Callable | None = None,
     timeout: int = 600,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Actualiza descargando el AppImage completo (fallback sin zsync).
-    
+
     Si zsync no está disponible, descarga el AppImage completo
     y reemplaza el actual.
     """
@@ -727,8 +724,11 @@ def _update_with_zsync(
                     f.write(chunk)
                     downloaded += len(chunk)
                     if on_progress:
-                        on_progress(downloaded, total_size,
-                                    f"Descargado {downloaded // 1024 // 1024}MB / {total_size // 1024 // 1024}MB")
+                        on_progress(
+                            downloaded,
+                            total_size,
+                            f"Descargado {downloaded // 1024 // 1024}MB / {total_size // 1024 // 1024}MB",
+                        )
 
         # Hacer ejecutable
         os.chmod(dest_path, 0o755)
@@ -757,7 +757,7 @@ def _update_with_zsync(
         return False, f"Error: {str(e)[:100]}"
 
 
-def get_appimage_version() -> Optional[str]:
+def get_appimage_version() -> str | None:
     """Obtiene la versión del AppImage actual desde su nombre o metadatos."""
     appimage_path = get_appimage_path()
     if not appimage_path:
@@ -765,7 +765,7 @@ def get_appimage_version() -> Optional[str]:
 
     # Intentar extraer versión del nombre del archivo
     basename = os.path.basename(appimage_path)
-    match = re.search(r'v?(\d+\.\d+\.\d+)', basename)
+    match = re.search(r"v?(\d+\.\d+\.\d+)", basename)
     if match:
         return match.group(1)
 
@@ -790,8 +790,7 @@ if __name__ == "__main__":
     if result["error"]:
         print(f"Error: {result['error']}")
     elif result["update_available"]:
-        print(f"Nueva versión disponible: {result['latest_version']} "
-              f"(actual: {result['current_version']})")
+        print(f"Nueva versión disponible: {result['latest_version']} (actual: {result['current_version']})")
         print(f"Descargar: {result['release_url']}")
         if result["assets"]:
             asset = find_download_asset(result["assets"])

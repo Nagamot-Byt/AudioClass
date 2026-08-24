@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 AudioClass Cloud Server v9.1 — Google Colab Edition
 =====================================================
@@ -23,7 +22,13 @@ Endpoints:
   GET  /status          -> Estado del servidor
 """
 
-import subprocess, sys, os, json, warnings, tempfile, secrets, hmac
+import hmac
+import os
+import secrets
+import subprocess
+import sys
+import tempfile
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -31,31 +36,32 @@ warnings.filterwarnings("ignore")
 
 import numpy as np
 import torch
-import whisper
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from pyngrok import ngrok
-from scipy.io import wavfile
-from scipy import signal
+import whisper
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fpdf import FPDF
+from pyngrok import ngrok
+from scipy import signal
+from scipy.io import wavfile
 
 # ─── Seguridad: API key ───────────────────────────────────────────────────────
 # Ya NO hay clave fija trivial ('audioclass'): un servidor publico con clave
 # adivinable dejaria que cualquiera transcribiera gratis. La clave se lee de
 # la variable de entorno COLAB_API_KEY (>= 16 caracteres y no trivial) o se
 # genera una ALEATORIA fuerte que el arranque imprime para copiarla a la app.
-_TRIVIAL_KEYS = {"audioclass", "admin", "password", "1234", "test",
-                  "audioclass123", "clave", "api_key", "secret"}
+_TRIVIAL_KEYS = {"audioclass", "admin", "password", "1234", "test", "audioclass123", "clave", "api_key", "secret"}
 
 
 def _resolve_api_key():
     k = os.environ.get("COLAB_API_KEY", "").strip()
     if k:
         if len(k) < 16 or k.lower() in _TRIVIAL_KEYS:
-            print(f"COLAB_API_KEY rechazada ('{k}') — necesita >= 16 caracteres "
-                  "y no ser trivial. Se generara una aleatoria.")
+            print(
+                f"COLAB_API_KEY rechazada ('{k}') — necesita >= 16 caracteres "
+                "y no ser trivial. Se generara una aleatoria."
+            )
             k = ""
     if not k:
         k = secrets.token_urlsafe(24)
@@ -63,7 +69,7 @@ def _resolve_api_key():
 
 
 API_KEY = _resolve_api_key()
-NGROK_TOKEN = ""                # <- PEGA AQUI TU TOKEN DE NGROK
+NGROK_TOKEN = ""  # <- PEGA AQUI TU TOKEN DE NGROK
 MODEL_NAME = "large-v3"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Directorio temporal de la app: tempfile.gettempdir() es /tmp en Linux
@@ -82,8 +88,17 @@ PDF_FONT_PATH = None
 PDF_FONT_BOLD = None
 
 _PDF_FALLBACK_CHARS = {
-    "—": "-", "–": "-", "…": "...", "•": "-", "\u2192": "->",
-    "├": "|", "└": "`", "“": '"', "”": '"', "‘": "'", "’": "'",
+    "—": "-",
+    "–": "-",
+    "…": "...",
+    "•": "-",
+    "\u2192": "->",
+    "├": "|",
+    "└": "`",
+    "“": '"',
+    "”": '"',
+    "‘": "'",
+    "’": "'",
 }
 
 
@@ -93,9 +108,11 @@ def _ensure_pdf_font():
     global PDF_FONT_PATH, PDF_FONT_BOLD
     if PDF_FONT_PATH:
         return True
-    for p in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-              "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-              str(TEMP_DIR / "DejaVuSans.ttf")):
+    for p in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        str(TEMP_DIR / "DejaVuSans.ttf"),
+    ):
         if os.path.exists(p):
             PDF_FONT_PATH = p
             b = os.path.join(os.path.dirname(p), "DejaVuSans-Bold.ttf")
@@ -104,13 +121,14 @@ def _ensure_pdf_font():
             return True
     try:
         import urllib.request
+
         dest = TEMP_DIR / "DejaVuSans.ttf"
-        urllib.request.urlretrieve(
-            "https://cdn.jsdelivr.net/gh/py-pdf/fpdf2@master/test/fonts/DejaVuSans.ttf", dest)
+        urllib.request.urlretrieve("https://cdn.jsdelivr.net/gh/py-pdf/fpdf2@master/test/fonts/DejaVuSans.ttf", dest)
         PDF_FONT_PATH = str(dest)
         bdest = TEMP_DIR / "DejaVuSans-Bold.ttf"
         urllib.request.urlretrieve(
-            "https://cdn.jsdelivr.net/gh/py-pdf/fpdf2@master/test/fonts/DejaVuSans-Bold.ttf", bdest)
+            "https://cdn.jsdelivr.net/gh/py-pdf/fpdf2@master/test/fonts/DejaVuSans-Bold.ttf", bdest
+        )
         PDF_FONT_BOLD = str(bdest)
         return True
     except Exception:
@@ -123,6 +141,7 @@ def _pdf_fallback_text(t):
     for k, v in _PDF_FALLBACK_CHARS.items():
         t = t.replace(k, v)
     return t.encode("latin-1", "replace").decode("latin-1")
+
 
 print(f"Dispositivo: {DEVICE.upper()}")
 if torch.cuda.is_available():
@@ -144,6 +163,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Headers de seguridad básicos en TODAS las respuestas (endurecimiento web):
 #   X-Content-Type-Options: nosniff          -> no adivinar el tipo MIME
 #   X-Frame-Options: DENY                    -> no incrustar en iframes (clickjacking)
@@ -161,10 +181,12 @@ async def _security_headers(request: Request, call_next):
     )
     return resp
 
+
 def verify_key(key: str):
     # Comparacion en tiempo constante (evita medir la longitud con timing).
     if not hmac.compare_digest(str(key or ""), API_KEY):
         raise HTTPException(status_code=403, detail="API key invalida")
+
 
 async def get_key(request: Request) -> str:
     """Lee la clave con prioridad: header X-API-Key (recomendado, NO filtra a
@@ -185,11 +207,13 @@ async def get_key(request: Request) -> str:
         pass
     return ""
 
+
 # Rate limit simple en memoria por clave: un tunel publico con la key no debe
 # permitir abuso (coste de Colab, almacenamiento, fuerza bruta).
-_RATE_WINDOW = 60.0   # segundos
-_RATE_MAX = 30        # peticiones por ventana por clave
+_RATE_WINDOW = 60.0  # segundos
+_RATE_MAX = 30  # peticiones por ventana por clave
 _rate_hits = {}
+
 
 def _check_rate(key: str):
     now = datetime.now().timestamp()
@@ -199,8 +223,10 @@ def _check_rate(key: str):
     hits.append(now)
     _rate_hits[key] = hits
 
+
 MAX_UPLOAD_MB = 200
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
 
 async def _save_upload(file: UploadFile) -> str:
     """Guarda la subida en TEMP_DIR con tope de tamano (evita llenar el disco
@@ -214,10 +240,10 @@ async def _save_upload(file: UploadFile) -> str:
             if size > MAX_UPLOAD_BYTES:
                 f.close()
                 tmp.unlink(missing_ok=True)
-                raise HTTPException(status_code=413,
-                                    detail=f"Archivo demasiado grande (maximo {MAX_UPLOAD_MB} MB)")
+                raise HTTPException(status_code=413, detail=f"Archivo demasiado grande (maximo {MAX_UPLOAD_MB} MB)")
             f.write(chunk)
     return str(tmp)
+
 
 def preprocess_for_whisper(path: str) -> str:
     sr, data = wavfile.read(path)
@@ -243,6 +269,7 @@ def preprocess_for_whisper(path: str) -> str:
     wavfile.write(out_path, 16000, (data * 32767).astype(np.int16))
     return out_path
 
+
 def transcribe_audio(path: str, timestamps: bool = False, language: str = "es"):
     proc_path = preprocess_for_whisper(path)
 
@@ -261,8 +288,8 @@ def transcribe_audio(path: str, timestamps: bool = False, language: str = "es"):
                 "Ignora murmullos de fondo, interrupciones breves y preguntas sin respuesta del docente. "
                 "Preserva datos duros: numeros, fechas, dosis, nomenclaturas tecnicas y definiciones literales exactas. "
                 "Transcribe fielmente solo lo dicho por el orador principal."
-                if lang == "es" else
-                "This is a transcription of a university lecture or academic conference. "
+                if lang == "es"
+                else "This is a transcription of a university lecture or academic conference. "
                 "The main speaker is the lecturer or presenter. "
                 "Ignore background murmurs, brief interruptions and unanswered questions. "
                 "Preserve hard facts: numbers, dates, dosages, technical terms and literal definitions. "
@@ -271,12 +298,7 @@ def transcribe_audio(path: str, timestamps: bool = False, language: str = "es"):
         }
 
     result = model.transcribe(
-        proc_path,
-        task="transcribe",
-        fp16=(DEVICE == "cuda"),
-        verbose=False,
-        condition_on_previous_text=True,
-        **lang_kw
+        proc_path, task="transcribe", fp16=(DEVICE == "cuda"), verbose=False, condition_on_previous_text=True, **lang_kw
     )
 
     text = result.get("text", "").strip()
@@ -287,17 +309,17 @@ def transcribe_audio(path: str, timestamps: bool = False, language: str = "es"):
         "model": MODEL_NAME,
         "device": DEVICE,
         "duration": segments[-1]["end"] if segments else 0,
-        "segments_count": len(segments)
+        "segments_count": len(segments),
     }
 
     if timestamps:
         response["segments"] = [
-            {"start": round(s["start"], 2), "end": round(s["end"], 2), "text": s["text"].strip()}
-            for s in segments
+            {"start": round(s["start"], 2), "end": round(s["end"], 2), "text": s["text"].strip()} for s in segments
         ]
 
     os.remove(proc_path)
     return response
+
 
 def generate_pdf(text: str, title: str = "Transcripcion", timestamps_data=None) -> str:
     pdf = FPDF()
@@ -348,6 +370,7 @@ def generate_pdf(text: str, title: str = "Transcripcion", timestamps_data=None) 
     pdf.output(out)
     return out
 
+
 @app.get("/status")
 def status():
     return {
@@ -356,12 +379,12 @@ def status():
         "device": DEVICE,
         "cuda_available": torch.cuda.is_available(),
         "cuda_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-        "version": "9.1"
+        "version": "9.1",
     }
 
+
 @app.post("/transcribe")
-async def transcribe(request: Request, file: UploadFile = File(...),
-                     language: str = Form("es")):
+async def transcribe(request: Request, file: UploadFile = File(...), language: str = Form("es")):
     key = await get_key(request)
     verify_key(key)
     _check_rate(key)
@@ -371,16 +394,24 @@ async def transcribe(request: Request, file: UploadFile = File(...),
         result = transcribe_audio(str(tmp), timestamps=False, language=language)
         result["filename"] = file.filename
         result["processed_at"] = datetime.now().isoformat()
-        HISTORY.append({"type": "transcription", "filename": file.filename, "text": result["text"], "model": MODEL_NAME, "time": datetime.now().isoformat()})
+        HISTORY.append(
+            {
+                "type": "transcription",
+                "filename": file.filename,
+                "text": result["text"],
+                "model": MODEL_NAME,
+                "time": datetime.now().isoformat(),
+            }
+        )
         os.remove(tmp)
         return JSONResponse(result)
     except Exception as e:
         os.remove(tmp)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/transcribe_ts")
-async def transcribe_ts(request: Request, file: UploadFile = File(...),
-                        language: str = Form("es")):
+async def transcribe_ts(request: Request, file: UploadFile = File(...), language: str = Form("es")):
     key = await get_key(request)
     verify_key(key)
     _check_rate(key)
@@ -390,15 +421,27 @@ async def transcribe_ts(request: Request, file: UploadFile = File(...),
         result = transcribe_audio(str(tmp), timestamps=True, language=language)
         result["filename"] = file.filename
         result["processed_at"] = datetime.now().isoformat()
-        HISTORY.append({"type": "transcription_ts", "filename": file.filename, "text": result["text"], "segments": result.get("segments", []), "model": MODEL_NAME, "time": datetime.now().isoformat()})
+        HISTORY.append(
+            {
+                "type": "transcription_ts",
+                "filename": file.filename,
+                "text": result["text"],
+                "segments": result.get("segments", []),
+                "model": MODEL_NAME,
+                "time": datetime.now().isoformat(),
+            }
+        )
         os.remove(tmp)
         return JSONResponse(result)
     except Exception as e:
         os.remove(tmp)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/compile")
-async def compile_transcriptions(request: Request, title: str = Form("Compilacion de Clases"), mode: str = Form("full")):
+async def compile_transcriptions(
+    request: Request, title: str = Form("Compilacion de Clases"), mode: str = Form("full")
+):
     key = await get_key(request)
     verify_key(key)
     _check_rate(key)
@@ -408,29 +451,34 @@ async def compile_transcriptions(request: Request, title: str = Form("Compilacio
     compiled = []
     for i, h in enumerate(HISTORY, 1):
         if h["type"] in ("transcription", "transcription_ts"):
-            compiled.append(f"\n{'='*60}\nCLASE {i}: {h['filename']}\n{'='*60}\n\n{h['text']}\n")
+            compiled.append(f"\n{'=' * 60}\nCLASE {i}: {h['filename']}\n{'=' * 60}\n\n{h['text']}\n")
 
     full_text = "\n".join(compiled)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     txt_path = str(TEMP_DIR / f"compilado_{ts}.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(f"{title}\nCompilado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nModelo: Whisper {MODEL_NAME}\nTotal clases: {len(compiled)}\n{'='*60}\n\n")
+        f.write(
+            f"{title}\nCompilado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nModelo: Whisper {MODEL_NAME}\nTotal clases: {len(compiled)}\n{'=' * 60}\n\n"
+        )
         f.write(full_text)
 
     pdf_path = generate_pdf(full_text, title=title)
 
-    return JSONResponse({
-        "status": "compiled",
-        "title": title,
-        "classes_count": len(compiled),
-        # La clave NUNCA va en la URL (se filtra a logs de ngrok/historial):
-        # /download la exige via header X-API-Key (o query/form si el cliente
-        # la anade explicitamente).
-        "txt_url": f"/download?file={Path(txt_path).name}",
-        "pdf_url": f"/download?file={Path(pdf_path).name}",
-        "preview": full_text[:2000] + "..." if len(full_text) > 2000 else full_text
-    })
+    return JSONResponse(
+        {
+            "status": "compiled",
+            "title": title,
+            "classes_count": len(compiled),
+            # La clave NUNCA va en la URL (se filtra a logs de ngrok/historial):
+            # /download la exige via header X-API-Key (o query/form si el cliente
+            # la anade explicitamente).
+            "txt_url": f"/download?file={Path(txt_path).name}",
+            "pdf_url": f"/download?file={Path(pdf_path).name}",
+            "preview": full_text[:2000] + "..." if len(full_text) > 2000 else full_text,
+        }
+    )
+
 
 @app.get("/download")
 async def download(request: Request, file: str):
@@ -444,12 +492,14 @@ async def download(request: Request, file: str):
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return FileResponse(str(fpath), filename=fpath.name)
 
+
 @app.get("/history")
 async def get_history(request: Request):
     key = await get_key(request)
     verify_key(key)
     _check_rate(key)
     return JSONResponse({"history": HISTORY})
+
 
 @app.post("/clear")
 async def clear_history(request: Request):
@@ -458,13 +508,26 @@ async def clear_history(request: Request):
     _check_rate(key)
     HISTORY.clear()
     for f in TEMP_DIR.glob("*"):
-        try: f.unlink()
-        except: pass
+        try:
+            f.unlink()
+        except:
+            pass
     return JSONResponse({"status": "cleared"})
+
 
 if __name__ == "__main__":
     # Dependencias SOLO al ejecutar como script (no al importar como modulo).
-    for pkg in ["fastapi", "uvicorn", "pyngrok", "python-multipart", "fpdf2", "openai-whisper", "torch", "numpy", "scipy"]:
+    for pkg in [
+        "fastapi",
+        "uvicorn",
+        "pyngrok",
+        "python-multipart",
+        "fpdf2",
+        "openai-whisper",
+        "torch",
+        "numpy",
+        "scipy",
+    ]:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", pkg])
     try:
         if NGROK_TOKEN:
@@ -478,11 +541,11 @@ if __name__ == "__main__":
         print("   o usa el servidor solo en local: http://localhost:8000")
         public_url = "http://localhost:8000"
 
-    print("\n" + "="*60)
-    print(f"SERVIDOR AUDIOCLASS CLOUD v9.1 ACTIVO")
+    print("\n" + "=" * 60)
+    print("SERVIDOR AUDIOCLASS CLOUD v9.1 ACTIVO")
     print(f"URL: {public_url}")
     print(f"API Key: {API_KEY}   <- copiala a AudioClass -> Configuracion -> Clave Colab")
     print(f"Modelo: {MODEL_NAME} | Dispositivo: {DEVICE.upper()}")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

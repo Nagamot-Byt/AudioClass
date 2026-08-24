@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """optimizar_mic.py — Optimizador del microfono para AudioClass (Windows).
 
 Diagnostica y corrige el problema de "grabaciones en silencio / vu_low bajo":
@@ -18,12 +17,27 @@ Diagnostica y corrige el problema de "grabaciones en silencio / vu_low bajo":
 Sin dependencias: llama a CoreAudio directamente con ctypes (vtable COM).
 Uso:  python optimizar_mic.py [--apply] [--test] [--dur 4]
 """
+
 import re
 import sys
 import time
-from ctypes import (CFUNCTYPE, POINTER, Structure, WinDLL, byref, c_bool,
-                    c_float, c_int, c_long, c_ubyte, c_ulong, c_ushort,
-                    c_void_p, c_wchar_p, cast)
+from ctypes import (
+    CFUNCTYPE,
+    POINTER,
+    Structure,
+    WinDLL,
+    byref,
+    c_bool,
+    c_float,
+    c_int,
+    c_long,
+    c_ubyte,
+    c_ulong,
+    c_ushort,
+    c_void_p,
+    c_wchar_p,
+    cast,
+)
 
 import numpy as np
 import sounddevice as sd
@@ -39,17 +53,18 @@ except Exception:
 # ── CoreAudio via ctypes ────────────────────────────────────────────────────
 HRESULT = c_long
 
+
 class GUID(Structure):
-    _fields_ = [("Data1", c_ulong), ("Data2", c_ushort), ("Data3", c_ushort),
-                ("Data4", c_ubyte * 8)]
+    _fields_ = [("Data1", c_ulong), ("Data2", c_ushort), ("Data3", c_ushort), ("Data4", c_ubyte * 8)]
+
 
 def guid(s):
     """Convierte '{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}' a GUID. Data1-3 son
     valores (ctypes los guarda little-endian en memoria); Data4 son bytes."""
     s = s.strip("{}").replace("-", "")
     b = bytes.fromhex(s)
-    return GUID(int(b[0:4].hex(), 16), int(b[4:6].hex(), 16),
-                int(b[6:8].hex(), 16), (c_ubyte * 8)(*b[8:16]))
+    return GUID(int(b[0:4].hex(), 16), int(b[4:6].hex(), 16), int(b[6:8].hex(), 16), (c_ubyte * 8)(*b[8:16]))
+
 
 # GUIDs verificados (mmdeviceapi.h / endpointvolume.h / devicetopology.h)
 G_CLSID_MMDEVICE_ENUM = guid("BCDE0395-E52F-467C-8E3D-C4579291692E")
@@ -76,8 +91,8 @@ _ole32.CoCreateInstance.argtypes = [POINTER(GUID), c_void_p, c_ulong, POINTER(GU
 
 def _vcall(this, idx, restype, argtypes):
     """Llama al metodo 'idx' de la vtable COM del puntero 'this'."""
-    vt = cast(this, POINTER(c_void_p)).contents.value      # direccion de la vtable
-    slot = (c_void_p * (idx + 1)).from_address(vt)[idx]    # funcion del slot idx
+    vt = cast(this, POINTER(c_void_p)).contents.value  # direccion de la vtable
+    slot = (c_void_p * (idx + 1)).from_address(vt)[idx]  # funcion del slot idx
     func_addr = slot.value if hasattr(slot, "value") else int(slot)
     fn = CFUNCTYPE(restype, c_void_p, *argtypes)(func_addr)
     return fn
@@ -92,8 +107,9 @@ def _qi(iface, iid):
 
 def _create_enumerator():
     p = c_void_p()
-    hr = _ole32.CoCreateInstance(byref(G_CLSID_MMDEVICE_ENUM), None, CLSCTX_INPROC_SERVER,
-                                 byref(G_IMMDEVICE_ENUM), byref(p))
+    hr = _ole32.CoCreateInstance(
+        byref(G_CLSID_MMDEVICE_ENUM), None, CLSCTX_INPROC_SERVER, byref(G_IMMDEVICE_ENUM), byref(p)
+    )
     if hr != 0:
         raise RuntimeError(f"CoCreateInstance MMDeviceEnumerator HR={hr:#x}")
     return p
@@ -103,7 +119,9 @@ def _default_capture_device():
     enum = _create_enumerator()
     dev = c_void_p()
     # IMMDeviceEnumerator::GetDefaultAudioEndpoint (slot 4)
-    hr = _vcall(enum.value, 4, HRESULT, (c_int, c_int, POINTER(c_void_p)))(enum.value, ECapture, EMultimedia, byref(dev))
+    hr = _vcall(enum.value, 4, HRESULT, (c_int, c_int, POINTER(c_void_p)))(
+        enum.value, ECapture, EMultimedia, byref(dev)
+    )
     if hr != 0:
         raise RuntimeError(f"GetDefaultAudioEndpoint HR={hr:#x}")
     return dev
@@ -113,7 +131,9 @@ def _all_capture_devices():
     enum = _create_enumerator()
     col = c_void_p()
     # IMMDeviceEnumerator::EnumAudioEndpoints (slot 3)
-    hr = _vcall(enum.value, 3, HRESULT, (c_int, c_int, POINTER(c_void_p)))(enum.value, ECapture, DEVICE_STATE_ACTIVE, byref(col))
+    hr = _vcall(enum.value, 3, HRESULT, (c_int, c_int, POINTER(c_void_p)))(
+        enum.value, ECapture, DEVICE_STATE_ACTIVE, byref(col)
+    )
     if hr != 0:
         return []
     n = c_ulong()
@@ -147,9 +167,14 @@ class PROPERTYKEY(Structure):
 class PROPVARIANT(Structure):
     """Solo se usa el campo pwszVal (VT_LPWSTR) de la union; los 3 wReserved
     alinean la union al offset 8 del encabezado PROPVARIANT."""
-    _fields_ = [("vt", c_ushort), ("wReserved1", c_ushort),
-                ("wReserved2", c_ushort), ("wReserved3", c_ushort),
-                ("pwszVal", c_wchar_p)]
+
+    _fields_ = [
+        ("vt", c_ushort),
+        ("wReserved1", c_ushort),
+        ("wReserved2", c_ushort),
+        ("wReserved3", c_ushort),
+        ("pwszVal", c_wchar_p),
+    ]
 
 
 def _device_friendly_name(dev):
@@ -168,8 +193,7 @@ def _device_friendly_name(dev):
     pv = PROPVARIANT()
     try:
         # IPropertyStore::GetValue (slot 5)
-        hr = _vcall(st.value, 5, HRESULT, (POINTER(PROPERTYKEY), POINTER(PROPVARIANT)))(
-            st.value, byref(key), byref(pv))
+        hr = _vcall(st.value, 5, HRESULT, (POINTER(PROPERTYKEY), POINTER(PROPVARIANT)))(st.value, byref(key), byref(pv))
         if hr != 0 or not pv.pwszVal:
             return None
         return pv.pwszVal
@@ -205,7 +229,8 @@ def _activate(dev, iid):
     out = c_void_p()
     # IMMDevice::Activate (slot 3)
     hr = _vcall(dev, 3, HRESULT, (POINTER(GUID), c_int, c_void_p, POINTER(c_void_p)))(
-        dev, byref(iid), CLSCTX_INPROC_SERVER, None, byref(out))
+        dev, byref(iid), CLSCTX_INPROC_SERVER, None, byref(out)
+    )
     return out if hr == 0 else None
 
 
@@ -276,16 +301,25 @@ def apply_boost(dev):
                     for chn in range(ch.value):
                         mn, mx, stp = c_float(), c_float(), c_float()
                         cur = c_float()
-                        safe(_vcall(vol.value, 5, HRESULT, (c_ulong, POINTER(c_float), POINTER(c_float), POINTER(c_float))),
-                             vol.value, chn, byref(mn), byref(mx), byref(stp))
+                        safe(
+                            _vcall(
+                                vol.value, 5, HRESULT, (c_ulong, POINTER(c_float), POINTER(c_float), POINTER(c_float))
+                            ),
+                            vol.value,
+                            chn,
+                            byref(mn),
+                            byref(mx),
+                            byref(stp),
+                        )
                         safe(_vcall(vol.value, 4, HRESULT, (c_ulong, POINTER(c_float))), vol.value, chn, byref(cur))
                         if mx.value > 0.5:
                             tgt = min(mx.value, 30.0)
-                            safe(_vcall(vol.value, 6, HRESULT, (c_ulong, c_float, c_void_p)),
-                                 vol.value, chn, tgt, None)
+                            safe(_vcall(vol.value, 6, HRESULT, (c_ulong, c_float, c_void_p)), vol.value, chn, tgt, None)
                             log.append(f"boost nodo volumen a +{tgt:.0f} dB (rango [{mn.value:.0f},{mx.value:.0f}] dB)")
                         else:
-                            log.append(f"nodo volumen sin boost (max {mx.value:.0f} dB), nivel actual {cur.value:.1f} dB")
+                            log.append(
+                                f"nodo volumen sin boost (max {mx.value:.0f} dB), nivel actual {cur.value:.1f} dB"
+                            )
                 mute = _qi(ci.value, G_AUDIO_MUTE)
                 if mute and mute.value:
                     m = c_bool()
@@ -343,8 +377,11 @@ def list_mics():
 def privacy_mic():
     try:
         import winreg
-        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                           r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone")
+
+        k = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone",
+        )
         v = winreg.QueryValueEx(k, "Value")[0]
         k.Close()
         return v
@@ -370,8 +407,7 @@ def measure_signal(dur=4.0, on_level=None, device=None):
             on_level(r)
 
     try:
-        with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                            blocksize=800, callback=cb, device=device):
+        with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32, blocksize=800, callback=cb, device=device):
             sd.sleep(int(dur * 1000))
     except Exception as e:
         return {"dur": 0.0, "piso": 0.0, "p90": 0.0, "peak": 0.0, "veredicto": f"ERROR: {e}"}
@@ -379,8 +415,7 @@ def measure_signal(dur=4.0, on_level=None, device=None):
     n = len(x)
     if n < SR:
         return {"dur": n / SR, "piso": 0.0, "p90": 0.0, "peak": 0.0, "veredicto": "SIN_DATOS"}
-    fr = np.array([np.sqrt(np.mean(c.astype(np.float64) ** 2))
-                   for c in np.array_split(x, max(1, n // 1600))])
+    fr = np.array([np.sqrt(np.mean(c.astype(np.float64) ** 2)) for c in np.array_split(x, max(1, n // 1600))])
     piso = float(np.percentile(fr, 10))
     p90 = float(np.percentile(fr, 90))
     pk = float(np.max(np.abs(x)))
@@ -424,18 +459,20 @@ def main():
     except Exception:
         pass
 
-    print(f"\n[1] DISPOSITIVO POR DEFECTO")
+    print("\n[1] DISPOSITIVO POR DEFECTO")
     print(f"    {sname}  (id {did})")
     if st:
         print(f"    Nivel: {st[0]}%  |  Mute: {'SÍ [!]' if st[1] else 'No'}")
     else:
         print("    (nivel no accesible)")
 
-    print(f"\n[2] PERMISO DE MICRÓFONO (privacidad Windows)")
+    print("\n[2] PERMISO DE MICRÓFONO (privacidad Windows)")
     pv = privacy_mic()
-    print(f"    {pv}{'  DENEGADO — permite el acceso en Configuración > Privacidad > Micrófono' if pv != 'Allow' else ''}")
+    print(
+        f"    {pv}{'  DENEGADO — permite el acceso en Configuración > Privacidad > Micrófono' if pv != 'Allow' else ''}"
+    )
 
-    print(f"\n[3] TODOS LOS MICRÓFONOS ACTIVOS")
+    print("\n[3] TODOS LOS MICRÓFONOS ACTIVOS")
     try:
         for did2, lvl, mute in list_mics():
             mark = " [DEFAULT]" if did2 == dname else ""
@@ -444,9 +481,11 @@ def main():
     except Exception as e:
         print(f"    (no enumerable: {e})")
 
-    print(f"\n[4] PRUEBA DE SEÑAL")
+    print("\n[4] PRUEBA DE SEÑAL")
     antes = test_signal(dur)
-    print(f"    duración {antes['dur']:.1f}s | piso {antes['piso']:.4f} | p90(voz) {antes['p90']:.4f} | peak {antes['peak']:.3f}")
+    print(
+        f"    duración {antes['dur']:.1f}s | piso {antes['piso']:.4f} | p90(voz) {antes['p90']:.4f} | peak {antes['peak']:.3f}"
+    )
     print(f"    -> {antes['veredicto']}")
 
     if not do_apply:
@@ -477,7 +516,9 @@ def main():
 
     print("\n[5] PRUEBA DE SEÑAL POST-OPTIMIZACIÓN")
     despues = test_signal(dur)
-    print(f"    duración {despues['dur']:.1f}s | piso {despues['piso']:.4f} | p90(voz) {despues['p90']:.4f} | peak {despues['peak']:.3f}")
+    print(
+        f"    duración {despues['dur']:.1f}s | piso {despues['piso']:.4f} | p90(voz) {despues['p90']:.4f} | peak {despues['peak']:.3f}"
+    )
     print(f"    -> {despues['veredicto']}")
 
     print("\n" + "=" * 62)

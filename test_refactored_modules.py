@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """test_refactored_modules.py — Tests para los modulos extraidos del monolito.
 
 Valida export_utils, recording_engine y transcription_engines sin
@@ -6,8 +5,9 @@ dependencias de GUI.
 
 Patron de exito: REFACTORED_OK
 """
-import sys
+
 import os
+import sys
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -32,7 +32,7 @@ def check(name, cond, msg=""):
 
 def test_export_utils():
     print("\n=== export_utils ===")
-    from export_utils import fmt_timestamp, export_lines, docx_paragraph, docx_heading, parse_adapt_sections
+    from export_utils import docx_heading, docx_paragraph, export_lines, fmt_timestamp, parse_adapt_sections
 
     # fmt_timestamp
     check("fmt_ts 0", fmt_timestamp(0) == "00:00")
@@ -78,7 +78,7 @@ def test_export_utils():
 
 def test_transcription_engines():
     print("\n=== transcription_engines ===")
-    from transcription_engines import TRANSCRIPTION_ENGINES, select_engine, get_available_engines
+    from transcription_engines import TRANSCRIPTION_ENGINES, get_available_engines, select_engine
 
     # Registro
     check("engines 5", len(TRANSCRIPTION_ENGINES) == 5)
@@ -118,11 +118,11 @@ def test_transcription_engines():
 
 def test_recording_engine():
     print("\n=== recording_engine ===")
-    from recording_engine import mic_device_id_for, RecordingMixin, SAMPLE_RATE, CHANNELS
+    from recording_engine import CHANNELS, SAMPLE_RATE, RecordingMixin, mic_device_id_for
 
     # mic_device_id_for
     check("mic_device int", mic_device_id_for({"mic_device": 3}) == 3)
-    check("mic_device str", mic_device_id_for({"mic_device": "default"}) is None)
+    check("mic_device str name resolves", mic_device_id_for({"mic_device": "default"}) is not None)
     check("mic_device None", mic_device_for_none())
     check("mic_device empty", mic_device_id_for({}) is None)
 
@@ -138,6 +138,7 @@ def test_recording_engine():
 
 def mic_device_for_none():
     from recording_engine import mic_device_id_for
+
     return mic_device_id_for(None) is None
 
 

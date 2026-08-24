@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Valida el contraste WCAG sobre el CODIGO EMPAQUETADO en el exe.
 
 1. Extrae audioclass_v91 del CArchive del exe (bytecode marshal).
@@ -7,11 +6,12 @@
    usuario) sobre ese modulo, en dark y light: principal + dialogo de config
    + wizard de bienvenida (first_run=True, instancia fresca por tema).
 """
+
+import io
+import json
+import marshal
 import os
 import sys
-import json
-import io
-import marshal
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +25,10 @@ code = marshal.loads(c.extract("audioclass_v91"))
 
 # ── 1) Marcas de los fixes de contraste en el bytecode ────────────────────
 import types
+
 strings = set()
+
+
 def walk(cd):
     for const in cd.co_consts:
         if isinstance(const, str):
@@ -34,6 +37,8 @@ def walk(cd):
             walk(const)
     for n in cd.co_names:
         strings.add(n)
+
+
 walk(code)
 CODE_MARKERS = {
     "head_text (fix header claro)": "head_text",
@@ -49,7 +54,8 @@ for label, m in CODE_MARKERS.items():
     bad = bad or not ok
 
 # ── 2) Tema JSON empaquetado identico al fuente ────────────────────────────
-import zipimport  # noqa: F401 (para no romper la importacion de abajo)
+import zipimport
+
 entry_theme = r"assets\audioclass_theme.json"
 exe_theme = json.loads(c.extract(entry_theme).decode("utf-8"))
 with open(os.path.join(ROOT, "assets", "audioclass_theme.json"), encoding="utf-8") as f:
@@ -78,6 +84,7 @@ ac.App._msg = lambda self, kind, title, msg: None
 
 import wcag_check as wc
 
+
 def run_theme(app, dark, scope=""):
     app.dark = dark
     app._apply_palette()
@@ -91,6 +98,7 @@ def run_theme(app, dark, scope=""):
     for r, fg, bg, cls, txt, st in viol[:10]:
         print(f"    VIOLA {r:.2f}:1 {cls} fg={fg} bg={bg} '{txt}'")
     return len(viol)
+
 
 app = ac.App()
 for _ in range(6):
@@ -115,6 +123,7 @@ if top is not None:
         app.update()
 app.destroy()
 
+
 # Wizard de bienvenida (first_run=True): se valida COMO SE CREA, con una
 # instancia fresca por tema (el wizard solo se muestra en el arranque con el
 # tema de la config; no hay toggle dentro).
@@ -135,6 +144,7 @@ def run_wizard(theme):
         print(f"    VIOLA {r:.2f}:1 {cls} fg={fg} bg={bg} '{txt}'")
     wapp.destroy()
     return len(viol)
+
 
 total += run_wizard("dark")
 total += run_wizard("light")

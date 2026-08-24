@@ -1,0 +1,16 @@
+{
+  "id": "mapa_conceptual",
+  "name": "Mapa Conceptual (Texto)",
+  "description": "Jerarquía visual en texto",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "🗺️",
+  "tags": ["mapa", "conceptual", "jerarquia", "visual"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Genera un MAPA CONCEPTUAL en formato texto jerárquico a partir de esta transcripción.\n\nInstrucciones:\n- Usa indentación con tabs para mostrar jerarquía\n- Concepto principal al nivel 0\n- Subconceptos indentados\n- Relaciones claras entre ideas\n- Formato:\n  CONCEPTO PRINCIPAL\n    ├─ Subconcepto A\n    │  ├─ Detalle 1\n    │  └─ Detalle 2\n    └─ Subconcepto B\n\nTranscripción:\n{TEXT}\n\nMapa Conceptual:",
+  "desc": "Jerarquía visual en texto",
+  "max_tokens": 4096,
+  "temperature": 0.2
+}

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_benchmark_models.py — Benchmark reproducible tiny/base/small.
 
 Reutiliza la logica de WER/normalizacion de bench_models.py y el MISMO motor
@@ -29,6 +28,7 @@ Si faltan prerequisitos (WAV de referencia, guion o modelos tiny/base en cache
 o en models/) el test hace SKIP con exit 0 y un mensaje claro, en vez de
 descargar ~500 MB o fallar en maquinas sin los modelos.
 """
+
 import json
 import os
 import statistics
@@ -50,6 +50,7 @@ def _motor_backend():
     """Backend real del motor (faster-whisper u openai-whisper)."""
     try:
         from audioclass_core import LocalWhisperEngine
+
         return LocalWhisperEngine("tiny").backend
     except Exception:
         return "desconocido"
@@ -59,6 +60,7 @@ def _whisper_version():
     """Version de openai-whisper instalada (para trazabilidad del benchmark)."""
     try:
         import whisper
+
         return getattr(whisper, "__version__", "desconocida")
     except Exception:
         return "no instalado"
@@ -124,8 +126,7 @@ def main():
 
     ref = bm.normalize(bm.load_reference())
     dur = bm.audio_duration(WAV)
-    print(f"Guion de referencia: {len(ref)} palabras | audio: {dur:.1f}s | "
-          f"modelos disponibles: {sorted(avail)}")
+    print(f"Guion de referencia: {len(ref)} palabras | audio: {dur:.1f}s | modelos disponibles: {sorted(avail)}")
 
     results = {}
     for name in MODELS:
@@ -134,16 +135,17 @@ def main():
         for i in range(runs):
             out = _run_once(name, ref, dur)
             if out is None:
-                print(f"BENCH_MODELS_FAIL: {name} transcribio vacio "
-                      f"(corrida {i + 1}/{runs})")
+                print(f"BENCH_MODELS_FAIL: {name} transcribio vacio (corrida {i + 1}/{runs})")
                 return 1
             w, elapsed, res = out
             wers.append(w)
             times.append(elapsed)
             metas.append(res)
-            print(f"  {name} corrida {i + 1}/{runs}: WER {w:5.1f}%  "
-                  f"transcribe {elapsed:5.1f}s  idioma {res.get('language')}  "
-                  f"chunks {res.get('chunks')}")
+            print(
+                f"  {name} corrida {i + 1}/{runs}: WER {w:5.1f}%  "
+                f"transcribe {elapsed:5.1f}s  idioma {res.get('language')}  "
+                f"chunks {res.get('chunks')}"
+            )
 
         median_w = statistics.median(wers)
         mean_w = statistics.mean(wers)
@@ -169,8 +171,10 @@ def main():
             "language": res.get("language"),
             "text_len": len(res.get("text", "") or ""),
         }
-        print(f"  -> {name}: mediana {median_w:.1f}% | media {mean_w:.1f}% | "
-              f"std {std_w:.2f} | runs {[round(x,1) for x in wers]}")
+        print(
+            f"  -> {name}: mediana {median_w:.1f}% | media {mean_w:.1f}% | "
+            f"std {std_w:.2f} | runs {[round(x, 1) for x in wers]}"
+        )
 
     # ── Guardar resultados (trazabilidad) ─────────────────────────────────────
     record = {
@@ -200,10 +204,12 @@ def main():
     tiny_std = results["tiny"]["wer_std_pct"]
     base_std = results["base"]["wer_std_pct"]
     ok = (base_med + MARGIN_PP) < tiny_med
-    print(f"\nmediana base ({base_med:.1f}%±{base_std:.1f}) vs mediana tiny "
-          f"({tiny_med:.1f}%±{tiny_std:.1f}): "
-          f"{'supera [OK]' if base_med < tiny_med else 'NO supera [X]'} "
-          f"(margen exigido {MARGIN_PP} pp sobre la mediana)")
+    print(
+        f"\nmediana base ({base_med:.1f}%±{base_std:.1f}) vs mediana tiny "
+        f"({tiny_med:.1f}%±{tiny_std:.1f}): "
+        f"{'supera [OK]' if base_med < tiny_med else 'NO supera [X]'} "
+        f"(margen exigido {MARGIN_PP} pp sobre la mediana)"
+    )
     print("BENCH_MODELS_OK" if ok else "BENCH_MODELS_FAIL")
     return 0 if ok else 1
 

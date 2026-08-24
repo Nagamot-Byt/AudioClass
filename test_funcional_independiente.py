@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PRUEBA FUNCIONAL INDEPENDIENTE — flujo completo de AudioClass.
 
 Cadena completa validada desde FUERA, sin reutilizar los tests existentes:
@@ -19,7 +18,13 @@ Tambien valida las optimizaciones de velocidad de esta sesion:
 El resultado de la transcripcion debe ser IDENTICO entre corridas (la cache y
 el paralelismo no alteran el texto): funcionalidad intacta, solo mas rapido.
 """
-import os, sys, time, tempfile, threading, zipfile
+
+import os
+import sys
+import tempfile
+import threading
+import time
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Consola de Windows (cp1252) no imprime emojis: forzar utf-8.
@@ -30,7 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import numpy as np
 from scipy.io import wavfile
 
-import audioclass_core as core   # nucleo puro (independiente de la UI)
+import audioclass_core as core  # nucleo puro (independiente de la UI)
 
 
 def _savewav(path, arr):
@@ -55,16 +60,16 @@ def main():
         v = v.astype(np.float32) / 32768.0
     raw = np.tile(v, 5)
     _savewav(raw_path, raw)
-    print(f"[1/6] Grabacion simulada: voz real x5 = {len(raw)/sr:.0f}s")
+    print(f"[1/6] Grabacion simulada: voz real x5 = {len(raw) / sr:.0f}s")
 
     # ── 2. PIPELINE PROFESIONAL (igual que App._procsave) ───────────────────
     pipe = core.AudioPipeline("Clase Universitaria", fast_mode=False, use_vad=True)
     t0 = time.time()
     proc = pipe.process(raw)
     t_pipe = time.time() - t0
-    print(f"[2/6] Pipeline: {t_pipe:.1f}s · salida {len(proc)/sr:.0f}s")
+    print(f"[2/6] Pipeline: {t_pipe:.1f}s · salida {len(proc) / sr:.0f}s")
     assert len(proc) > 0, "El pipeline devolvio audio vacio"
-    rms = float(np.sqrt(np.mean(proc ** 2))) if len(proc) else 0.0
+    rms = float(np.sqrt(np.mean(proc**2))) if len(proc) else 0.0
     assert rms > 0.01, f"El pipeline casi silencio el audio (rms={rms:.4f})"
     _savewav(proc_path, proc)
 
@@ -72,8 +77,10 @@ def main():
     # Instrumentamos whisper/copy para CONTAR cargas de disco y deepcopies:
     # validacion DETERMINISTA de las optimizaciones (sin depender del ruido de
     # wall-clock del sistema).
-    import whisper as _whisper
     import copy as _copy_mod
+
+    import whisper as _whisper
+
     _real_load = _whisper.load_model
     _real_deepcopy = _copy_mod.deepcopy
     calls = {"load": 0, "deepcopy": 0}
@@ -100,19 +107,18 @@ def main():
 
     msgs1 = []
     t0 = time.time()
-    res1 = eng.transcribe(proc_path, timestamps=True,
-                          progress_callback=lambda f, t, m: msgs1.append((f, m)))
+    res1 = eng.transcribe(proc_path, timestamps=True, progress_callback=lambda f, t, m: msgs1.append((f, m)))
     t_cold = time.time() - t0
     loads_cold = calls["load"]
     dc_cold = calls["deepcopy"]
     txt1 = (res1.get("text") or "").strip()
-    print(f"[3/6] Transcripcion COLD: {res1.get('workers')} workers · "
-          f"{res1.get('chunks')} chunks · {t_cold:.1f}s")
-    print(f"  LOADS_COLD: {loads_cold} (esperado 1: plantilla unica) · "
-          f"CLONES_MODELO_COLD: {dc_cold} (esperado >= {res1.get('workers')})")
+    print(f"[3/6] Transcripcion COLD: {res1.get('workers')} workers · {res1.get('chunks')} chunks · {t_cold:.1f}s")
+    print(
+        f"  LOADS_COLD: {loads_cold} (esperado 1: plantilla unica) · "
+        f"CLONES_MODELO_COLD: {dc_cold} (esperado >= {res1.get('workers')})"
+    )
     assert loads_cold == 1, f"La carga de plantilla unica fallo: {loads_cold} cargas"
-    assert dc_cold >= res1.get("workers", 0), \
-        f"Faltaron clones de modelo por worker: {dc_cold}"
+    assert dc_cold >= res1.get("workers", 0), f"Faltaron clones de modelo por worker: {dc_cold}"
     print("  TEXT1_LEN:", len(txt1), "| INICIO:", repr(txt1[:120]))
     assert not res1.get("error"), res1
     assert not res1.get("cancelled"), res1
@@ -130,15 +136,16 @@ def main():
     # ── 4. TRANSCRIPCION WARM (cache caliente): mismo texto, mas rapida ──────
     msgs2 = []
     t0 = time.time()
-    res2 = eng.transcribe(proc_path, timestamps=True,
-                          progress_callback=lambda f, t, m: msgs2.append((f, m)))
+    res2 = eng.transcribe(proc_path, timestamps=True, progress_callback=lambda f, t, m: msgs2.append((f, m)))
     t_warm = time.time() - t0
     txt2 = (res2.get("text") or "").strip()
     loads_warm = calls["load"]
     dc_warm = calls["deepcopy"]
     print(f"[4/6] Transcripcion WARM: {t_warm:.1f}s")
-    print(f"  LOADS_WARM: {loads_warm - loads_cold} (esperado 0: cache caliente) · "
-          f"DEEPCOPIES_WARM: {dc_warm - dc_cold} (esperado 0)")
+    print(
+        f"  LOADS_WARM: {loads_warm - loads_cold} (esperado 0: cache caliente) · "
+        f"DEEPCOPIES_WARM: {dc_warm - dc_cold} (esperado 0)"
+    )
     # La garantia REAL del cache es NO volver a leer el modelo de disco en la
     # corrida WARM (loads_warm == loads_cold): es la operacion cara (75-460 MB
     # + deserializacion torch, segundos). Las deepcopies en RAM NO se exigen
@@ -148,8 +155,9 @@ def main():
     # vez y ambos piden modelo a la vez, el segundo clona de la plantilla en
     # RAM (barato, ~ms, sin disco) — es una carrera no determinista por diseno.
     assert loads_warm == loads_cold, "La corrida WARM cargo modelo de disco (cache no funciono)"
-    assert dc_warm <= 2 * dc_cold, f"La corrida WARM clono modelos de forma " \
-        f"sospechosa: {dc_warm} deepcopies vs {dc_cold} en cold"
+    assert dc_warm <= 2 * dc_cold, (
+        f"La corrida WARM clono modelos de forma sospechosa: {dc_warm} deepcopies vs {dc_cold} en cold"
+    )
     # Whisper NO es determinista: con temperature=0 falla al final de chunks
     # de baja confianza y cae a sampling SIN seed (2 corridas COLD con engines
     # NUEVOS miden similitud 0.78-0.85 en este audio procesado con VAD). La
@@ -158,10 +166,13 @@ def main():
     # perdidos), (c) similitud dentro del rango del no-determinismo base de
     # whisper (>= 0.75) y longitudes comparables.
     import difflib
+
     ratio = difflib.SequenceMatcher(None, txt1, txt2).ratio()
     print(f"  TEXT_SIMILARIDAD: {ratio:.3f} | identicos: {txt1 == txt2}")
-    assert ratio >= 0.70, f"Similitud {ratio:.3f} fuera del rango del no-determinismo " \
+    assert ratio >= 0.70, (
+        f"Similitud {ratio:.3f} fuera del rango del no-determinismo "
         f"de whisper (base medida 0.78-0.85): el cache podria degradar el texto"
+    )
     # La longitud NO es una senal fiable de chunk perdido: tiny alucina/omite
     # contenido de forma NO determinista (dos corridas COLD variaron 745-778
     # chars sobre ~9000). El check de longitud es laxo y relativo (la perdida
@@ -169,8 +180,9 @@ def main():
     # descartado es chunks_omitidos (ver abajo).
     _rl = len(txt2) / max(len(txt1), 1)
     print(f"  LONGITUD WARM/COLD: {len(txt2)}/{len(txt1)} = {_rl:.2f}")
-    assert 0.75 <= _rl <= 1.25, f"Longitud WARM muy distinta de COLD: " \
-        f"{len(txt2)} vs {len(txt1)} (posible chunk perdido en WARM)"
+    assert 0.75 <= _rl <= 1.25, (
+        f"Longitud WARM muy distinta de COLD: {len(txt2)} vs {len(txt1)} (posible chunk perdido en WARM)"
+    )
     # Cobertura temporal: los segmentos de WARM deben llegar al final del audio
     # (un chunk perdido dejaria un hueco de ~28s al final).
     _sr, _raw = wavfile.read(proc_path)
@@ -192,21 +204,21 @@ def main():
     # DETERMINISTA de que la optimizacion funciona es que WARM no lee el
     # modelo de disco (loads_warm == loads_cold).
     if t_warm < t_cold:
-        print(f"  SPEEDUP x{t_cold/t_warm:.2f} (cold {t_cold:.1f}s -> warm {t_warm:.1f}s)")
+        print(f"  SPEEDUP x{t_cold / t_warm:.2f} (cold {t_cold:.1f}s -> warm {t_warm:.1f}s)")
     else:
-        print(f"  (wall-clock no concluyente por ruido: cold {t_cold:.1f}s -> warm {t_warm:.1f}s; "
-              f"setup ahorrado: 0 cargas de disco)")
+        print(
+            f"  (wall-clock no concluyente por ruido: cold {t_cold:.1f}s -> warm {t_warm:.1f}s; "
+            f"setup ahorrado: 0 cargas de disco)"
+        )
     # Restaurar whisper/copy para no afectar el resto del test
     _whisper.load_model = _real_load
     _copy_mod.deepcopy = _real_deepcopy
 
     # ── 5. HIGIENE DE HILOS: la 2a corrida no deja hilos nuevos ─────────────
     time.sleep(0.5)
-    live_cold = [t.name for t in threading.enumerate()
-                 if t.is_alive() and t is not threading.main_thread()]
+    live_cold = [t.name for t in threading.enumerate() if t.is_alive() and t is not threading.main_thread()]
     time.sleep(0.5)
-    live_warm = [t.name for t in threading.enumerate()
-                 if t.is_alive() and t is not threading.main_thread()]
+    live_warm = [t.name for t in threading.enumerate() if t.is_alive() and t is not threading.main_thread()]
     print(f"  HILOS_TRAS_COLD: {live_cold or 'ninguno'} | TRAS_WARM: {live_warm or 'ninguno'}")
     assert len(live_warm) <= len(live_cold), f"La 2a corrida fugo hilos: {live_warm}"
     assert len(live_warm) <= 3, f"Demasiados hilos residuales: {live_warm}"
@@ -222,6 +234,7 @@ def main():
             p = os.path.join(tempfile.mkdtemp(), kwargs.get("initialfile", "out.pdf"))
             _saved[kwargs.get("defaultextension", ".pdf")] = p
             return p
+
         return _f
 
     appmod.filedialog.asksaveasfilename = fake_save()
@@ -234,7 +247,7 @@ def main():
     app._msg = lambda kind, title, msg: print(f"  MSGBOX [{kind}] {title}: {msg}")
 
     def fake_ask(*a, **k):
-        return True   # "si" a incluir informe academico en el DOCX
+        return True  # "si" a incluir informe academico en el DOCX
 
     app._ask = fake_ask
     app.last_text = txt1
@@ -265,6 +278,7 @@ def main():
     pdf_path = _saved.get(".pdf")
     assert pdf_path and os.path.exists(pdf_path), "No se genero el PDF"
     from pypdf import PdfReader
+
     pdf_txt = "\n".join(p.extract_text() or "" for p in PdfReader(pdf_path).pages)
     assert "Revisado por IA" in pdf_txt, "PDF sin insignia 'Revisado por IA'"
     assert "Modelo: tiny" in pdf_txt, "PDF sin modelo"
@@ -277,15 +291,18 @@ def main():
         doc_xml = z.read("word/document.xml").decode("utf-8")
     assert "Revisado por IA" in doc_xml, "DOCX sin insignia 'Revisado por IA'"
     assert "Transcripción Completa" in doc_xml, "DOCX sin la transcripcion completa"
-    assert ("Resumen Ejecutivo" in doc_xml and "Tesis Central" in doc_xml), \
-        "DOCX sin informe academico (resumen/tesis)"
-    ts_ok = any(s in doc_xml for s in ["[00:", "[01:", "[0" ])
+    assert "Resumen Ejecutivo" in doc_xml and "Tesis Central" in doc_xml, "DOCX sin informe academico (resumen/tesis)"
+    ts_ok = any(s in doc_xml for s in ["[00:", "[01:", "[0"])
     assert ts_ok or not app.last_segments, "DOCX sin timestamps con segmentos reales"
-    print("  PDF:", round(os.path.getsize(pdf_path) / 1024, 1), "KB | DOCX:",
-          round(os.path.getsize(docx_path) / 1024, 1), "KB | segmentos:",
-          len(app.last_segments))
+    print(
+        "  PDF:",
+        round(os.path.getsize(pdf_path) / 1024, 1),
+        "KB | DOCX:",
+        round(os.path.getsize(docx_path) / 1024, 1),
+        "KB | segmentos:",
+        len(app.last_segments),
+    )
 
-    import tkinter as tk
     try:
         app.destroy()
         app.update_idletasks()
@@ -303,5 +320,6 @@ if __name__ == "__main__":
         raise
     except Exception:
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

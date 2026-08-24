@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_audio_quality_solver.py — Tests para audio_quality_checker y sound_error_solver
 =====================================================================================
@@ -11,19 +10,28 @@ Valida:
   - format_report_text() / format_fix_report(): formato legible
 """
 
-import sys, os, traceback
+import os
+import sys
+
 import numpy as np
 
 # Agregar directorio al path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from audio_quality_checker import (
-    check_audio_quality, check_wav_file, format_report_text,
-    AudioQualityReport, RMS_SILENCE, RMS_DEBIL, RMS_OK,
+    RMS_SILENCE,
+    check_audio_quality,
+    check_wav_file,
+    format_report_text,
 )
 from sound_error_solver import (
-    solve_audio_issues, suggest_manual_actions, format_fix_report,
-    SoundFix, _apply_gain, _normalize_clipping, _trim_silence,
+    SoundFix,
+    _apply_gain,
+    _normalize_clipping,
+    _trim_silence,
+    format_fix_report,
+    solve_audio_issues,
+    suggest_manual_actions,
 )
 
 passed = 0
@@ -53,9 +61,9 @@ t = np.arange(N) / SR
 # Audio normal (voz simulada: tono 300Hz fuerte + ruido muy suave)
 # Se usa nivel alto para que el SNR sea bueno y pase como OK
 np.random.seed(42)
-audio_normal = (0.2 * np.sin(2 * np.pi * 300 * t) +
-                0.1 * np.sin(2 * np.pi * 800 * t) +
-                0.001 * np.random.randn(N)).astype(np.float32)
+audio_normal = (
+    0.2 * np.sin(2 * np.pi * 300 * t) + 0.1 * np.sin(2 * np.pi * 800 * t) + 0.001 * np.random.randn(N)
+).astype(np.float32)
 
 # Audio silencioso
 audio_silence = (np.random.randn(N) * 0.001).astype(np.float32)
@@ -81,21 +89,22 @@ audio_mostly_silence[1000:2000] = 0.05 * np.sin(2 * np.pi * 300 * np.arange(1000
 print("\n--- check_audio_quality ---")
 
 r_normal = check_audio_quality(audio_normal, sr=SR)
-check("normal -> OK o WARN (no FAIL)", r_normal.verdict != "FAIL",
-      f"verdict={r_normal.verdict}, issues={r_normal.issues}")
+check(
+    "normal -> OK o WARN (no FAIL)", r_normal.verdict != "FAIL", f"verdict={r_normal.verdict}, issues={r_normal.issues}"
+)
 check("normal p90 > 0", r_normal.rms_p90 > 0.0, f"p90={r_normal.rms_p90}")
 check("normal peak > 0", r_normal.peak > 0.0, f"peak={r_normal.peak}")
 
 r_silence = check_audio_quality(audio_silence, sr=SR)
-check("silencio -> FAIL o WARN", r_silence.verdict in ("FAIL", "WARN"),
-      f"verdict={r_silence.verdict}")
-check("silencio tiene issue 'silence' o 'too_quiet'",
-      "silence" in r_silence.issues or "too_quiet" in r_silence.issues,
-      f"issues={r_silence.issues}")
+check("silencio -> FAIL o WARN", r_silence.verdict in ("FAIL", "WARN"), f"verdict={r_silence.verdict}")
+check(
+    "silencio tiene issue 'silence' o 'too_quiet'",
+    "silence" in r_silence.issues or "too_quiet" in r_silence.issues,
+    f"issues={r_silence.issues}",
+)
 
 r_weak = check_audio_quality(audio_weak, sr=SR)
-check("audio debil -> FAIL o WARN", r_weak.verdict in ("FAIL", "WARN"),
-      f"verdict={r_weak.verdict}")
+check("audio debil -> FAIL o WARN", r_weak.verdict in ("FAIL", "WARN"), f"verdict={r_weak.verdict}")
 check("audio debil tiene issue", len(r_weak.issues) > 0, f"issues={r_weak.issues}")
 check("audio debil auto_fixable", r_weak.auto_fixable, f"auto_fixable={r_weak.auto_fixable}")
 
@@ -112,18 +121,15 @@ check("muy corto -> FAIL", r_short.verdict == "FAIL", f"verdict={r_short.verdict
 check("muy corto issue 'too_short'", "too_short" in r_short.issues, f"issues={r_short.issues}")
 
 r_mute = check_audio_quality(audio_mostly_silence, sr=SR)
-check("mayormente silencio -> WARN o FAIL", r_mute.verdict in ("WARN", "FAIL"),
-      f"verdict={r_mute.verdict}")
-check("silence_ratio > 0.5", r_mute.silence_ratio > 0.5,
-      f"silence_ratio={r_mute.silence_ratio}")
+check("mayormente silencio -> WARN o FAIL", r_mute.verdict in ("WARN", "FAIL"), f"verdict={r_mute.verdict}")
+check("silence_ratio > 0.5", r_mute.silence_ratio > 0.5, f"silence_ratio={r_mute.silence_ratio}")
 
 
 # ── format_report_text ──────────────────────────────────────────────────────
 print("\n--- format_report_text ---")
 
 txt = format_report_text(r_normal)
-check("reporte contiene veredicto", "[OK]" in txt or "[WARN]" in txt,
-      f"txt={txt[:100]}")
+check("reporte contiene veredicto", "[OK]" in txt or "[WARN]" in txt, f"txt={txt[:100]}")
 check("reporte contiene p90", "p90" in txt)
 check("reporte contiene SNR", "SNR" in txt)
 
@@ -135,46 +141,41 @@ check("reporte FAIL contiene mensaje", "FAIL" in txt_fail)
 print("\n--- solve_audio_issues ---")
 
 fixes_normal, fixed_normal = solve_audio_issues(audio_normal, sr=SR)
-check("normal audio sin cambio significativo",
-      np.max(np.abs(fixed_normal - audio_normal)) < 0.05,
-      f"max_diff={np.max(np.abs(fixed_normal - audio_normal))}")
+check(
+    "normal audio sin cambio significativo",
+    np.max(np.abs(fixed_normal - audio_normal)) < 0.05,
+    f"max_diff={np.max(np.abs(fixed_normal - audio_normal))}",
+)
 
 fixes_clip, fixed_clip = solve_audio_issues(audio_clip, sr=SR)
 check("clipping tiene correccion", len(fixes_clip) > 0, f"fixes={len(fixes_clip)}")
-check("clipping pico reducido", float(np.max(np.abs(fixed_clip))) <= 1.0,
-      f"peak={np.max(np.abs(fixed_clip))}")
+check("clipping pico reducido", float(np.max(np.abs(fixed_clip))) <= 1.0, f"peak={np.max(np.abs(fixed_clip))}")
 
 fixes_weak, fixed_weak = solve_audio_issues(audio_weak, sr=SR)
 check("audio debil tiene correccion", len(fixes_weak) > 0, f"fixes={len(fixes_weak)}")
 # El audio debil debe tener mayor nivel despues
-rms_before = float(np.sqrt(np.mean(audio_weak ** 2)))
-rms_after = float(np.sqrt(np.mean(fixed_weak ** 2)))
-check("audio debil nivel sube", rms_after > rms_before,
-      f"before={rms_before:.6f}, after={rms_after:.6f}")
+rms_before = float(np.sqrt(np.mean(audio_weak**2)))
+rms_after = float(np.sqrt(np.mean(fixed_weak**2)))
+check("audio debil nivel sube", rms_after > rms_before, f"before={rms_before:.6f}, after={rms_after:.6f}")
 
 # Test con reporte pre-calculado
 fixes_with_report, _ = solve_audio_issues(audio_weak, sr=SR, report=r_weak)
-check("solve con reporte pre-calculado", len(fixes_with_report) > 0,
-      f"fixes={len(fixes_with_report)}")
+check("solve con reporte pre-calculado", len(fixes_with_report) > 0, f"fixes={len(fixes_with_report)}")
 
 
 # ── _apply_gain ─────────────────────────────────────────────────────────────
 print("\n--- _apply_gain ---")
 
 gained = _apply_gain(audio_weak, target_rms=0.12)
-rms_gained = float(np.sqrt(np.mean(gained ** 2)))
-check("gain boost sube nivel", rms_gained > float(np.sqrt(np.mean(audio_weak ** 2))),
-      f"rms={rms_gained:.6f}")
-check("gain clipa a 1.0", np.max(np.abs(gained)) <= 1.0,
-      f"peak={np.max(np.abs(gained))}")
+rms_gained = float(np.sqrt(np.mean(gained**2)))
+check("gain boost sube nivel", rms_gained > float(np.sqrt(np.mean(audio_weak**2))), f"rms={rms_gained:.6f}")
+check("gain clipa a 1.0", np.max(np.abs(gained)) <= 1.0, f"peak={np.max(np.abs(gained))}")
 
 silence_gained = _apply_gain(audio_silence, target_rms=0.12)
 # Con silencio digital (rms ~0.001), el gain se limita a 10x
 # y el resultado queda en ~0.01, que es aceptable
-rms_sil = float(np.sqrt(np.mean(silence_gained ** 2)))
-check("gain en silencio no excede limite",
-      rms_sil < 0.15,
-      f"rms={rms_sil:.6f}")
+rms_sil = float(np.sqrt(np.mean(silence_gained**2)))
+check("gain en silencio no excede limite", rms_sil < 0.15, f"rms={rms_sil:.6f}")
 
 
 # ── _normalize_clipping ────────────────────────────────────────────────────
@@ -187,22 +188,29 @@ check("normalize reduce peak", peak_normed <= 0.96, f"peak={peak_normed:.4f}")
 # Audio con pico <= 0.95 no debe cambiar
 audio_safe = np.clip(audio_normal, -0.9, 0.9).astype(np.float32)
 already_ok = _normalize_clipping(audio_safe)
-check("normalize audio seguro no cambia",
-      np.allclose(already_ok, audio_safe, atol=1e-6),
-      f"max_diff={np.max(np.abs(already_ok - audio_safe)):.6f}")
+check(
+    "normalize audio seguro no cambia",
+    np.allclose(already_ok, audio_safe, atol=1e-6),
+    f"max_diff={np.max(np.abs(already_ok - audio_safe)):.6f}",
+)
 
 
 # ── _trim_silence ───────────────────────────────────────────────────────────
 print("\n--- _trim_silence ---")
 
 trimmed = _trim_silence(audio_mostly_silence, sr=SR, threshold=0.01)
-check("trim reduce longitud", len(trimmed) < len(audio_mostly_silence),
-      f"before={len(audio_mostly_silence)}, after={len(trimmed)}")
+check(
+    "trim reduce longitud",
+    len(trimmed) < len(audio_mostly_silence),
+    f"before={len(audio_mostly_silence)}, after={len(trimmed)}",
+)
 
 trimmed_normal = _trim_silence(audio_normal, sr=SR, threshold=RMS_SILENCE)
-check("trim audio normal mantiene longitud similar",
-      len(trimmed_normal) >= len(audio_normal) * 0.8,
-      f"before={len(audio_normal)}, after={len(trimmed_normal)}")
+check(
+    "trim audio normal mantiene longitud similar",
+    len(trimmed_normal) >= len(audio_normal) * 0.8,
+    f"before={len(audio_normal)}, after={len(trimmed_normal)}",
+)
 
 
 # ── suggest_manual_actions ──────────────────────────────────────────────────
@@ -210,19 +218,18 @@ print("\n--- suggest_manual_actions ---")
 
 actions_silence = suggest_manual_actions(r_silence)
 check("acciones para silencio no vacia", len(actions_silence) > 0)
-check("acciones para silencio menciona Windows",
-      any("Windows" in a for a in actions_silence),
-      f"actions={actions_silence[:2]}")
+check(
+    "acciones para silencio menciona Windows",
+    any("Windows" in a for a in actions_silence),
+    f"actions={actions_silence[:2]}",
+)
 
 actions_weak = suggest_manual_actions(r_weak)
 check("acciones para debil no vacia", len(actions_weak) > 0)
-check("acciones para debil menciona ganancia",
-      any("ganancia" in a.lower() or "Ganancia" in a for a in actions_weak))
+check("acciones para debil menciona ganancia", any("ganancia" in a.lower() or "Ganancia" in a for a in actions_weak))
 
 actions_ok = suggest_manual_actions(r_normal)
-check("acciones para audio OK son validas",
-      len(actions_ok) > 0,
-      f"actions={actions_ok}")
+check("acciones para audio OK son validas", len(actions_ok) > 0, f"actions={actions_ok}")
 
 
 # ── format_fix_report ───────────────────────────────────────────────────────
@@ -240,11 +247,11 @@ print("\n--- check_wav_file ---")
 
 # Crear WAV temporal
 from scipy.io import wavfile
+
 wav_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_test_qa.wav")
 wavfile.write(wav_path, SR, np.int16(np.clip(audio_normal, -1.0, 1.0) * 32767))
 r_wav = check_wav_file(wav_path, sr=SR)
-check("WAV file -> OK o WARN", r_wav.verdict in ("OK", "WARN"),
-      f"verdict={r_wav.verdict}")
+check("WAV file -> OK o WARN", r_wav.verdict in ("OK", "WARN"), f"verdict={r_wav.verdict}")
 check("WAV duration > 0", r_wav.duration_s > 0, f"dur={r_wav.duration_s}")
 
 # WAV silencioso

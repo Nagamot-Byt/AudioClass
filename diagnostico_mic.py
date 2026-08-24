@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """diagnostico_mic.py — Diagnóstico completo del micrófono para AudioClass.
 
 Ejecuta:
@@ -13,8 +12,10 @@ Prueba:
   5. Cálculo de nivel (RMS, p90, peak)
   6. Verificación de silencio digital vs nivel real
 """
+
 import sys
 import time
+
 import numpy as np
 
 try:
@@ -25,9 +26,9 @@ except ImportError:
 
 
 def separator(title):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def step1_enumerate():
@@ -38,9 +39,9 @@ def step1_enumerate():
         hostapis = sd.query_hostapis()
         print(f"Host APIs disponibles: {len(hostapis)}")
         for i, ha in enumerate(hostapis):
-            n_devs = len(ha.get('devices', []))
+            n_devs = len(ha.get("devices", []))
             print(f"  [{i}] {ha['name']} ({n_devs} dispositivos)")
-        
+
         print(f"\nDispositivos totales: {len(devs)}")
         input_devs = []
         for i, d in enumerate(devs):
@@ -52,7 +53,7 @@ def step1_enumerate():
                 print(f"       Sample rates: {d['default_samplerate']:.0f} Hz (default)")
                 print(f"       Host API: {api_name}")
                 input_devs.append((i, d["name"]))
-        
+
         if not input_devs:
             print("\n[ERROR] No se encontraron dispositivos de entrada!")
             print("  Posibles causas:")
@@ -92,14 +93,14 @@ def step3_check_settings(device_id=None):
     sample_rate = 16000
     channels = 1
     dtype = "float32"
-    
+
     configs_to_try = [
         (sample_rate, channels, dtype, "Estándar AudioClass"),
         (44100, channels, dtype, "44.1kHz"),
         (48000, channels, dtype, "48kHz"),
         (sample_rate, 2, dtype, "2 canales"),
     ]
-    
+
     working_config = None
     for sr, ch, dt, desc in configs_to_try:
         try:
@@ -109,7 +110,7 @@ def step3_check_settings(device_id=None):
                 working_config = (sr, ch, dt)
         except Exception as e:
             print(f"  [FAIL] {desc}: {e}")
-    
+
     if working_config:
         print(f"\n  Configuración recomendada: {working_config[0]}Hz, {working_config[1]}ch, {working_config[2]}")
     else:
@@ -123,25 +124,21 @@ def step4_record_test(device_id=None, duration=3.0):
     sample_rate = 16000
     channels = 1
     dtype = "float32"
-    
+
     print(f"  Grabando {duration}s de audio...")
-    print(f"  (Habla al micrófono o haz ruido)")
-    
+    print("  (Habla al micrófono o haz ruido)")
+
     try:
         recording = sd.rec(
-            int(duration * sample_rate),
-            samplerate=sample_rate,
-            channels=channels,
-            dtype=dtype,
-            device=device_id
+            int(duration * sample_rate), samplerate=sample_rate, channels=channels, dtype=dtype, device=device_id
         )
         sd.wait()
-        
+
         if recording is None or len(recording) == 0:
             print("  [ERROR] La grabación devolvió datos vacíos")
             return None
-        
-        print(f"  Grabación completada: {len(recording)} muestras, {len(recording)/sample_rate:.1f}s")
+
+        print(f"  Grabación completada: {len(recording)} muestras, {len(recording) / sample_rate:.1f}s")
         return recording.flatten()
     except Exception as e:
         print(f"[ERROR] No se pudo grabar: {e}")
@@ -155,35 +152,35 @@ def step4_record_test(device_id=None, duration=3.0):
 def step5_analyze_audio(audio_data):
     """Paso 5: Análisis de nivel del audio grabado."""
     separator("PASO 5: Análisis de nivel de audio")
-    
+
     if audio_data is None or len(audio_data) == 0:
         print("  No hay datos para analizar")
         return
-    
+
     sample_rate = 16000
     win = int(0.1 * sample_rate)  # ventanas de 100ms
-    
+
     # RMS por ventana
     frames = []
     for i in range(0, len(audio_data) - win, win // 2):
-        chunk = audio_data[i:i+win]
+        chunk = audio_data[i : i + win]
         rms = float(np.sqrt(np.mean(chunk.astype(np.float64) ** 2)))
         frames.append(rms)
-    
+
     if not frames:
         print("  No se pudieron calcular ventanas")
         return
-    
+
     rms_arr = np.array(frames)
     p50 = float(np.percentile(rms_arr, 50))
     p90 = float(np.percentile(rms_arr, 90))
     peak = float(np.max(np.abs(audio_data)))
     mean = float(np.mean(rms_arr))
-    
+
     # Clasificación (misma que optimizar_mic.py)
     SILENCIO = 0.005
     DEBIL = 0.03
-    
+
     if p90 < SILENCIO:
         verdict = "SILENCIO DIGITAL"
         verdict_color = "ROJO"
@@ -193,21 +190,21 @@ def step5_analyze_audio(audio_data):
     else:
         verdict = "OK (nivel adecuado)"
         verdict_color = "VERDE"
-    
+
     # dB
     def to_db(v):
         if v <= 0:
             return -120
         return 20 * np.log10(v)
-    
+
     print(f"  RMS medio:  {mean:.4f} ({to_db(mean):.1f} dB)")
     print(f"  RMS p50:    {p50:.4f} ({to_db(p50):.1f} dB)")
     print(f"  RMS p90:    {p90:.4f} ({to_db(p90):.1f} dB)")
     print(f"  Peak:       {peak:.4f} ({to_db(peak):.1f} dB)")
     print(f"  Muestras:   {len(rms_arr)} ventanas de 100ms")
-    
+
     print(f"\n  VEREDICTO: {verdict} [{verdict_color}]")
-    
+
     if verdict_color == "ROJO":
         print("\n  CAUSAS POSIBLES:")
         print("  1. El micrófono seleccionado no es el correcto")
@@ -220,13 +217,13 @@ def step5_analyze_audio(audio_data):
         print("  - En Windows: Configuración > Privacidad > Micrófono > Permitir")
         print("  - Reinicia el servicio de audio: services.msc > Windows Audio")
         print("  - Prueba otro puerto USB si es micrófono externo")
-    
+
     elif verdict_color == "AMARILLO":
         print("\n  RECOMENDACIONES:")
         print("  - Acércate más al micrófono")
         print("  - Verifica que no esté en modo silencio")
         print("  - Ajusta el nivel de entrada en Configuración de Sonido de Windows")
-    
+
     return {
         "rms_mean": mean,
         "rms_p50": p50,
@@ -245,22 +242,21 @@ def step6_test_callback(device_id=None):
     channels = 1
     dtype = "float32"
     win = 4096
-    
+
     print("  Probando InputStream con callback (2 segundos)...")
     buf = []
-    
+
     def cb(indata, frames, ti, status):
         if status:
             print(f"    Callback status: {status}")
         buf.append(indata.copy().flatten())
-    
+
     try:
         with sd.InputStream(
-            samplerate=sample_rate, channels=channels, dtype=dtype,
-            blocksize=win, callback=cb, device=device_id
+            samplerate=sample_rate, channels=channels, dtype=dtype, blocksize=win, callback=cb, device=device_id
         ):
             time.sleep(2.0)
-        
+
         if buf:
             raw = np.concatenate(buf).flatten()
             rms = float(np.sqrt(np.mean(raw.astype(np.float64) ** 2)))
@@ -277,39 +273,39 @@ def main():
     print("=" * 60)
     print("  DIAGNÓSTICO DE MICRÓFONO — AudioClass v9.1")
     print("=" * 60)
-    
+
     quick = "--quick" in sys.argv
-    
+
     # Paso 1: Enumerar dispositivos
     input_devs = step1_enumerate()
     if not input_devs:
         print("\n[FATAL] No hay micrófonos disponibles. Revisa la conexión y drivers.")
         sys.exit(1)
-    
+
     # Paso 2: Dispositivo por defecto
     default_id = step2_default_device()
-    
+
     # Paso 3: Verificar configuración
     config = step3_check_settings(default_id)
-    
+
     if not quick:
         # Paso 4: Grabación real
         audio = step4_record_test(default_id)
-        
+
         # Paso 5: Análisis
         result = step5_analyze_audio(audio)
-        
+
         # Paso 6: Callback
         step6_test_callback(default_id)
-        
+
         # Resumen final
         separator("RESUMEN FINAL")
         if result:
             print(f"  Dispositivos de entrada: {len(input_devs)}")
             print(f"  Dispositivo usado: {'Por defecto' if default_id is None else default_id}")
-            print(f"  Formato: 16000Hz, 1ch, float32")
+            print("  Formato: 16000Hz, 1ch, float32")
             print(f"  Nivel p90: {result['rms_p90']:.4f} ({result['verdict']})")
-            
+
             if result["verdict_color"] == "VERDE":
                 print("\n  [OK] El micrófono funciona correctamente.")
                 print("  Si AudioClass no graba, el problema puede estar en la configuración de la app.")

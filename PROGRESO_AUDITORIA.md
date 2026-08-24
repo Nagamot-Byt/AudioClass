@@ -361,7 +361,7 @@ FUNCIONAL, STRESS, E2E, EXPORT, UI_SMOKE, UI_V91, BENCH (base 15.7% < tiny 30.0%
   controles (antes solo en el pie, que puede quedar cortado en pantallas pequeñas).
 - Medidor de sonido VERIFICADO en vivo durante grabación real: barra 0.0->0.164
   reaccionando al micro, dB en vivo (-50), aviso "Bajo", mini-histórico
-  llenándose (10 lecturas), visible en pantalla. 
+  llenándose (10 lecturas), visible en pantalla.
 - Hovers literales que no seguían la paleta -> claves C[...] (siguen al tema).
 - Regresión: PY_OK, SMOKE_OK, UI_V91 TODO OK, GRABAR_PRUEBA TODO OK, toggle de
   tema claro/oscuro OK. Capturas: dark #171D26/#D9B64C, light #F4F6F8/#A87F1E,

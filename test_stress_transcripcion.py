@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PRUEBA DE ESTRÉS del motor de transcripción de AudioClass.
 
 Objetivo: detectar congestiones, fugas de hilos, fugas de memoria y deadlocks
@@ -26,7 +25,15 @@ bajo carga real (whisper tiny, voz real, chunks de 30s):
 
 Salida: STRESS_ALL_OK al final si todo pasa.
 """
-import os, sys, time, threading, tempfile, traceback, gc
+
+import gc
+import os
+import sys
+import tempfile
+import threading
+import time
+import traceback
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -34,6 +41,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import numpy as np
 from scipy.io import wavfile
+
 import audioclass_v91 as ac
 
 
@@ -42,6 +50,7 @@ def _live_whisper_models():
     determinista de fuga del cache de modelos: si el cache/plantilla acumulara
     instancias sin tope, este conteo crecería sin límite aunque el RSS oscile."""
     import whisper as _w
+
     return sum(1 for o in gc.get_objects() if type(o) is _w.Whisper)
 
 
@@ -50,6 +59,7 @@ def _rss_mb():
     ctypes nativo de Windows (GetProcessMemoryInfo) — no requiere paquetes."""
     try:
         import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except Exception:
         pass
@@ -59,16 +69,18 @@ def _rss_mb():
             from ctypes import wintypes
 
             class _PMC(ctypes.Structure):
-                _fields_ = [("cb", wintypes.DWORD),
-                            ("PageFaultCount", wintypes.DWORD),
-                            ("PeakWorkingSetSize", ctypes.c_size_t),
-                            ("WorkingSetSize", ctypes.c_size_t),
-                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                            ("PagefileUsage", ctypes.c_size_t),
-                            ("PeakPagefileUsage", ctypes.c_size_t)]
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
 
             pmc = _PMC()
             pmc.cb = ctypes.sizeof(pmc)
@@ -93,6 +105,7 @@ def _savewav(path, arr):
 
 def _make_engine(base):
     import whisper
+
     eng = ac.LocalWhisperEngine("tiny", backend="openai")
     eng.model = whisper.load_model(os.path.join(base, "models", "tiny.pt"))
     eng.ready = True
@@ -128,8 +141,9 @@ def _full_run(eng, path, label):
     # Mensajes con tiempo restante
     rest_msgs = [m for _, m in prog if "rest" in m]
     assert rest_msgs, f"{label}: sin mensajes con tiempo restante"
-    print(f"  {label}: OK · {dt:.0f}s · {chunks} chunks · {workers} workers · "
-          f"{len(prog)} msgs · último={last_msg[:38]}")
+    print(
+        f"  {label}: OK · {dt:.0f}s · {chunks} chunks · {workers} workers · {len(prog)} msgs · último={last_msg[:38]}"
+    )
     return res, dt, prog
 
 
@@ -156,24 +170,24 @@ def main():
     _savewav(p1, raw1)
 
     eng = _make_engine(base)
-    print(f"Motor listo (tiny) · voz real {len(raw3)/sr:.0f}s -> 3 chunks")
+    print(f"Motor listo (tiny) · voz real {len(raw3) / sr:.0f}s -> 3 chunks")
 
     # ── A) Ráfaga: 3 transcripciones completas consecutivas ────────────────
     print("[A] Ráfaga de 3 transcripciones completas")
     base_threads = threading.active_count()
-    rss_series = [(_rss_mb(), "base")]   # (rss, etiqueta) para el chequeo de plateau
+    rss_series = [(_rss_mb(), "base")]  # (rss, etiqueta) para el chequeo de plateau
     times = []
     for i in range(3):
         try:
-            _, dt, _ = _full_run(eng, p3, f"A{i+1}")
+            _, dt, _ = _full_run(eng, p3, f"A{i + 1}")
             times.append(dt)
             gc.collect()
-            rss_series.append((_rss_mb(), f"A{i+1}"))
+            rss_series.append((_rss_mb(), f"A{i + 1}"))
         except Exception as e:
-            print(f"  A{i+1} FALLÓ: {e}")
+            print(f"  A{i + 1} FALLÓ: {e}")
             traceback.print_exc()
             return 1
-    print(f"  Tiempos por corrida: {[round(t,1) for t in times]}s")
+    print(f"  Tiempos por corrida: {[round(t, 1) for t in times]}s")
     # El motor no debe degradarse en la 3ª corrida (factor < 2.5x de la 1ª)
     if times[2] > times[0] * 2.5:
         print(f"  DEGRADACIÓN: la 3ª corrida tardó {times[2]:.0f}s vs {times[0]:.0f}s la 1ª")
@@ -206,18 +220,18 @@ def main():
         # 2 corridas extra para tener 3 deltas finales
         for j in range(2):
             try:
-                _full_run(eng, p3, f"MEM{j+1}")
+                _full_run(eng, p3, f"MEM{j + 1}")
             except Exception as e:
-                print(f"  MEM{j+1} FALLÓ: {e}")
+                print(f"  MEM{j + 1} FALLÓ: {e}")
                 traceback.print_exc()
                 return 1
             gc.collect()
-            rss_series.append((_rss_mb(), f"MEM{j+1}"))
-        deltas = [rss_series[i][0] - rss_series[i-1][0] for i in range(1, len(rss_series))]
+            rss_series.append((_rss_mb(), f"MEM{j + 1}"))
+        deltas = [rss_series[i][0] - rss_series[i - 1][0] for i in range(1, len(rss_series))]
         last3 = deltas[-3:]
         labels = [f"{lbl}:{rss:.0f}" for rss, lbl in rss_series]
         print(f"  RSS por corrida: {' -> '.join(labels)} MB")
-        print(f"  Deltas finales: {[round(d,1) for d in last3]} MB")
+        print(f"  Deltas finales: {[round(d, 1) for d in last3]} MB")
         # Señal 1 (determinista): el número de objetos Whisper vivos debe quedar
         # acotado. Diseño: cache hasta 6 + 1 plantilla + 1 eng.model = 8; durante
         # una corrida hay hasta ~10 (8 workers en uso); el tope 12 da margen y
@@ -246,13 +260,12 @@ def main():
     out = {}
 
     def starter():
-        out["res"] = eng.transcribe(p3, timestamps=False, cancel_event=ev,
-                                    progress_callback=lambda n, t, m: None)
+        out["res"] = eng.transcribe(p3, timestamps=False, cancel_event=ev, progress_callback=lambda n, t, m: None)
 
     t = threading.Thread(target=starter, daemon=True)
     t.start()
     time.sleep(1.5)
-    ev.set()                      # cancelar a mitad del 1er chunk
+    ev.set()  # cancelar a mitad del 1er chunk
     # B1: la cancelación de Whisper es cooperativa: el worker termina su chunk
     # en curso (tiny procesa 30s en ~2-5s) antes de que el hilo salga. join(5)
     # era demasiado corto; la cancelación correcta tarda ~2-8s.
@@ -269,8 +282,7 @@ def main():
     out2 = {}
 
     def starter2():
-        out2["res"] = eng.transcribe(p3, timestamps=False, cancel_event=ev2,
-                                      progress_callback=lambda n, t, m: None)
+        out2["res"] = eng.transcribe(p3, timestamps=False, cancel_event=ev2, progress_callback=lambda n, t, m: None)
 
     t0b = time.time()
     t2 = threading.Thread(target=starter2, daemon=True)
@@ -283,8 +295,10 @@ def main():
     assert second.get("cancelled") is not True, "B: la 2ª transcripción fue cancelada"
     assert second.get("chunks", 0) >= 3, f"B: 2ª con {second.get('chunks')} chunks"
     assert eng._drain_ev.is_set(), "B: la puerta anti-congestión quedó cerrada (bug)"
-    print(f"  B2: 2ª transcripción completó {second['chunks']} chunks en {wait_b:.0f}s "
-          f"(incluye espera de drenaje); puerta reabierta")
+    print(
+        f"  B2: 2ª transcripción completó {second['chunks']} chunks en {wait_b:.0f}s "
+        f"(incluye espera de drenaje); puerta reabierta"
+    )
     print("  B_OK (sin deadlock; la puerta esperó el drenaje)")
 
     # ── C) Ráfaga de cancelaciones rápidas (camino secuencial) ──────────────
@@ -302,15 +316,14 @@ def main():
         out2 = {}
 
         def starter2():
-            out2["res"] = eng.transcribe(p1, timestamps=False, cancel_event=ev2,
-                                         progress_callback=lambda n, t, m: None)
+            out2["res"] = eng.transcribe(p1, timestamps=False, cancel_event=ev2, progress_callback=lambda n, t, m: None)
 
         tt = threading.Thread(target=starter2, daemon=True)
         tt.start()
         tt.join(timeout=10)
         r = out2.get("res")
-        assert r is not None, f"C{i+1}: sin resultado"
-        assert r.get("cancelled") is True, f"C{i+1}: no devolvió cancelled"
+        assert r is not None, f"C{i + 1}: sin resultado"
+        assert r.get("cancelled") is True, f"C{i + 1}: no devolvió cancelled"
     print("  C_OK (3 cancelaciones rápidas sin colgarse)")
 
     # Tras la ráfaga, una corrida completa debe seguir funcionando

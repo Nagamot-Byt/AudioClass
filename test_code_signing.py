@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """test_code_signing.py — Verifica que el exe Windows tiene firma autenticada.
 
 En Windows, busca el exe onefile y verifica su firma con Get-AuthenticodeSignature.
@@ -7,6 +6,7 @@ de firma (como preparacion para cuando se apruebe SignPath Foundation).
 
 Patron de exito: CODESIGN_OK
 """
+
 import glob
 import os
 import platform
@@ -46,19 +46,18 @@ def _verify_windows(exe_path):
     # PowerShell: Get-AuthenticodeSignature
     ps_cmd = (
         f"$sig = Get-AuthenticodeSignature -FilePath '{exe_path}'; "
-        f"Write-Host \"STATUS: $($sig.Status)\"; "
-        f"Write-Host \"STATUSMESSAGE: $($sig.StatusMessage)\"; "
+        f'Write-Host "STATUS: $($sig.Status)"; '
+        f'Write-Host "STATUSMESSAGE: $($sig.StatusMessage)"; '
         f"if ($sig.SignerCertificate) {{ "
-        f"  Write-Host \"SIGNER: $($sig.SignerCertificate.Subject)\"; "
-        f"  Write-Host \"ISSUER: $($sig.SignerCertificate.Issuer)\"; "
-        f"  Write-Host \"THUMBPRINT: $($sig.SignerCertificate.Thumbprint)\"; "
-        f"  Write-Host \"NOTAFTER: $($sig.SignerCertificate.NotAfter)\""
+        f'  Write-Host "SIGNER: $($sig.SignerCertificate.Subject)"; '
+        f'  Write-Host "ISSUER: $($sig.SignerCertificate.Issuer)"; '
+        f'  Write-Host "THUMBPRINT: $($sig.SignerCertificate.Thumbprint)"; '
+        f'  Write-Host "NOTAFTER: $($sig.SignerCertificate.NotAfter)"'
         f"}} else {{ Write-Host 'SIGNER: (none)' }}"
     )
     try:
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_cmd],
-            capture_output=True, text=True, timeout=30
+            ["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=30
         )
         output = result.stdout + result.stderr
         print(output.strip())
@@ -87,7 +86,7 @@ def _verify_windows(exe_path):
             print("CODESIGN_OK")
             return True
     except Exception as e:
-        print(f"CODESIGN_OK")  # No fallar si ps no disponible
+        print("CODESIGN_OK")  # No fallar si ps no disponible
         print(f"No se pudo verificar firma: {e}")
         return True
 
@@ -97,7 +96,7 @@ def _verify_spec_has_signing():
     spec_files = glob.glob(os.path.join(HERE, "*.spec"))
     has_signing = False
     for sf in spec_files:
-        with open(sf, "r", encoding="utf-8", errors="replace") as f:
+        with open(sf, encoding="utf-8", errors="replace") as f:
             content = f.read()
             if "codesign" in content.lower() or "sign" in content.lower():
                 has_signing = True

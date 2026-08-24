@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_core_units.py — Unit tests para las clases principales de audioclass_core.py
 =================================================================================
@@ -9,22 +8,21 @@ Usa numpy para generar audio sintético y mocks para whisper/gemini.
 Ejecutar:
     python test_core_units.py
 """
+
 import os
 import sys
 import tempfile
-import threading
-import time
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 
 # ── AudioPipeline ──────────────────────────────────────────────────────────
 
+
 def test_pipeline_profiles():
     """Todos los perfiles existen y tienen las claves requeridas."""
     from audioclass_core import AudioPipeline
-    REQUIRED = {"hp_freq", "lp_freq", "comp_th", "comp_ratio",
-                "agc_target", "vad_threshold", "limiter"}
+
+    REQUIRED = {"hp_freq", "lp_freq", "comp_th", "comp_ratio", "agc_target", "vad_threshold", "limiter"}
     for name in AudioPipeline.PROFILES:
         p = AudioPipeline.PROFILES[name]
         missing = REQUIRED - set(p.keys())
@@ -35,6 +33,7 @@ def test_pipeline_profiles():
 def test_pipeline_process_basic():
     """El pipeline procesa audio sintético sin errores."""
     from audioclass_core import AudioPipeline
+
     sr = 16000
     dur = 2.0
     # Tono 440Hz + ruido
@@ -54,6 +53,7 @@ def test_pipeline_process_basic():
 def test_pipeline_fast_mode():
     """El modo rápido funciona sin errores."""
     from audioclass_core import AudioPipeline
+
     sr = 16000
     t = np.linspace(0, 1.0, sr, dtype=np.float64)
     audio = (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
@@ -66,12 +66,15 @@ def test_pipeline_fast_mode():
 def test_pipeline_progress_callback():
     """El callback de progreso se invoca correctamente."""
     from audioclass_core import AudioPipeline
+
     sr = 16000
     t = np.linspace(0, 1.0, sr, dtype=np.float64)
     audio = (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
     steps = []
+
     def cb(step, total, name):
         steps.append((step, total, name))
+
     pipe = AudioPipeline("Clase Universitaria")
     pipe.process(audio, progress_callback=cb)
     assert len(steps) > 0, "Callback no se invocó"
@@ -82,6 +85,7 @@ def test_pipeline_progress_callback():
 def test_pipeline_short_audio():
     """Audio muy corto no crashea."""
     from audioclass_core import AudioPipeline
+
     pipe = AudioPipeline("Clase Universitaria")
     # Audio de 0.1s (muy corto pero no vacío)
     short = np.full(1600, 0.1, dtype=np.float32)
@@ -93,6 +97,7 @@ def test_pipeline_short_audio():
 def test_frame_rms():
     """_frame_rms calcula correctamente el RMS por tramas."""
     from audioclass_core import AudioPipeline
+
     pipe = AudioPipeline("Clase Universitaria")
     # Audio constante de amplitud 0.5
     audio = np.full(16000, 0.5, dtype=np.float64)
@@ -105,9 +110,11 @@ def test_frame_rms():
 
 # ── LocalWhisperEngine ────────────────────────────────────────────────────
 
+
 def test_whisper_engine_init():
     """LocalWhisperEngine se instancia correctamente."""
     from audioclass_core import LocalWhisperEngine
+
     eng = LocalWhisperEngine("tiny", "es")
     assert eng.model_name == "tiny"
     assert eng.language == "es"
@@ -120,6 +127,7 @@ def test_whisper_engine_init():
 def test_whisper_engine_silence_detection():
     """Detección de silencio digital funciona."""
     from audioclass_core import audio_silence_stats, is_digital_silence
+
     # Audio con 100% ceros
     silence = np.zeros(16000, dtype=np.float32)
     stats = audio_silence_stats(silence)
@@ -137,6 +145,7 @@ def test_whisper_engine_silence_detection():
 def test_hallucination_detection():
     """Detección de alucinaciones de whisper funciona."""
     from audioclass_core import detect_hallucination
+
     # Texto normal
     assert detect_hallucination("La clase de hoy trata sobre fotosíntesis") is None
     # Alucinación clásica
@@ -152,13 +161,21 @@ def test_hallucination_detection():
 
 # ── GeminiAdaptationEngine ────────────────────────────────────────────────
 
+
 def test_gemini_templates_exist():
     """Todos los templates están definidos."""
     from audioclass_core import GeminiAdaptationEngine
-    expected = ["Análisis Académico Profundo", "Resumen Ejecutivo",
-                "Guía de Estudio", "Flashcards (Preguntas)",
-                "Preguntas de Examen", "Mapa Conceptual (Texto)",
-                "Texto Limpio (Corrección)", "Cronología / Timeline"]
+
+    expected = [
+        "Análisis Académico Profundo",
+        "Resumen Ejecutivo",
+        "Guía de Estudio",
+        "Flashcards (Preguntas)",
+        "Preguntas de Examen",
+        "Mapa Conceptual (Texto)",
+        "Texto Limpio (Corrección)",
+        "Cronología / Timeline",
+    ]
     for name in expected:
         assert name in GeminiAdaptationEngine.TEMPLATES, f"Template '{name}' no existe"
         t = GeminiAdaptationEngine.TEMPLATES[name]
@@ -171,6 +188,7 @@ def test_gemini_templates_exist():
 def test_gemini_model_resolution():
     """Resolución de modelos funciona correctamente."""
     from audioclass_core import GeminiAdaptationEngine
+
     eng = GeminiAdaptationEngine("fake_key", "flash")
     assert eng._model_name() == "gemini-2.0-flash"
     eng2 = GeminiAdaptationEngine("fake_key", "pro")
@@ -183,6 +201,7 @@ def test_gemini_model_resolution():
 def test_gemini_test_key_no_key():
     """test_key sin key devuelve error."""
     from audioclass_core import GeminiAdaptationEngine
+
     eng = GeminiAdaptationEngine("", "flash")
     ok, msg = eng.test_key()
     assert ok is False
@@ -193,6 +212,7 @@ def test_gemini_test_key_no_key():
 def test_gemini_adapt_invalid_template():
     """adapt con template inválido devuelve error."""
     from audioclass_core import GeminiAdaptationEngine
+
     eng = GeminiAdaptationEngine("fake_key", "flash")
     result = eng.adapt("test", "Template Inexistente")
     assert "error" in result
@@ -202,6 +222,7 @@ def test_gemini_adapt_invalid_template():
 def test_openai_engine():
     """OpenAIAdaptationEngine hereda correctamente."""
     from audioclass_core import OpenAIAdaptationEngine
+
     eng = OpenAIAdaptationEngine("fake_key", "mini")
     assert eng.PROVIDER == "OpenAI"
     assert eng._model_name() == "gpt-4o-mini"
@@ -214,12 +235,23 @@ def test_openai_engine():
 
 # ── Config Manager ────────────────────────────────────────────────────────
 
+
 def test_config_defaults():
     """DEFAULT_CONFIG tiene todas las claves esperadas."""
     from config_manager import DEFAULT_CONFIG
-    required = ["gemini_api_key", "colab_url", "colab_key",
-                 "audio_profile", "transcription_mode", "local_model",
-                 "theme", "first_run", "ia_consent", "mic_device"]
+
+    required = [
+        "gemini_api_key",
+        "colab_url",
+        "colab_key",
+        "audio_profile",
+        "transcription_mode",
+        "local_model",
+        "theme",
+        "first_run",
+        "ia_consent",
+        "mic_device",
+    ]
     for k in required:
         assert k in DEFAULT_CONFIG, f"Clave '{k}' falta en DEFAULT_CONFIG"
     print(f"  OK  DEFAULT_CONFIG tiene {len(DEFAULT_CONFIG)} claves")
@@ -227,7 +259,8 @@ def test_config_defaults():
 
 def test_config_encrypt_decrypt():
     """Cifrado y descifrado de secretos funciona."""
-    from config_manager import _encrypt_secret, _decrypt_secret
+    from config_manager import _decrypt_secret, _encrypt_secret
+
     original = "my_secret_api_key_12345"
     encrypted = _encrypt_secret(original)
     assert encrypted != original
@@ -242,7 +275,8 @@ def test_config_encrypt_decrypt():
 
 def test_config_save_load():
     """Guardado y carga de config funciona."""
-    from config_manager import save_config, load_config, DEFAULT_CONFIG
+    from config_manager import DEFAULT_CONFIG, load_config, save_config
+
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         tmp = f.name
     try:
@@ -262,9 +296,11 @@ def test_config_save_load():
 
 # ── Export Utils ──────────────────────────────────────────────────────────
 
+
 def test_fmt_timestamp():
     """fmt_timestamp formatea correctamente."""
     from export_utils import fmt_timestamp
+
     assert fmt_timestamp(0) == "00:00"
     assert fmt_timestamp(65) == "01:05"
     assert fmt_timestamp(None) == "00:00"
@@ -275,6 +311,7 @@ def test_fmt_timestamp():
 def test_export_lines():
     """export_lines maneja timestamps y texto plano."""
     from export_utils import export_lines
+
     # Con timestamps
     segs = [{"start": 0, "end": 5, "text": "Hola mundo"}]
     has_ts, lines = export_lines("Hola mundo", segs)
@@ -291,6 +328,7 @@ def test_export_lines():
 def test_docx_paragraph():
     """docx_paragraph genera XML válido."""
     from export_utils import docx_paragraph
+
     xml = docx_paragraph("Hola", bold=True, size=22, color="FF0000")
     assert "<w:p>" in xml
     assert "Hola" in xml
@@ -301,6 +339,7 @@ def test_docx_paragraph():
 def test_parse_adapt_sections():
     """parse_adapt_sections parsea correctamente."""
     from export_utils import parse_adapt_sections
+
     text = """Resumen Ejecutivo
 La clase trató sobre fotosíntesis.
 
@@ -319,9 +358,11 @@ Se descartaron anécdotas personales."""
 
 # ── Audio Quality Checker ────────────────────────────────────────────────
 
+
 def test_quality_checker():
     """check_audio_quality analiza correctamente."""
-    from audio_quality_checker import check_audio_quality, AudioQualityReport
+    from audio_quality_checker import check_audio_quality
+
     sr = 16000
     # Audio OK
     t = np.linspace(0, 2.0, 2 * sr)
@@ -342,9 +383,11 @@ def test_quality_checker():
 
 # ── Sound Error Solver ───────────────────────────────────────────────────
 
+
 def test_sound_solver():
     """solve_audio_issues corrige problemas comunes."""
     from sound_error_solver import solve_audio_issues
+
     sr = 16000
     # Audio débil pero por encima de silencio (p90 ~0.015)
     t = np.linspace(0, 1.0, sr)
@@ -362,9 +405,11 @@ def test_sound_solver():
 
 # ── Theme ────────────────────────────────────────────────────────────────
 
+
 def test_theme_palettes():
     """Paletas dark/light tienen las mismas claves."""
     from theme import PALETTES
+
     dark_keys = set(PALETTES["dark"].keys())
     light_keys = set(PALETTES["light"].keys())
     assert dark_keys == light_keys, f"Claves diferentes: {dark_keys ^ light_keys}"
@@ -374,6 +419,7 @@ def test_theme_palettes():
 def test_theme_contrast():
     """Todos los pares texto/fondo cumplen WCAG AA (4.5:1)."""
     from theme import PALETTES, relative_luminance
+
     for mode in ("dark", "light"):
         p = PALETTES[mode]
         pairs = [
@@ -390,6 +436,7 @@ def test_theme_contrast():
 
 
 # ── Runner ───────────────────────────────────────────────────────────────
+
 
 def main():
     tests = [

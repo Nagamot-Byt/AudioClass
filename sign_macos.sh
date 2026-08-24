@@ -70,14 +70,14 @@ done
 # ── Verificar requisitos ─────────────────────────────────────────────────────
 check_prerequisites() {
     step "Verificando requisitos"
-    
+
     # macOS
     if [ "$(uname)" != "Darwin" ]; then
         error "Este script solo funciona en macOS"
         exit 1
     fi
     log "Sistema operativo: macOS"
-    
+
     # Xcode CLI tools
     if ! command -v codesign &>/dev/null; then
         error "codesign no encontrado. Instala Xcode Command Line Tools:"
@@ -85,14 +85,14 @@ check_prerequisites() {
         exit 1
     fi
     log "codesign disponible"
-    
+
     # Security framework
     if ! command -v security &>/dev/null; then
         error "security no encontrado"
         exit 1
     fi
     log "security framework disponible"
-    
+
     # .app bundle
     if [ ! -d "$APP_BUNDLE" ]; then
         error "No se encontró el .app bundle: $APP_BUNDLE"
@@ -105,25 +105,25 @@ check_prerequisites() {
 # ── Crear certificado self-signed ────────────────────────────────────────────
 create_certificate() {
     step "Creando certificado self-signed"
-    
+
     # Verificar si ya existe
     if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; then
         log "Certificado ya existe: $CERT_NAME"
         return 0
     fi
-    
+
     # Crear keychain temporal para la firma
     log "Creando keychain de firma..."
     security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN" 2>/dev/null || true
     security set-keychain-settings -lut 21600 "$KEYCHAIN" 2>/dev/null || true
     security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN" 2>/dev/null || true
-    
+
     # Agregar keychain al search list
     security list-keychains -d user -s "$KEYCHAIN" login.keychain 2>/dev/null || true
-    
+
     # Crear certificado autofirmado
     log "Generando certificado autofirmado..."
-    
+
     # Crear archivo de configuración del certificado
     CERT_CONFIG=$(mktemp /tmp/cert_config_XXXXXX.cnf)
     cat > "$CERT_CONFIG" << CERTCFG
@@ -145,21 +145,21 @@ keyUsage = digitalSignature
 extendedKeyUsage = codeSigning
 subjectKeyIdentifier = hash
 CERTCFG
-    
+
     # Generar certificado con openssl
     openssl req -x509 -newkey rsa:2048 -nodes \
         -keyout /tmp/audioclass_signing.key \
         -out /tmp/audioclass_signing.crt \
         -days $CERT_DAYS \
         -config "$CERT_CONFIG" 2>/dev/null
-    
+
     # Convertir a formato .p12 (PKCS12) para importar al keychain
     openssl pkcs12 -export \
         -in /tmp/audioclass_signing.crt \
         -inkey /tmp/audioclass_signing.key \
         -out /tmp/audioclass_signing.p12 \
         -passout pass:"$KEYCHAIN_PASSWORD" 2>/dev/null
-    
+
     # Importar al keychain
     log "Importando certificado al keychain..."
     security import /tmp/audioclass_signing.p12 \
@@ -167,53 +167,53 @@ CERTCFG
         -P "$KEYCHAIN_PASSWORD" \
         -T /usr/bin/codesign \
         -T /usr/bin/security 2>/dev/null
-    
+
     # Permitir codesign usar el certificado sin interacción
     security set-key-partition-list -S apple-tool:,apple:,codesign: \
         -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" 2>/dev/null || true
-    
+
     # Limpiar archivos temporales
     rm -f /tmp/audioclass_signing.key /tmp/audioclass_signing.crt \
           /tmp/audioclass_signing.p12 "$CERT_CONFIG"
-    
+
     log "Certificado creado: $CERT_NAME"
 }
 
 # ── Firmar el .app bundle ────────────────────────────────────────────────────
 sign_app() {
     step "Firmando el .app bundle"
-    
+
     # Verificar que el certificado existe
     if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; then
         error "No se encontró el certificado: $CERT_NAME"
         echo "  Ejecuta sin --verify para crearlo"
         exit 1
     fi
-    
+
     # Limpiar firmas anteriores
     log "Limpiando firmas anteriores..."
     codesign --remove-signature "$APP_BUNDLE" 2>/dev/null || true
-    
+
     # Firma
     SIGN_ARGS="--force --sign \"$CERT_NAME\""
     if [ "$DEEP_SIGN" = true ]; then
         SIGN_ARGS="$SIGN_ARGS --deep"
         log "Firma profunda habilitada"
     fi
-    
+
     # Agregar opciones de runtime
     SIGN_ARGS="$SIGN_ARGS --options runtime --timestamp"
-    
+
     log "Firmando $APP_BUNDLE..."
     eval codesign $SIGN_ARGS "\"$APP_BUNDLE\""
-    
+
     log "App bundle firmado"
 }
 
 # ── Verificar firma ──────────────────────────────────────────────────────────
 verify_signature() {
     step "Verificando firma del .app bundle"
-    
+
     echo ""
     echo "=== codesign --verify ==="
     if codesign --verify --verbose=2 "$APP_BUNDLE" 2>&1; then
@@ -221,20 +221,20 @@ verify_signature() {
     else
         warn "Verificación falló (normal con certificado self-signed)"
     fi
-    
+
     echo ""
     echo "=== codesign --display ==="
     codesign --display --verbose=2 "$APP_BUNDLE" 2>&1 || true
-    
+
     echo ""
     echo "=== spctl --assess ==="
     echo "(Esto fallará con certificado self-signed — es esperado)"
     spctl --assess --type execute --verbose=2 "$APP_BUNDLE" 2>&1 || true
-    
+
     echo ""
     echo "=== Info de certificados ==="
     security find-identity -v -p codesigning 2>/dev/null | head -5
-    
+
     echo ""
     echo "=== Verificación de Gatekeeper ==="
     echo "Con certificado self-signed, el usuario verá:"
@@ -254,17 +254,17 @@ verify_signature() {
 # ── Limpiar certificado ──────────────────────────────────────────────────────
 clean_certificate() {
     step "Eliminando certificado del keychain"
-    
+
     # Buscar y eliminar identidad
     security delete-identity -c "$CERT_NAME" -t "$KEYCHAIN" 2>/dev/null || true
     security delete-identity -c "$CERT_NAME" -t login.keychain 2>/dev/null || true
-    
+
     # Eliminar keychain temporal
     security delete-keychain "$KEYCHAIN" 2>/dev/null || true
-    
+
     # Limpiar archivos temporales
     rm -f /tmp/audioclass_signing.*
-    
+
     log "Certificado eliminado"
 }
 
@@ -275,31 +275,31 @@ main() {
     echo -e "${BOLD}${BLUE}║  AudioClass — Firma de código para macOS                           ║${NC}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    
+
     # Verificar requisitos
     check_prerequisites
-    
+
     # Modo limpiar
     if [ "$CLEAN_ONLY" = true ]; then
         clean_certificate
         exit 0
     fi
-    
+
     # Crear certificado si no existe
     create_certificate
-    
+
     # Modo verificar
     if [ "$VERIFY_ONLY" = true ]; then
         verify_signature
         exit 0
     fi
-    
+
     # Firmar
     sign_app
-    
+
     # Verificar
     verify_signature
-    
+
     echo ""
     echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${GREEN}║  ¡App firmada!                                                      ║${NC}"

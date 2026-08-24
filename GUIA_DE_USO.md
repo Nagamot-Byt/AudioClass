@@ -125,7 +125,7 @@ En el panel **"Adaptación Inteligente"**:
 1. Activa el interruptor verde **"MODO FÁCIL"** arriba.
 2. Grabas tu clase -> pulsas Detener -> **la app hace TODO sola**:
    procesa -> transcribe -> analiza académicamente.
-3. Solo esperas y listo. 
+3. Solo esperas y listo.
 
 ---
 

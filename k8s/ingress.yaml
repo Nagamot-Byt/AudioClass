@@ -9,43 +9,41 @@ metadata:
   annotations:
     # NGINX Ingress Controller
     nginx.ingress.kubernetes.io/proxy-body-size: "200m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
-    
+
     # Rate limiting
     nginx.ingress.kubernetes.io/limit-rps: "10"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
-    
+
     # CORS
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "*"
-    
+
     # WebSocket support
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/websocket-services: "audioclass-server"
-    
+
     # SSL redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    
+
     # HSTS
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
-    
+
     # Cert Manager (auto TLS)
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 
 spec:
   ingressClassName: nginx
-  
+
   tls:
     - hosts:
         - audioclass.example.com
       secretName: audioclass-tls
-  
+
   rules:
     - host: audioclass.example.com
       http:
@@ -58,7 +56,7 @@ spec:
                 name: audioclass-server
                 port:
                   number: 80
-          
+
           # WebSocket (mismo servicio, path diferente)
           - path: /ws
             pathType: Prefix

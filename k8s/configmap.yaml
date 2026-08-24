@@ -12,15 +12,15 @@ data:
   AUDIOCLASS_PORT: "8000"
   AUDIOCLASS_MAX_UPLOAD_MB: "200"
   AUDIOCLASS_RATE_LIMIT: "30"
-  
+
   # Transcripción
   AUDIOCLASS_MODEL: "base"
   AUDIOCLASS_LANGUAGE: "auto"
   AUDIOCLASS_DEVICE: "cpu"
-  
+
   # Logging
   LOG_LEVEL: "info"
-  
+
   # Python
   PYTHONUNBUFFERED: "1"
   PYTHONDONTWRITEBYTECODE: "1"

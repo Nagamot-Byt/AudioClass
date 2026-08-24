@@ -41,24 +41,24 @@ spec:
                       values:
                         - audioclass
                 topologyKey: kubernetes.io/hostname
-      
+
       # Security Context
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
-      
+
       containers:
         - name: audioclass
           image: audioclass-server:latest
           imagePullPolicy: IfNotPresent
-          
+
           ports:
             - name: http
               containerPort: 8000
               protocol: TCP
-          
+
           # Environment variables
           envFrom:
             - configMapRef:
@@ -66,7 +66,7 @@ spec:
             - secretRef:
                 name: audioclass-secrets
                 optional: true
-          
+
           # Recursos
           resources:
             requests:
@@ -75,7 +75,7 @@ spec:
             limits:
               cpu: "2000m"
               memory: "4Gi"
-          
+
           # Health checks
           startupProbe:
             httpGet:
@@ -83,7 +83,7 @@ spec:
               port: http
             failureThreshold: 30
             periodSeconds: 10
-          
+
           livenessProbe:
             httpGet:
               path: /health
@@ -92,7 +92,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
-          
+
           readinessProbe:
             httpGet:
               path: /health
@@ -101,7 +101,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-          
+
           # Volumes
           volumeMounts:
             - name: data
@@ -110,7 +110,7 @@ spec:
             - name: data
               mountPath: /app/recordings
               subPath: recordings
-          
+
           # Security
           securityContext:
             allowPrivilegeEscalation: false
@@ -118,12 +118,12 @@ spec:
             capabilities:
               drop:
                 - ALL
-      
+
       # Volumes
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: audioclass-data
-      
+
       # Graceful shutdown
       terminationGracePeriodSeconds: 30

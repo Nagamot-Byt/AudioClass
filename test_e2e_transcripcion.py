@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Prueba E2E del flujo real de AudioClass: grabar -> pipeline -> transcribir.
 
 Replica EXACTAMENTE lo que hace la app (ver App._procsave en audioclass_v91.py):
@@ -18,7 +17,12 @@ Valida:
 - El progreso es monótono (la barra nunca retrocede).
 - El pipeline no destruye la señal (el procesado conserva energía/duración útil).
 """
-import os, sys, time, tempfile
+
+import os
+import sys
+import tempfile
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # La consola de Windows (cp1252) no imprime emojis como : reconfigure a utf-8
 # para que los prints con mensajes de progreso no lancen UnicodeEncodeError.
@@ -28,6 +32,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import numpy as np
 from scipy.io import wavfile
+
 import audioclass_v91 as ac
 
 
@@ -53,7 +58,7 @@ def main():
         v = v.astype(np.float32) / 32768.0
     raw = np.tile(v, 5)
     _savewav(raw_path, raw)
-    print(f"[1/4] 'Grabación' simulada: voz real x5 = {len(raw)/sr:.0f}s")
+    print(f"[1/4] 'Grabación' simulada: voz real x5 = {len(raw) / sr:.0f}s")
 
     # ── 2. Pipeline profesional (igual que App._procsave) ──────────────────
     pipe = ac.AudioPipeline("Clase Universitaria", fast_mode=False, use_vad=True)
@@ -61,10 +66,10 @@ def main():
     t0 = time.time()
     proc = pipe.process(raw, progress_callback=lambda s, t, n: steps.append(n))
     t_pipe = time.time() - t0
-    print(f"[2/4] Pipeline: {t_pipe:.1f}s · {len(steps)} etapas · salida {len(proc)/sr:.1f}s")
+    print(f"[2/4] Pipeline: {t_pipe:.1f}s · {len(steps)} etapas · salida {len(proc) / sr:.1f}s")
     # El procesado no debe quedar vacío ni perder toda la señal
     assert len(proc) > 0, "El pipeline devolvió audio vacío"
-    rms = float(np.sqrt(np.mean(proc ** 2))) if len(proc) else 0.0
+    rms = float(np.sqrt(np.mean(proc**2))) if len(proc) else 0.0
     assert rms > 0.01, f"El pipeline casi silenció el audio (rms={rms:.4f})"
 
     # ── 3. Guardar procesado (int16) y transcribir con el motor paralelo ───
@@ -72,6 +77,7 @@ def main():
     print("[3/4] Procesado guardado (int16)")
 
     import whisper
+
     eng = ac.LocalWhisperEngine("tiny", backend="openai")
     eng.model = whisper.load_model(os.path.join(base, "models", "tiny.pt"))
     eng.ready = True
@@ -80,12 +86,10 @@ def main():
 
     msgs = []
     t0 = time.time()
-    res = eng.transcribe(proc_path, timestamps=False,
-                         progress_callback=lambda f, t, m: msgs.append((f, m)))
+    res = eng.transcribe(proc_path, timestamps=False, progress_callback=lambda f, t, m: msgs.append((f, m)))
     elapsed = time.time() - t0
     txt = (res.get("text") or "").strip()
-    print(f"[4/4] Transcripción: {res.get('workers')} workers · "
-          f"{res.get('chunks')} chunks · {elapsed:.1f}s")
+    print(f"[4/4] Transcripción: {res.get('workers')} workers · {res.get('chunks')} chunks · {elapsed:.1f}s")
 
     # ── Validaciones ───────────────────────────────────────────────────────
     print("TEXT_LEN:", len(txt))

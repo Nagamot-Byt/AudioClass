@@ -1,0 +1,52 @@
+# =============================================================================
+# AudioClass — Pre-commit hooks
+# =============================================================================
+# Install:  pre-commit install
+# Run all:  pre-commit run --all-files
+# Update:   pre-commit autoupdate
+# =============================================================================
+
+repos:
+  # ── Ruff: linter + formatter (replaces flake8, isort, black) ────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      # Linting
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, jupyter]
+      # Formatting
+      - id: ruff-format
+        types_or: [python, jupyter]
+
+  # ── Trailing whitespace & end-of-file fixer ─────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ".github/workflows/release.yml"
+        # release.yml has shell heredocs that confuse strict YAML parsers;
+        # GitHub Actions validates YAML natively on push
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: check-toml
+
+  # ── Check for broken symlinks ───────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-symlinks
+      - id: destroyed-symlinks
+
+  # ── Check executables have shebangs ─────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable

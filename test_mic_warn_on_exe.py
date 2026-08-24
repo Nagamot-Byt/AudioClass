@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Prueba E2E del dialogo de microfono debil EJECUTANDO EL CODIGO EMPAQUETADO
 del exe (dist_onefile/AudioClass.exe), no el fuente.
 
@@ -12,13 +11,14 @@ Fuerza un nivel bajo (p90 < umbral) y verifica en el codigo del exe:
 
 FALLA si cualquier asercion no se cumple. Requiere pantalla (se abre la app).
 """
+
+import json
+import marshal
 import os
 import sys
-import json
+import tempfile
 import time
 import types
-import tempfile
-import marshal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
@@ -113,8 +113,7 @@ check("arranca sin grabar", not getattr(app, "recording", False))
 
 # Fuerza nivel bajo como llegaria del pre-check (vía la cola real _poll)
 app.q.put(("mic_probe", 0.003))
-abrio = wait_until(app, lambda: getattr(app, "mic_warn_top", None) is not None
-                   and app.mic_warn_top.winfo_exists())
+abrio = wait_until(app, lambda: getattr(app, "mic_warn_top", None) is not None and app.mic_warn_top.winfo_exists())
 check("nivel bajo abre el dialogo de advertencia", abrio)
 check("aun no graba con dialogo abierto", not getattr(app, "recording", False))
 check("status no dice GRABANDO", "GRABANDO" not in str(app.lstatus.cget("text")))
@@ -135,32 +134,43 @@ if getattr(app, "mic_warn_top", None) is not None:
     for _ in range(20):
         app.q.put(("mic_live", 0.05))
     pump(app, n=12, dt=0.1)
-    check("Mejor p90 marca Meta alcanzada", "Meta alcanzada" in app.mic_warn_best_lbl.cget("text"),
-          app.mic_warn_best_lbl.cget("text"))
-    check("running max >= umbral verde", getattr(app, "mic_warn_best_p90", 0.0) >= 0.03,
-          f"best={getattr(app, 'mic_warn_best_p90', 0.0):.4f}")
-    check("barra en verde tras la voz",
-          str(app.mic_warn_bar.cget("progress_color")).lower() == str(ac.C["ok"]).lower(),
-          f"color={app.mic_warn_bar.cget('progress_color')}")
+    check(
+        "Mejor p90 marca Meta alcanzada",
+        "Meta alcanzada" in app.mic_warn_best_lbl.cget("text"),
+        app.mic_warn_best_lbl.cget("text"),
+    )
+    check(
+        "running max >= umbral verde",
+        getattr(app, "mic_warn_best_p90", 0.0) >= 0.03,
+        f"best={getattr(app, 'mic_warn_best_p90', 0.0):.4f}",
+    )
+    check(
+        "barra en verde tras la voz",
+        str(app.mic_warn_bar.cget("progress_color")).lower() == str(ac.C["ok"]).lower(),
+        f"color={app.mic_warn_bar.cget('progress_color')}",
+    )
     # Mini-grafico de tendencia: debe haber barras dibujadas y el historial
     # de p90 por ventana debe reflejar la voz fuerte
     trend_items = len(app.mic_warn_trend.find_all())
-    check("trend canvas dibuja barras + linea meta", trend_items > 0,
-          f"items={trend_items}")
+    check("trend canvas dibuja barras + linea meta", trend_items > 0, f"items={trend_items}")
     # El primer valor es el p90 del pre-check (punto de partida, bajo); las
     # ventanas en vivo (desde el indice 1) deben reflejar la voz fuerte.
     hist = getattr(app, "mic_warn_p90_hist", [])
-    check("trend historial refleja la voz (en vivo)",
-          len(hist) > 1 and any(v >= 0.03 for v in hist)
-          and all(v >= 0.03 for v in hist[1:]),
-          str(hist))
+    check(
+        "trend historial refleja la voz (en vivo)",
+        len(hist) > 1 and any(v >= 0.03 for v in hist) and all(v >= 0.03 for v in hist[1:]),
+        str(hist),
+    )
 
     # La voz baja: el running max NO debe caer
     for _ in range(30):
         app.q.put(("mic_live", 0.001))
     pump(app, n=10, dt=0.1)
-    check("maximo no baja aunque la voz baje", getattr(app, "mic_warn_best_p90", 0.0) >= 0.03,
-          f"best={getattr(app, 'mic_warn_best_p90', 0.0):.4f}")
+    check(
+        "maximo no baja aunque la voz baje",
+        getattr(app, "mic_warn_best_p90", 0.0) >= 0.03,
+        f"best={getattr(app, 'mic_warn_best_p90', 0.0):.4f}",
+    )
     check("label mantiene Meta alcanzada", "Meta alcanzada" in app.mic_warn_best_lbl.cget("text"))
 
     # Pulsar 'Continuar grabando' (mismo callback del boton)
@@ -168,8 +178,7 @@ if getattr(app, "mic_warn_top", None) is not None:
     pump(app)
     if HAVE_MIC:
         check("Continuar arranca la grabacion", getattr(app, "recording", False) is True)
-        check("status GRABANDO", "GRABANDO" in str(app.lstatus.cget("text")),
-              str(app.lstatus.cget("text")))
+        check("status GRABANDO", "GRABANDO" in str(app.lstatus.cget("text")), str(app.lstatus.cget("text")))
         check("boton Detener visible", bool(app.bstop.winfo_ismapped()))
     else:
         skips += 1
@@ -190,9 +199,9 @@ else:
     skips += 1
     pump(app2, n=6)
     print("SKIP nivel OK graba directo (sin microfono en este runner)")
-check("no abre dialogo con nivel OK",
-      getattr(app2, "mic_warn_top", None) is None
-      or not app2.mic_warn_top.winfo_exists())
+check(
+    "no abre dialogo con nivel OK", getattr(app2, "mic_warn_top", None) is None or not app2.mic_warn_top.winfo_exists()
+)
 soft_stop(app2)
 app2.destroy()
 

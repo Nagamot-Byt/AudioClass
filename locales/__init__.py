@@ -1,6 +1,7 @@
 """
 locales — Sistema de internacionalización (i18n) para AudioClass
 """
-from .i18n import t, set_language, get_language, get_available_languages
 
-__all__ = ["t", "set_language", "get_language", "get_available_languages"]
+from .i18n import get_available_languages, get_language, set_language, t
+
+__all__ = ["get_available_languages", "get_language", "set_language", "t"]

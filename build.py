@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 build.py — Script de build unificado multiplataforma para AudioClass
 ====================================================================
@@ -18,7 +17,7 @@ Uso:
     python build.py --skip-models      # No descargar modelos whisper
     python build.py --skip-tests       # No ejecutar tests post-build
 """
-import os
+
 import platform
 import shutil
 import subprocess
@@ -58,15 +57,24 @@ REQUIRED_MODELS = [
 ]
 
 DOCS = [
-    "LEEME.txt", "LICENCIA.txt", "EULA.txt",
-    "AVISO_DE_PRIVACIDAD.txt", "TERCEROS_Y_LICENCIAS.md",
+    "LEEME.txt",
+    "LICENCIA.txt",
+    "EULA.txt",
+    "AVISO_DE_PRIVACIDAD.txt",
+    "TERCEROS_Y_LICENCIAS.md",
 ]
 
 
 def log(msg, color=""):
     """Imprime un mensaje con color opcional."""
-    colors = {"green": "\033[32m", "red": "\033[31m", "yellow": "\033[33m",
-              "blue": "\033[36m", "bold": "\033[1m", "end": "\033[0m"}
+    colors = {
+        "green": "\033[32m",
+        "red": "\033[31m",
+        "yellow": "\033[33m",
+        "blue": "\033[36m",
+        "bold": "\033[1m",
+        "end": "\033[0m",
+    }
     prefix = colors.get(color, "")
     suffix = colors.get("end", "") if color else ""
     print(f"{prefix}{msg}{suffix}")
@@ -76,8 +84,7 @@ def run(cmd, cwd=None, check=True):
     """Ejecuta un comando y retorna el resultado."""
     log(f"  $ {cmd}", "blue")
     result = subprocess.run(
-        cmd, shell=True, cwd=cwd or ROOT,
-        capture_output=True, text=True, encoding="utf-8", errors="replace"
+        cmd, shell=True, cwd=cwd or ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     if check and result.returncode != 0:
         log(f"ERROR: {result.stderr[:500]}", "red")
@@ -87,9 +94,9 @@ def run(cmd, cwd=None, check=True):
 
 def check_prerequisites():
     """Verifica que las dependencias estén instaladas."""
-    log(f"\n{'='*60}", "bold")
+    log(f"\n{'=' * 60}", "bold")
     log(f"  AudioClass — Build {SO}", "bold")
-    log(f"{'='*60}\n", "bold")
+    log(f"{'=' * 60}\n", "bold")
 
     # Python
     log(f"Python: {PY} ({sys.version.split()[0]})", "green")
@@ -97,6 +104,7 @@ def check_prerequisites():
     # PyInstaller
     try:
         import PyInstaller
+
         log(f"PyInstaller: {PyInstaller.__version__}", "green")
     except ImportError:
         log("PyInstaller no instalado. Instalando...", "yellow")
@@ -122,11 +130,14 @@ def download_models():
     # whisper tiny.pt
     tiny_pt = cache_dir / "tiny.pt"
     if not tiny_pt.exists():
-        run(f'"{PY}" -c "'
-            'import os, shutil, whisper; '
-            'whisper.load_model(\"tiny\"); '
-            'shutil.copy(os.path.expanduser(\"~/.cache/whisper/tiny.pt\"), \"models/tiny.pt\")'
-            '"', check=False)
+        run(
+            f'"{PY}" -c "'
+            "import os, shutil, whisper; "
+            'whisper.load_model("tiny"); '
+            'shutil.copy(os.path.expanduser("~/.cache/whisper/tiny.pt"), "models/tiny.pt")'
+            '"',
+            check=False,
+        )
 
     # CT2 models
     ct2_dir = ROOT / "models_ct2"
@@ -134,10 +145,13 @@ def download_models():
         model_dir = ct2_dir / name
         if not (model_dir / "model.bin").exists():
             log(f"  Descargando CT2 {name}...", "blue")
-            run(f'"{PY}" -c "'
-                'from huggingface_hub import snapshot_download; '
-                f'snapshot_download(\"Systran/faster-whisper-{name}\", local_dir=\"models_ct2/{name}\")'
-                '"', check=False)
+            run(
+                f'"{PY}" -c "'
+                "from huggingface_hub import snapshot_download; "
+                f'snapshot_download("Systran/faster-whisper-{name}", local_dir="models_ct2/{name}")'
+                '"',
+                check=False,
+            )
 
     log("Modelos listos", "green")
 
@@ -238,7 +252,7 @@ def build_macos(exe_path):
                     shutil.copy2(item, dest)
 
     # Info.plist
-    plist = '''<?xml version="1.0" encoding="UTF-8"?>
+    plist = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -254,7 +268,7 @@ def build_macos(exe_path):
     <key>LSMinimumSystemVersion</key><string>10.15</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.education</string>
 </dict>
-</plist>'''
+</plist>"""
     (contents / "Info.plist").write_text(plist, encoding="utf-8")
 
     # Docs legales
@@ -269,8 +283,7 @@ def build_macos(exe_path):
     dmg_path = ROOT / dmg_name
     if shutil.which("hdiutil"):
         log("Creando .dmg...", "blue")
-        run(f'hdiutil create -volname "AudioClass" -srcfolder "{app_dir}" -ov -format UDZO "{dmg_path}"',
-            check=False)
+        run(f'hdiutil create -volname "AudioClass" -srcfolder "{app_dir}" -ov -format UDZO "{dmg_path}"', check=False)
         if dmg_path.exists():
             dmg_size = dmg_path.stat().st_size / (1024 * 1024)
             log(f".dmg creado: {dmg_name} ({dmg_size:.0f} MB)", "green")
@@ -318,7 +331,7 @@ def build_linux_appimage():
                 shutil.copy2(item, dest)
 
     # Desktop file
-    desktop = '''[Desktop Entry]
+    desktop = """[Desktop Entry]
 Name=AudioClass
 Comment=Graba, transcribe y exporta clases universitarias con IA
 Exec=AudioClass
@@ -326,14 +339,16 @@ Icon=AudioClass
 Terminal=false
 Type=Application
 Categories=Audio;Education;
-'''
+"""
     (appdir / "AudioClass.desktop").write_text(desktop, encoding="utf-8")
     (appdir / "usr" / "share" / "applications" / "AudioClass.desktop").write_text(desktop, encoding="utf-8")
 
     # Icono SVG
     svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#0F172A"/><text x="32" y="44" text-anchor="middle" font-size="32" font-weight="bold" fill="#60A5FA">AC</text></svg>'
     (appdir / "AudioClass.svg").write_text(svg, encoding="utf-8")
-    (appdir / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps" / "AudioClass.svg").write_text(svg, encoding="utf-8")
+    (appdir / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps" / "AudioClass.svg").write_text(
+        svg, encoding="utf-8"
+    )
 
     # Docs legales
     for doc in DOCS:
@@ -344,8 +359,11 @@ Categories=Audio;Education;
     appimage_tool = shutil.which("appimagetool")
     if not appimage_tool:
         log("Descargando appimagetool...", "blue")
-        run("curl -sL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage "
-            "-o /tmp/appimagetool && chmod +x /tmp/appimagetool", check=False)
+        run(
+            "curl -sL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage "
+            "-o /tmp/appimagetool && chmod +x /tmp/appimagetool",
+            check=False,
+        )
         appimage_tool = "/tmp/appimagetool"
 
     if appimage_tool and Path(appimage_tool).exists():
@@ -391,6 +409,7 @@ def run_selftest(exe_path):
 def main():
     """Build principal."""
     import argparse
+
     parser = argparse.ArgumentParser(description="Build de AudioClass")
     parser.add_argument("--onedir", action="store_true", help="Build onedir")
     parser.add_argument("--onefile", action="store_true", help="Build onefile")
@@ -441,9 +460,9 @@ def main():
         run_selftest(exe_path)
 
     # Resumen
-    log(f"\n{'='*60}", "bold")
+    log(f"\n{'=' * 60}", "bold")
     log(f"  BUILD {SO} COMPLETADO", "green")
-    log(f"{'='*60}\n", "bold")
+    log(f"{'=' * 60}\n", "bold")
 
     # Listar artifacts generados
     artifacts = []

@@ -1,0 +1,16 @@
+{
+  "id": "texto_limpio",
+  "name": "Texto Limpio (Corrección)",
+  "description": "Corrección de errores y muletillas",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "✨",
+  "tags": ["correccion", "limpieza", "gramatica", "muletillas"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Corrige y limpia la siguiente transcripción en bruto.\n\nInstrucciones:\n- Corrige errores gramaticales y ortográficos obvios\n- Elimina repeticiones ('eh', 'mmm', 'este...')\n- Mejora la puntuación\n- Divide en párrafos lógicos\n- Mantén TODO el contenido, no resumas\n- Formato: texto corrido y limpio\n\nTranscripción:\n{TEXT}\n\nTexto Corregido:",
+  "desc": "Corrección de errores y muletillas",
+  "max_tokens": 4096,
+  "temperature": 0.1
+}

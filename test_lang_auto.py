@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_lang_auto.py — Modo de idioma 'auto' en LocalWhisperEngine.
 
 Sustituye whisper por un modelo FALSO (sys.modules) para verificar SIN cargar
@@ -14,6 +13,7 @@ torch/whisper reales que:
   R5. CloudColabEngine envia "language" en el form data.
   R6. El resultado de transcribe incluye "language".
 """
+
 import os
 import sys
 import tempfile
@@ -23,9 +23,9 @@ import numpy as np
 from scipy.io import wavfile
 
 # ── Fakes: NO cargan torch ni whisper reales ─────────────────────────────────
-CALLS = []          # kwargs de cada llamada a transcribe (camino local)
+CALLS = []  # kwargs de cada llamada a transcribe (camino local)
 DETECT_RESULT = {}  # lo que devuelve detect_language (se ajusta por test)
-COLUB_FORM = {}     # form data capturado del CloudColabEngine
+COLUB_FORM = {}  # form data capturado del CloudColabEngine
 
 
 class FakeModel:
@@ -74,9 +74,10 @@ def make_wav(duration_s):
 
 def test_es_forzado():
     import audioclass_core as core
+
     CALLS.clear()
     eng = core.LocalWhisperEngine("tiny", language="es", backend="openai")
-    p = make_wav(8)   # 1 chunk -> camino secuencial
+    p = make_wav(8)  # 1 chunk -> camino secuencial
     try:
         r = eng.transcribe(p)
     finally:
@@ -91,6 +92,7 @@ def test_es_forzado():
 
 def test_auto_detecta_en():
     import audioclass_core as core
+
     CALLS.clear()
     DETECT_RESULT.update({"en": 0.92, "es": 0.05})
     eng = core.LocalWhisperEngine("tiny", language="auto", backend="openai")
@@ -109,6 +111,7 @@ def test_auto_detecta_en():
 
 def test_auto_detecta_es():
     import audioclass_core as core
+
     CALLS.clear()
     DETECT_RESULT.update({"es": 0.9, "en": 0.08})
     eng = core.LocalWhisperEngine("tiny", language="auto", backend="openai")
@@ -125,10 +128,11 @@ def test_auto_detecta_es():
 
 def test_auto_paralelo_consistente():
     import audioclass_core as core
+
     CALLS.clear()
     DETECT_RESULT.update({"en": 0.95, "es": 0.03})
     eng = core.LocalWhisperEngine("tiny", language="auto", backend="openai")
-    p = make_wav(70)   # 70s -> 3 chunks -> camino paralelo
+    p = make_wav(70)  # 70s -> 3 chunks -> camino paralelo
     try:
         r = eng.transcribe(p)
     finally:
@@ -139,8 +143,7 @@ def test_auto_paralelo_consistente():
     for kw in CALLS:
         assert kw["language"] == "en", kw
         assert "university lecture" in kw["initial_prompt"]
-    print(f"  R4 OK: paralelo ({r['workers']} workers, {r['chunks']} chunks) "
-          f"todos con language='en' y prompt EN")
+    print(f"  R4 OK: paralelo ({r['workers']} workers, {r['chunks']} chunks) todos con language='en' y prompt EN")
 
 
 def test_auto_tupla_whisper_real():
@@ -148,18 +151,17 @@ def test_auto_tupla_whisper_real():
     verifica que _resolve_lang acepta la tupla (bug encontrado en el log:
     AttributeError 'tuple' object has no attribute 'get' en modo auto)."""
     import audioclass_core as core
+
     CALLS.clear()
 
     class FakeTuplaModel:
         def detect_language(self, mel):
-            return (["<|startoftranscript|>", "<|es|>"],
-                    {"en": 0.05, "es": 0.93, "fr": 0.02})
+            return (["<|startoftranscript|>", "<|es|>"], {"en": 0.05, "es": 0.93, "fr": 0.02})
 
         def transcribe(self, audio, **kwargs):
             CALLS.append(kwargs)
             lang = kwargs.get("language") or "es"
-            return {"text": "texto es",
-                    "segments": [{"start": 0.0, "end": 1.0, "text": "texto es"}]}
+            return {"text": "texto es", "segments": [{"start": 0.0, "end": 1.0, "text": "texto es"}]}
 
     eng = core.LocalWhisperEngine("tiny", language="auto", backend="openai")
     eng.model = FakeTuplaModel()
@@ -175,6 +177,7 @@ def test_auto_tupla_whisper_real():
 
 def test_cloud_envia_language():
     import audioclass_core as core
+
     COLUB_FORM.clear()
     orig_post = None
     try:
@@ -186,6 +189,7 @@ def test_cloud_envia_language():
 
     class _Resp:
         status_code = 200
+
         def json(self):
             return {"text": "ok", "model": "large-v3", "device": "gpu"}
 
@@ -212,7 +216,8 @@ def main():
     print("test_lang_auto.py — modo 'auto' de idioma en whisper")
     # Importar el nucleo ANTES de instalar los fakes: scipy debe ver su torch
     # (o ninguno) al importar, no el proxy.
-    import audioclass_core  # noqa: F401
+    import audioclass_core
+
     _install_fakes()
     test_es_forzado()
     test_auto_detecta_en()

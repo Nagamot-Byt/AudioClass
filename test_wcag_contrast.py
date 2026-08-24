@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Validacion de contraste WCAG AA de la UI completa (dark y light).
 
 Instancia la app real (sin wizard), camina el arbol de widgets y verifica que
@@ -10,9 +9,10 @@ bienvenida (first_run=True, instancia fresca por tema).
 
 FALLA si aparece cualquier violacion — correrlo en CI junto a test_ui_smoke.
 """
+
+import json
 import os
 import sys
-import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
@@ -32,6 +32,7 @@ with open(CFG, "w", encoding="utf-8") as f:
 
 def _fatal_nb(self, e):
     import traceback
+
     traceback.print_exc()
     print("FATAL:", e)
     sys.exit(1)
@@ -49,11 +50,34 @@ def check(name, cond, detail=""):
         failures.append(name)
 
 
+def _dismiss_toasts(app):
+    """Destruye cualquier toast activo para que no interfiera con la
+    medicion de contraste WCAG (los toasts usan colores transitorios
+    durante la animacion de fade que no cumplen contraste)."""
+    for attr in ("_toast_lbl", "_toast_btn"):
+        w = getattr(app, attr, None)
+        if w is not None:
+            try:
+                if w.winfo_exists():
+                    w.destroy()
+            except Exception:
+                pass
+            setattr(app, attr, None)
+    if getattr(app, "_toast_after", None) is not None:
+        try:
+            app.after_cancel(app._toast_after)
+        except Exception:
+            pass
+        app._toast_after = None
+
+
 def run_theme(app, dark, scope=None):
     app.dark = dark
     app._apply_palette()
+    _dismiss_toasts(app)
     for _ in range(5):
         app.update()
+    _dismiss_toasts(app)
     appearance = "dark" if dark else "light"
     pairs = wc.collect_all_pairs(app, appearance)
     viol, info = wc.check_pairs(pairs)
@@ -87,12 +111,13 @@ for _ in range(6):
 
 run_theme(app, dark=True)
 run_theme(app, dark=False)
-run_theme(app, dark=True)   # volver al oscuro: el re-mapeo no debe romper nada
+run_theme(app, dark=True)  # volver al oscuro: el re-mapeo no debe romper nada
+
 
 # ── Dialogos secundarios (CTkToplevel) en ambos temas ────────────────────
 def toplevels():
-    return [w for w in app.winfo_children()
-            if w.winfo_class() in ("Toplevel", "CTkToplevel") and w.winfo_exists()]
+    return [w for w in app.winfo_children() if w.winfo_class() in ("Toplevel", "CTkToplevel") and w.winfo_exists()]
+
 
 def open_dialog(name):
     before = set(id(w) for w in toplevels())
@@ -107,6 +132,7 @@ def open_dialog(name):
     for _ in range(4):
         app.update()
     return next((w for w in toplevels() if id(w) not in before), None)
+
 
 for dname in ("config", "mic", "opt", "guide"):
     top = open_dialog(dname)
@@ -127,10 +153,12 @@ for dname in ("config", "mic", "opt", "guide"):
 for warn_dark in (True, False):
     app.dark = warn_dark
     app._apply_palette()
+    _dismiss_toasts(app)
     app._open_mic_warn_dialog(0.003)
-    app._mic_warn_decided = True   # detener el worker del medidor en vivo
+    app._mic_warn_decided = True  # detener el worker del medidor en vivo
     for _ in range(3):
         app.update()
+    _dismiss_toasts(app)
     appearance = "dark" if warn_dark else "light"
     pairs = wc.collect_all_pairs(app, appearance)
     viol, _info = wc.check_pairs(pairs)
@@ -150,6 +178,7 @@ for warn_dark in (True, False):
 
 app.destroy()
 
+
 # ── Wizard de bienvenida (first_run=True) en ambos temas ───────────────────
 # Se valida COMO SE CREA (instancia fresca por tema): el wizard solo se
 # muestra en el arranque con el tema de la config y no hay toggle dentro,
@@ -163,8 +192,7 @@ def validate_wizard(theme):
     wapp = ac.App()
     for _ in range(6):
         wapp.update()
-    check(f"wizard first_run visible ({theme})",
-          hasattr(wapp, "wizard") and wapp.wizard.winfo_exists())
+    check(f"wizard first_run visible ({theme})", hasattr(wapp, "wizard") and wapp.wizard.winfo_exists())
     appearance = "dark" if theme == "dark" else "light"
     pairs = wc.collect_all_pairs(wapp, appearance)
     viol, info = wc.check_pairs(pairs)
@@ -186,7 +214,10 @@ validate_wizard("light")
 # ── Tema JSON de CTk: defaults que aplican a widgets crudos ───────────────
 try:
     import customtkinter as ctk
-    ctk.set_default_color_theme(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "audioclass_theme.json"))
+
+    ctk.set_default_color_theme(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "audioclass_theme.json")
+    )
     root = ctk.CTk()
     root.withdraw()
     for mode in ("light", "dark"):
@@ -207,7 +238,11 @@ try:
             check(f"tema JSON {mode}: {name} texto {tc} sobre {bg}", ok, f"{r:.2f}:1" if r else "n/a")
         btn_dis = wc.resolve_color(btn.cget("text_color_disabled"), mode)
         r = wc.contrast(btn_dis, ac.PALETTES["dark" if mode == "dark" else "light"]["button"])
-        check(f"tema JSON {mode}: CTkButton disabled texto", r is not None and r >= wc.UI_MIN, f"{r:.2f}:1" if r else "n/a")
+        check(
+            f"tema JSON {mode}: CTkButton disabled texto",
+            r is not None and r >= wc.UI_MIN,
+            f"{r:.2f}:1" if r else "n/a",
+        )
     root.destroy()
 except Exception as e:
     print("CTk no disponible, salto validacion de tema JSON:", e)

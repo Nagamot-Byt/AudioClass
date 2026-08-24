@@ -1,9 +1,13 @@
-# -*- coding: utf-8 -*-
 """Smoke test de la GUI rediseñada de AudioClass.
 Instancia la app sin wizard, ejercita el nuevo sistema de diseño
 (tema claro/oscuro, gutter, tags en vivo, toasts con Reintentar, atajos,
 estado de conexion) y cierra. Requiere pantalla (se abre una ventana ~1s)."""
-import os, sys, json, time
+
+import json
+import os
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -19,17 +23,19 @@ cfg["theme"] = "dark"
 with open(SMOKE_CFG, "w", encoding="utf-8") as f:
     json.dump(cfg, f)
 
+
 def _fatal_nb(self, e):
     """Sustituye _fatal: imprime el error real en vez de abrir un dialogo modal
     que bloquearia el test."""
     import traceback
+
     traceback.print_exc()
     print("FATAL:", e)
     sys.exit(1)
 
+
 ac.App._fatal = _fatal_nb
 
-import tkinter as tk
 _orig_msg = ac.App._msg
 ac.App._msg = lambda self, kind, title, msg: print("MSG:", kind, title, msg)
 
@@ -93,6 +99,7 @@ for _attr in ("_toast_lbl", "_toast_btn"):
 
 # ── Contraste WCAG AA: ningun texto/boton puede bajar de 4.5:1 (3:1 UI) ────
 import wcag_check as wc
+
 for _dark in (True, False):
     app.dark = _dark
     app._apply_palette()

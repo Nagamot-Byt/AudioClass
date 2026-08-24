@@ -1,0 +1,16 @@
+{
+  "id": "resumen",
+  "name": "Resumen Ejecutivo",
+  "description": "Puntos clave y conclusiones de la clase o conferencia",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "📝",
+  "tags": ["resumen", "ejecutivo", "puntos-clave"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Analiza la siguiente transcripción de una clase o conferencia y genera un RESUMEN EJECUTIVO profesional.\n\nInstrucciones:\n- Extrae los 5-7 puntos más importantes\n- Usa bullets claros y concisos\n- Incluye conclusiones clave\n- Máximo 500 palabras\n- Formato: Markdown simple\n\nTranscripción:\n{TEXT}\n\nResumen Ejecutivo:",
+  "desc": "Puntos clave y conclusiones",
+  "max_tokens": 2048,
+  "temperature": 0.3
+}

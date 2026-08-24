@@ -57,21 +57,20 @@ Crea un archivo `mi_motor.py` (o agrega en `audioclass_core.py`) con esta interf
 ```python
 class MiMotorTranscripcion:
     """Motor de transcripción personalizado."""
-    
+
     def __init__(self, api_key: str = "", model: str = "", **kwargs):
         self.api_key = api_key
         self.model = model
-    
-    def transcribe(self, audio_path: str, language: str = "es",
-                   on_partial=None, on_progress=None, **kwargs) -> str:
+
+    def transcribe(self, audio_path: str, language: str = "es", on_partial=None, on_progress=None, **kwargs) -> str:
         """Transcribe un archivo de audio.
-        
+
         Args:
             audio_path: Ruta al archivo de audio (WAV/MP3/FLAC).
             language: Código de idioma (ISO 639-1).
             on_partial: Callback opcional para texto parcial (streaming).
             on_progress: Callback opcional (0.0-1.0) para progreso.
-        
+
         Returns:
             Texto transcrito.
         """
@@ -86,14 +85,17 @@ En `ai_providers.py`, dentro de `create_default_registry()`, agrega:
 ```python
 from mi_motor import MiMotorTranscripcion
 
-registry.register_transcription("mi_motor", TranscriptionProvider(
-    name="Mi Motor (Descripción corta)",
-    key="mi_motor",
-    requires_key=True,                    # True si necesita API key
-    requires_url=False,                   # True si necesita URL del servidor
-    description="Transcripción con Mi Motor. Descripción para el usuario.",
-    config_key_api="mi_motor_api_key",    # Clave en config para la API key
-))
+registry.register_transcription(
+    "mi_motor",
+    TranscriptionProvider(
+        name="Mi Motor (Descripción corta)",
+        key="mi_motor",
+        requires_key=True,  # True si necesita API key
+        requires_url=False,  # True si necesita URL del servidor
+        description="Transcripción con Mi Motor. Descripción para el usuario.",
+        config_key_api="mi_motor_api_key",  # Clave en config para la API key
+    ),
+)
 ```
 
 ### Paso 3: Agregar lazy import del motor (si es cloud)
@@ -103,6 +105,7 @@ En `create_default_registry()`, para motores que dependen de librerías pesadas:
 ```python
 def _lazy_mi_motor(**kwargs):
     from mi_motor import MiMotorTranscripcion
+
     return MiMotorTranscripcion(**kwargs)
 ```
 
@@ -123,20 +126,19 @@ Los proveedores de adaptación generan análisis estructurado de transcripciones
 ```python
 class MiMotorAdaptacion:
     """Motor de adaptación (análisis con IA)."""
-    
+
     def __init__(self, api_key: str = "", model: str = "", **kwargs):
         self.api_key = api_key
         self.model = model
-    
-    def adapt(self, text: str, template: str = "resumen",
-              language: str = "es", **kwargs) -> str:
+
+    def adapt(self, text: str, template: str = "resumen", language: str = "es", **kwargs) -> str:
         """Genera un análisis estructurado del texto.
-        
+
         Args:
             text: Texto transcrito de la clase.
             template: Tipo de análisis (resumen, flashcards, examen, etc.).
             language: Idioma de salida.
-        
+
         Returns:
             Análisis en formato Markdown.
         """
@@ -148,23 +150,29 @@ class MiMotorAdaptacion:
 ```python
 from mi_motor_adaptacion import MiMotorAdaptacion
 
+
 def _lazy_mi_adapt(**kwargs):
     from mi_motor_adaptacion import MiMotorAdaptacion
+
     return MiMotorAdaptacion(**kwargs)
 
-registry.register_adaptation("mi_proveedor", AdaptationProvider(
-    name="Mi Proveedor (Descripción)",
-    key="mi_proveedor",
-    requires_key=True,
-    description="Análisis con Mi Proveedor. Gratis con plan inicial.",
-    config_key_api="mi_proveedor_api_key",
-    config_key_model="mi_proveedor_model",
-    models={                          # alias -> model_id
-        "rapido": "mi-model-rapido",
-        "calidad": "mi-model-calidad",
-    },
-    engine_class=_lazy_mi_adapt,
-))
+
+registry.register_adaptation(
+    "mi_proveedor",
+    AdaptationProvider(
+        name="Mi Proveedor (Descripción)",
+        key="mi_proveedor",
+        requires_key=True,
+        description="Análisis con Mi Proveedor. Gratis con plan inicial.",
+        config_key_api="mi_proveedor_api_key",
+        config_key_model="mi_proveedor_model",
+        models={  # alias -> model_id
+            "rapido": "mi-model-rapido",
+            "calidad": "mi-model-calidad",
+        },
+        engine_class=_lazy_mi_adapt,
+    ),
+)
 ```
 
 ### Paso 3: Agregar template personalizado (opcional)
@@ -233,32 +241,33 @@ python3 test_colab_server_security.py # 11 tests de seguridad del servidor
 ```python
 import unittest
 
+
 class TestMiMotorTranscripcion(unittest.TestCase):
-    
     def test_basic_transcription(self):
         """Test que el motor transcribe audio básico."""
         from mi_motor import MiMotorTranscripcion
-        
+
         engine = MiMotorTranscripcion(api_key="test-key")
         # Test con audio sintético o mock
         result = engine.transcribe("test_audio.wav")
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
-    
+
     def test_requires_api_key(self):
         """Test que el motor requiere API key."""
         from mi_motor import MiMotorTranscripcion
-        
+
         with self.assertRaises(ValueError):
             MiMotorTranscripcion(api_key="")
-    
+
     def test_plugin_registration(self):
         """Test que el motor se registra correctamente."""
         from ai_providers import create_default_registry
-        
+
         registry = create_default_registry()
         # Verificar que tu motor está registrado
         self.assertIn("mi_motor", registry.get_all_transcription())
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -320,12 +329,15 @@ Ejemplo:
 Si tu motor necesita una URL (ej: servidor Colab), usa `config_key_url`:
 
 ```python
-registry.register_transcription("mi_motor", TranscriptionProvider(
-    name="Mi Motor",
-    key="mi_motor",
-    requires_url=True,
-    config_key_url="mi_motor_url",
-))
+registry.register_transcription(
+    "mi_motor",
+    TranscriptionProvider(
+        name="Mi Motor",
+        key="mi_motor",
+        requires_url=True,
+        config_key_url="mi_motor_url",
+    ),
+)
 ```
 
 ### Modelos múltiples
@@ -333,15 +345,18 @@ registry.register_transcription("mi_motor", TranscriptionProvider(
 Si tu proveedor soporta varios modelos, usa `config_key_model` y `models`:
 
 ```python
-registry.register_adaptation("mi_proveedor", AdaptationProvider(
-    name="Mi Proveedor",
-    key="mi_proveedor",
-    config_key_model="mi_proveedor_model",
-    models={
-        "rapido": "model-1",
-        "calidad": "model-2",
-    },
-))
+registry.register_adaptation(
+    "mi_proveedor",
+    AdaptationProvider(
+        name="Mi Proveedor",
+        key="mi_proveedor",
+        config_key_model="mi_proveedor_model",
+        models={
+            "rapido": "model-1",
+            "calidad": "model-2",
+        },
+    ),
+)
 ```
 
 La UI mostrará un selector con los aliases ("rapido", "calidad") y mapeará al model_id real.
@@ -413,14 +428,15 @@ xvfb-run python3 audioclass_v91.py
 ```python
 # Verificar paleta activa
 from theme import PALETTES
-print(PALETTES['dark'].keys())  # Debe tener 18 claves
+
+print(PALETTES["dark"].keys())  # Debe tener 18 claves
 
 # Verificar que se usa la paleta, no colores hardcodeados
 # ❌ Mal
 label.configure(text_color="#FFFFFF")
 
 # ✅ Bien
-label.configure(text_color=self._C['fg'])
+label.configure(text_color=self._C["fg"])
 ```
 
 ---
@@ -495,12 +511,13 @@ rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-*
 ```python
 # Verificar GPU disponible
 import torch
+
 print(f"CUDA: {torch.cuda.is_available()}")
 print(f"GPU: {torch.cuda.get_device_name(0)}")
 
 # Usar modelo más pequeño
-config['whisper_model'] = 'tiny'  # En vez de 'large'
-config['whisper_compute'] = 'int8'  # En vez de 'float16'
+config["whisper_model"] = "tiny"  # En vez de 'large'
+config["whisper_compute"] = "int8"  # En vez de 'float16'
 ```
 
 **Problema**: Transcripción lenta en CPU
@@ -508,6 +525,7 @@ config['whisper_compute'] = 'int8'  # En vez de 'float16'
 ```python
 # Verificar que faster-whisper usa CPU optimizado
 from audioclass_core import LocalWhisperEngine
+
 engine = LocalWhisperEngine(model_size="tiny", device="cpu")
 
 # Usar modo rápido (skips some processing)
@@ -528,12 +546,12 @@ config = load_config()
 print(f"gemini_api_key: {bool(config.get('gemini_api_key'))}")
 
 # Forzar guardado
-config['gemini_api_key'] = 'tu-key-aqui'
+config["gemini_api_key"] = "tu-key-aqui"
 save_config(config)
 
 # Verificar que persiste
 config2 = load_config()
-assert config2.get('gemini_api_key') == 'tu-key-aqui'
+assert config2.get("gemini_api_key") == "tu-key-aqui"
 ```
 
 **Problema**: Config corrupta o incompatible
@@ -556,11 +574,13 @@ rm ~/.audioclass/config.json
 ```python
 # Verificar versión de schema
 from config_manager import CONFIG_VERSION
+
 print(f"Versión actual: {CONFIG_VERSION}")  # Debe ser 5
 
 # Ejecutar migración manualmente
 from config_manager import migrate_config
-config = {'theme': 'Dark', 'whisper_model': 'gemini-1.5-flash'}
+
+config = {"theme": "Dark", "whisper_model": "gemini-1.5-flash"}
 migrated = migrate_config(config)
 print(f"theme: {migrated['theme']}")  # Debe ser 'dark'
 print(f"whisper_model: {migrated['whisper_model']}")  # Debe ser 'flash'
@@ -574,8 +594,9 @@ print(f"whisper_model: {migrated['whisper_model']}")  # Debe ser 'flash'
 
 ```python
 # Solución: Verificar que el widget existe antes de actualizar
-if hasattr(widget, 'winfo_exists') and widget.winfo_exists():
+if hasattr(widget, "winfo_exists") and widget.winfo_exists():
     widget.configure(text="nuevo texto")
+
 
 # O usar el patrón de AudioClass
 def _safe_update(self, widget, **kwargs):
@@ -592,11 +613,12 @@ def _safe_update(self, widget, **kwargs):
 # Solución: Ejecutar en hilo separado
 import threading
 
+
 def mi_transcripcion():
     def _worker():
         result = engine.transcribe("audio.wav")
-        self.q.put(('transcription_done', result))
-    
+        self.q.put(("transcription_done", result))
+
     threading.Thread(target=_worker, daemon=True).start()
     # UI no se bloquea
 ```
@@ -621,8 +643,10 @@ print(f"Mensajes en cola: {self.q.qsize()}")
 ```python
 # Solución: Usar os._exit() en Linux
 import sys
-if sys.platform == 'linux':
+
+if sys.platform == "linux":
     import os
+
     os._exit(0)  # Evita SIGABRT de libtorch
 ```
 
@@ -724,6 +748,7 @@ python3 audioclass_v91.py --verbose
 
 ```python
 from config_manager import load_config
+
 config = load_config()
 for k, v in sorted(config.items()):
     print(f"{k}: {v}")
@@ -736,9 +761,9 @@ import cProfile
 import pstats
 
 # Profilear una función
-cProfile.run('mi_funcion()', 'profile_output')
-stats = pstats.Stats('profile_output')
-stats.sort_stats('cumulative')
+cProfile.run("mi_funcion()", "profile_output")
+stats = pstats.Stats("profile_output")
+stats.sort_stats("cumulative")
 stats.print_stats(10)  # Top 10 funciones más lentas
 ```
 
@@ -753,10 +778,15 @@ for thread in threading.enumerate():
 
 # Verificar si el hilo principal está bloqueado
 import signal
+
+
 def handler(sig, frame):
     import traceback
+
     traceback.print_stack(frame)
     signal.signal(signal.SIGUSR1, handler)
+
+
 signal.signal(signal.SIGUSR1, handler)
 # Enviar kill -USR1 <pid> para ver stack trace
 ```

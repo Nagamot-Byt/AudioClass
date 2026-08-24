@@ -31,12 +31,12 @@ services:
       - AUDIOCLASS_API_KEY=${AUDIOCLASS_API_KEY:-}
       - AUDIOCLASS_MAX_UPLOAD_MB=${AUDIOCLASS_MAX_UPLOAD_MB:-200}
       - AUDIOCLASS_RATE_LIMIT=${AUDIOCLASS_RATE_LIMIT:-30}
-      
+
       # Configuración de transcripción
       - AUDIOCLASS_MODEL=${AUDIOCLASS_MODEL:-base}
       - AUDIOCLASS_LANGUAGE=${AUDIOCLASS_LANGUAGE:-auto}
       - AUDIOCLASS_DEVICE=${AUDIOCLASS_DEVICE:-cpu}
-      
+
       # Configuración de IA (opcional)
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

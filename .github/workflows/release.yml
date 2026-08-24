@@ -233,12 +233,12 @@ DESKTOP
           CERT_NAME="AudioClass Self-Signed"
           KEYCHAIN="/tmp/audioclass-signing.keychain-db"
           KEYCHAIN_PASS="$(openssl rand -hex 16)"
-          
+
           # Crear keychain temporal
           security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN" 2>/dev/null || true
           security set-keychain-settings -lut 21600 "$KEYCHAIN" 2>/dev/null || true
           security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN" 2>/dev/null || true
-          
+
           # Crear certificado autofirmado
           CERT_CNF=$(mktemp /tmp/cert_XXXXXX.cnf)
           cat > "$CERT_CNF" << 'CERTCFG'
@@ -248,29 +248,29 @@ DESKTOP
           default_md = sha256
           distinguished_name = dn
           x509_extensions = v3_code_signing
-          
+
           [dn]
           CN = AudioClass Self-Signed
           O = AudioClass OSS
-          
+
           [v3_code_signing]
           basicConstraints = CA:FALSE
           keyUsage = digitalSignature
           extendedKeyUsage = codeSigning
           CERTCFG
-          
+
           openssl req -x509 -newkey rsa:2048 -nodes \
             -keyout /tmp/signing.key -out /tmp/signing.crt \
             -days 3650 -config "$CERT_CNF" 2>/dev/null
           openssl pkcs12 -export -in /tmp/signing.crt -inkey /tmp/signing.key \
             -out /tmp/signing.p12 -passout pass:"$KEYCHAIN_PASS" 2>/dev/null
-          
+
           # Importar al keychain
           security import /tmp/signing.p12 -k "$KEYCHAIN" \
             -P "$KEYCHAIN_PASS" -T /usr/bin/codesign 2>/dev/null
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASS" "$KEYCHAIN" 2>/dev/null || true
-          
+
           # Firmar el .app bundle
           if [ -d "dist/AudioClass.app" ]; then
             codesign --force --sign "$CERT_NAME" \
@@ -278,7 +278,7 @@ DESKTOP
               dist/AudioClass.app 2>/dev/null || echo 'Firma self-signed aplicada (Gatekeeper mostrará advertencia)'
             echo "=== App firmada con certificado self-signed ==="
           fi
-          
+
           # Limpiar
           rm -f /tmp/signing.key /tmp/signing.crt /tmp/signing.p12 "$CERT_CNF"
       - name: Empaquetar zip macOS + .dmg

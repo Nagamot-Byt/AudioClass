@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.1.1] - 2026-08-24
+
+### Fixed
+- **Linux recording pipeline**: `recording_engine.py` importaba `sounddevice` sin try/except, causando crash si PortAudio no está instalado
+- **Linux mic device resolution**: `mic_device_id_for()` solo aceptaba IDs numéricos; ahora resuelve por nombre ("pulse", "pipewire", "default") con búsqueda exacta y parcial case-insensitive
+- **Waveform widget import**: `audioclass_v91.py` importaba `waveform_widget` sin try/except, causando crash en binarios compilados si el módulo falta
+- **Linux PyInstaller spec**: 5 hiddenimports faltantes (`template_plugins`, `plugin_manager_ui`, `waveform_widget`, `locales`, `locales.i18n`)
+- **Update dialog crash**: `_show_update_dialog` pasaba `corner_radius=8` pero `_frame()` ya lo fija en 12 → TypeError
+- **Formatted notes crash**: `_insert_formatted_notes` usaba variable local `top` del caller sin recibirla como parámetro → NameError
+
+### Added
+- `launch_linux.sh`: lanzador un clic que verifica dependencias (Python, PortAudio, tkinter, PulseAudio) y ejecuta la app desde binario, AppImage o source
+- Verificación E2E del pipeline completo: device resolution → check_input_settings → mic probe → recording → WAV save
+
 ## [9.1] - 2026-08-20
 
 ### Added

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 test_api_integration.py — Tests de integracion con API mocked
 =============================================================
@@ -10,15 +9,20 @@ respuestas de Gemini y OpenAI.
 
 Ejecutar: python -m pytest test_api_integration.py -v
 """
-import os, sys, json, tempfile, threading, time
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+
+import os
+import sys
+import tempfile
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from audioclass_core import (
-    GeminiAdaptationEngine, OpenAIAdaptationEngine,
-    LocalWhisperEngine, CloudColabEngine, AudioPipeline,
+    AudioPipeline,
+    CloudColabEngine,
+    GeminiAdaptationEngine,
+    LocalWhisperEngine,
+    OpenAIAdaptationEngine,
 )
 from config_manager import DEFAULT_CONFIG
 
@@ -34,9 +38,7 @@ class TestGeminiAPIIntegration:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "candidates": [{
-                "content": {"parts": [{"text": "Resumen de clase: Tema X.\nTesis: Y."}]}
-            }]
+            "candidates": [{"content": {"parts": [{"text": "Resumen de clase: Tema X.\nTesis: Y."}]}}]
         }
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
@@ -54,9 +56,7 @@ class TestGeminiAPIIntegration:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "candidates": [{
-                "content": {"parts": [{"text": "Analisis profundo del tema."}]}
-            }]
+            "candidates": [{"content": {"parts": [{"text": "Analisis profundo del tema."}]}}]
         }
 
         with patch("requests.post", return_value=mock_resp):
@@ -90,9 +90,7 @@ class TestGeminiAPIIntegration:
         """Verifica que todas las plantillas generan respuesta."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "candidates": [{"content": {"parts": [{"text": "OK"}]}}]
-        }
+        mock_resp.json.return_value = {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]}
 
         with patch("requests.post", return_value=mock_resp):
             engine = GeminiAdaptationEngine("fake-key-123456789", "flash")
@@ -109,9 +107,7 @@ class TestOpenAIIntegration:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "choices": [{
-                "message": {"content": "Resumen OpenAI: Clase sobre topicos avanzados."}
-            }]
+            "choices": [{"message": {"content": "Resumen OpenAI: Clase sobre topicos avanzados."}}]
         }
 
         with patch("requests.post", return_value=mock_resp) as mock_post:
@@ -128,9 +124,7 @@ class TestOpenAIIntegration:
         """Verifica que GPT-4o se usa correctamente."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "choices": [{"message": {"content": "Analisis GPT-4o."}}]
-        }
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "Analisis GPT-4o."}}]}
 
         with patch("requests.post", return_value=mock_resp):
             engine = OpenAIAdaptationEngine("fake-key-12345", "gpt4o")
@@ -153,9 +147,7 @@ class TestOpenAIIntegration:
         """Verifica que todas las plantillas funcionan con OpenAI."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "choices": [{"message": {"content": "OK"}}]
-        }
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "OK"}}]}
 
         with patch("requests.post", return_value=mock_resp):
             engine = OpenAIAdaptationEngine("fake-key-12345", "mini")
@@ -242,27 +234,49 @@ class TestUIBuilderIntegration:
     def test_all_builder_functions_exist(self):
         """Verifica que todas las funciones builder existen y son callable."""
         from ui_builder import (
-            build_sidebar, build_header, build_easy_mode, build_controls,
-            build_config_bar, build_progress, build_waveform, build_adapt,
-            build_transcription, build_footer, build_vu_meter,
+            build_adapt,
+            build_config_bar,
+            build_controls,
+            build_easy_mode,
+            build_footer,
+            build_header,
+            build_progress,
+            build_sidebar,
+            build_transcription,
+            build_vu_meter,
+            build_waveform,
         )
-        funcs = [build_sidebar, build_header, build_easy_mode, build_controls,
-                 build_config_bar, build_progress, build_waveform, build_adapt,
-                 build_transcription, build_footer, build_vu_meter]
+
+        funcs = [
+            build_sidebar,
+            build_header,
+            build_easy_mode,
+            build_controls,
+            build_config_bar,
+            build_progress,
+            build_waveform,
+            build_adapt,
+            build_transcription,
+            build_footer,
+            build_vu_meter,
+        ]
         for f in funcs:
             assert callable(f), f"{f.__name__} is not callable"
 
     def test_builder_module_docstring(self):
         """Verifica que ui_builder tiene docstring de modulo."""
         import ui_builder
+
         assert ui_builder.__doc__ is not None
         assert "ui_builder" in ui_builder.__doc__
 
 
 if __name__ == "__main__":
     import sys
+
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import pytest
+
     rc = pytest.main([__file__, "-v", "--tb=line", "-q"])
     if rc == 0:
         print("API_INTEGRATION_OK")

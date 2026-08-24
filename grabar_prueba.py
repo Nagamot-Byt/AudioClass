@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 grabar_prueba.py — Prueba de calidad de audio con el pipeline corregido.
 
@@ -38,10 +37,11 @@ def record(duration_s, voice_gate=True):
     if not voice_gate:
         buf = []
         print(f"Grabando {duration_s:.0f} s... habla con normalidad.")
+
         def cb(indata, frames, ti, status):
             buf.append(indata.copy().flatten())
-        with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                            blocksize=win, callback=cb):
+
+        with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32, blocksize=win, callback=cb):
             sd.sleep(int(duration_s * 1000))
         return np.concatenate(buf).flatten()
 
@@ -66,8 +66,7 @@ def record(duration_s, voice_gate=True):
                 quiet_since = time.time()
 
     print(f"ESCUCHANDO (max {LISTEN_MAX_S}s)... HABLA AHORA. Capturo tu voz y paro al callar.")
-    stream = sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                            blocksize=win, callback=cb)
+    stream = sd.InputStream(samplerate=SR, channels=1, dtype=np.float32, blocksize=win, callback=cb)
     stream.start()
     try:
         while True:
@@ -111,8 +110,9 @@ def analyze(rp, pp):
     def frame_rms(x):
         w = int(0.04 * sr)
         hop = w // 2
-        return np.array([np.sqrt(np.mean(c ** 2)) if len(c) else 0.0
-                         for c in (x[i:i + w] for i in range(0, len(x) - w, hop))])
+        return np.array(
+            [np.sqrt(np.mean(c**2)) if len(c) else 0.0 for c in (x[i : i + w] for i in range(0, len(x) - w, hop))]
+        )
 
     def band_energy(x, lo, hi):
         if len(x) < 512:
@@ -135,10 +135,14 @@ def analyze(rp, pp):
     hii, hoo = band_energy(rawf, 7100, 7900), band_energy(prof, 7100, 7900)
     pk = float(np.max(np.abs(prof))) if len(prof) else 0.0
     return {
-        "d_raw": d_raw, "d_pro": d_pro,
-        "floor_r": floor_r, "floor_p": floor_p,
-        "speech_r": speech_r, "speech_p": speech_p,
-        "sil_r": sil_r, "sil_p": sil_p,
+        "d_raw": d_raw,
+        "d_pro": d_pro,
+        "floor_r": floor_r,
+        "floor_p": floor_p,
+        "speech_r": speech_r,
+        "speech_p": speech_p,
+        "sil_r": sil_r,
+        "sil_p": sil_p,
         "voz_ratio": vo / max(vi, 1e-12),
         "agudos_db": 20 * np.log10(hoo / max(hii, 1e-12)),
         "peak": pk,
@@ -176,7 +180,9 @@ def main():
     a = analyze(rp, pp)
     print("\n=== COMPARACION raw vs mejorado (audio REAL) ===")
     print(f"Duracion: raw {a['d_raw']:.1f}s -> mejorado {a['d_pro']:.1f}s (silencio recortado por VAD)")
-    print(f"Silencio/ruido recortado: raw {a['sil_r']:.0f}% de tramas en silencio -> mejorado {a['sil_p']:.0f}% (noise gate)")
+    print(
+        f"Silencio/ruido recortado: raw {a['sil_r']:.0f}% de tramas en silencio -> mejorado {a['sil_p']:.0f}% (noise gate)"
+    )
     print(f"Nivel habla (p90): raw {a['speech_r']:.4f} -> mejorado {a['speech_p']:.4f}")
     print(f"SNR mejorado: habla/piso = {a['speech_p'] / max(a['floor_p'], 1e-12):.1f}x")
     print(f"Voz 200-3000Hz: out/in = {a['voz_ratio']:.2f} (>= 1 = voz conservada)")

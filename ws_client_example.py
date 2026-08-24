@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 ws_client_example.py — Cliente WebSocket para transcripción en tiempo real
 ===========================================================================
@@ -20,13 +19,13 @@ Uso:
 Requisitos:
     pip install websockets sounddevice numpy scipy
 """
+
 import argparse
 import asyncio
 import json
 import os
 import sys
 import time
-from pathlib import Path
 
 try:
     import websockets
@@ -69,12 +68,13 @@ async def transcribe_file(
     # Resamplear a 16kHz si es necesario
     if sr != 16000:
         from scipy.signal import resample
+
         num_samples = int(len(audio) * 16000 / sr)
         audio = resample(audio, num_samples)
         sr = 16000
 
     print(f"Archivo: {file_path}")
-    print(f"Duración: {len(audio)/sr:.1f}s")
+    print(f"Duración: {len(audio) / sr:.1f}s")
     print(f"Sample rate: {sr}Hz")
     print()
 
@@ -96,13 +96,15 @@ async def transcribe_file(
 
         t0 = time.time()
         for i in range(0, len(audio), chunk_samples):
-            chunk = audio[i:i + chunk_samples]
+            chunk = audio[i : i + chunk_samples]
             chunk_data = chunk.tolist()
 
-            await websocket.send_json({
-                "type": "audio",
-                "data": chunk_data,
-            })
+            await websocket.send_json(
+                {
+                    "type": "audio",
+                    "data": chunk_data,
+                }
+            )
 
             # Esperar resultado parcial
             try:
@@ -129,11 +131,11 @@ async def transcribe_file(
 
         if data["type"] == "final":
             elapsed = time.time() - t0
-            print(f"\n{'='*60}")
-            print(f"TRANSCRIPCIÓN COMPLETA")
-            print(f"{'='*60}")
+            print(f"\n{'=' * 60}")
+            print("TRANSCRIPCIÓN COMPLETA")
+            print(f"{'=' * 60}")
             print(data["text"])
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             print(f"Duración audio: {data.get('duration', 0):.1f}s")
             print(f"Tiempo procesamiento: {data.get('processing_time', elapsed):.1f}s")
             print(f"Tiempo total: {elapsed:.1f}s")
@@ -178,8 +180,9 @@ async def transcribe_microphone(
             buffer.extend(indata[:, 0].tolist())
 
         # Iniciar grabación
-        with sd.InputStream(samplerate=sr, channels=1, dtype="float32",
-                           callback=audio_callback, blocksize=chunk_samples // 4):
+        with sd.InputStream(
+            samplerate=sr, channels=1, dtype="float32", callback=audio_callback, blocksize=chunk_samples // 4
+        ):
             try:
                 while True:
                     # Esperar suficiente audio
@@ -188,10 +191,12 @@ async def transcribe_microphone(
                         buffer = buffer[chunk_samples:]
 
                         # Enviar chunk
-                        await websocket.send_json({
-                            "type": "audio",
-                            "data": chunk,
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "audio",
+                                "data": chunk,
+                            }
+                        )
 
                         # Esperar resultado parcial
                         try:
@@ -217,19 +222,17 @@ async def transcribe_microphone(
                 response = await asyncio.wait_for(websocket.recv(), timeout=10.0)
                 data = json.loads(response)
                 if data["type"] == "final" and data["text"]:
-                    print(f"\n{'='*60}")
-                    print(f"TRANSCRIPCIÓN COMPLETA")
-                    print(f"{'='*60}")
+                    print(f"\n{'=' * 60}")
+                    print("TRANSCRIPCIÓN COMPLETA")
+                    print(f"{'=' * 60}")
                     print(data["text"])
-                    print(f"{'='*60}")
+                    print(f"{'=' * 60}")
             except asyncio.TimeoutError:
                 pass
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Cliente WebSocket para transcripción en tiempo real"
-    )
+    parser = argparse.ArgumentParser(description="Cliente WebSocket para transcripción en tiempo real")
     parser.add_argument("file", nargs="?", help="Archivo de audio a transcribir")
     parser.add_argument("--mic", action="store_true", help="Grabar del micrófono")
     parser.add_argument("--host", default="localhost", help="Host del servidor")
@@ -243,16 +246,12 @@ def main():
         sys.exit(1)
 
     if args.mic:
-        asyncio.run(transcribe_microphone(
-            args.host, args.port, args.language, args.chunk
-        ))
+        asyncio.run(transcribe_microphone(args.host, args.port, args.language, args.chunk))
     else:
         if not os.path.exists(args.file):
             print(f"Error: Archivo no encontrado: {args.file}")
             sys.exit(1)
-        asyncio.run(transcribe_file(
-            args.file, args.host, args.port, args.language, args.chunk
-        ))
+        asyncio.run(transcribe_file(args.file, args.host, args.port, args.language, args.chunk))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,16 @@
+{
+  "id": "examen",
+  "name": "Preguntas de Examen",
+  "description": "Test, respuesta corta y desarrollo",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "📝",
+  "tags": ["examen", "test", "opcion-multiple", "desarrollo"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Genera PREGUNTAS DE EXAMEN tipo test a partir de esta transcripción.\n\nInstrucciones:\n- 10 preguntas de opción múltiple (A, B, C, D)\n- 3 preguntas de respuesta corta\n- 2 preguntas de desarrollo\n- Indica la respuesta correcta para las de opción múltiple\n- Formato claro y ordenado\n\nTranscripción:\n{TEXT}\n\nPreguntas de Examen:",
+  "desc": "Test, respuesta corta y desarrollo",
+  "max_tokens": 4096,
+  "temperature": 0.2
+}

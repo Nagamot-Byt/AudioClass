@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 template_plugins.py — Sistema de plugins para templates de análisis IA
 ======================================================================
@@ -30,23 +29,25 @@ Uso:
     result = manager.run_template("resumen", text, engine)
 """
 
-import json
-import importlib.util
 import importlib.machinery
+import importlib.util
+import json
 import os
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
-
+from typing import Any
 
 # ── Plugin Metadata ──────────────────────────────────────────────────────────
+
 
 @dataclass
 class PluginMeta:
     """Metadatos de un plugin de template."""
+
     id: str
     name: str
     description: str
@@ -54,7 +55,7 @@ class PluginMeta:
     version: str = "1.0.0"
     license: str = "MIT"
     icon: str = ""
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     min_app_version: str = ""
     source_path: str = ""
     is_builtin: bool = False
@@ -80,6 +81,7 @@ class PluginMeta:
 @dataclass
 class PluginTemplate:
     """Un template de análisis cargado desde un plugin."""
+
     meta: PluginMeta
     prompt: str
     icon: str = ""
@@ -87,8 +89,8 @@ class PluginTemplate:
     max_tokens: int = 4096
     temperature: float = 0.3
     output_format: str = "markdown"  # markdown, json, text
-    language_hints: List[str] = field(default_factory=lambda: ["es", "en"])
-    _compiled_prompt: Optional[str] = None
+    language_hints: list[str] = field(default_factory=lambda: ["es", "en"])
+    _compiled_prompt: str | None = None
 
     def render_prompt(self, text: str, **kwargs) -> str:
         """Renderiza el prompt con el texto y variables adicionales."""
@@ -112,14 +114,15 @@ class PluginTemplate:
 
 # ── Plugin Loader ────────────────────────────────────────────────────────────
 
+
 class PluginLoader:
     """Carga plugins desde archivos JSON o Python."""
 
     @staticmethod
-    def load_json(path: str) -> Optional[PluginTemplate]:
+    def load_json(path: str) -> PluginTemplate | None:
         """Carga un template desde un archivo JSON."""
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Validar campos requeridos
@@ -163,7 +166,7 @@ class PluginLoader:
             return None
 
     @staticmethod
-    def load_python(path: str) -> Optional[PluginTemplate]:
+    def load_python(path: str) -> PluginTemplate | None:
         """Carga un template desde un archivo Python.
 
         El archivo Python debe definir:
@@ -241,11 +244,12 @@ class PluginLoader:
 
 # ── Plugin Validator ─────────────────────────────────────────────────────────
 
+
 class PluginValidator:
     """Valida plugins antes de cargarlos."""
 
     @staticmethod
-    def validate(template: PluginTemplate) -> Tuple[bool, List[str]]:
+    def validate(template: PluginTemplate) -> tuple[bool, list[str]]:
         """Valida un template. Retorna (es_válido, lista_errores)."""
         errors = []
 
@@ -274,10 +278,10 @@ class PluginValidator:
         return len(errors) == 0, errors
 
     @staticmethod
-    def validate_json_file(path: str) -> Tuple[bool, List[str]]:
+    def validate_json_file(path: str) -> tuple[bool, list[str]]:
         """Valida un archivo JSON de plugin sin cargarlo."""
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
 
             errors = []
@@ -302,13 +306,14 @@ class PluginValidator:
 
 # ── Plugin Manager ──────────────────────────────────────────────────────────
 
+
 class PluginManager:
     """Gestor central de plugins de templates."""
 
-    def __init__(self, extra_dirs: Optional[List[str]] = None):
-        self._templates: Dict[str, PluginTemplate] = {}
-        self._plugin_dirs: List[str] = []
-        self._watchers: List[Callable] = []
+    def __init__(self, extra_dirs: list[str] | None = None):
+        self._templates: dict[str, PluginTemplate] = {}
+        self._plugin_dirs: list[str] = []
+        self._watchers: list[Callable] = []
         self._last_scan: float = 0
 
         # Directorios por defecto
@@ -371,23 +376,23 @@ class PluginManager:
         self._last_scan = time.time()
         return loaded
 
-    def get_template(self, template_id: str) -> Optional[PluginTemplate]:
+    def get_template(self, template_id: str) -> PluginTemplate | None:
         """Obtiene un template por ID."""
         return self._templates.get(template_id)
 
-    def get_all_templates(self) -> Dict[str, PluginTemplate]:
+    def get_all_templates(self) -> dict[str, PluginTemplate]:
         """Devuelve todos los templates cargados."""
         return dict(self._templates)
 
-    def get_enabled_templates(self) -> Dict[str, PluginTemplate]:
+    def get_enabled_templates(self) -> dict[str, PluginTemplate]:
         """Devuelve solo los templates habilitados."""
         return {k: v for k, v in self._templates.items() if v.meta.is_enabled}
 
-    def get_builtin_templates(self) -> Dict[str, PluginTemplate]:
+    def get_builtin_templates(self) -> dict[str, PluginTemplate]:
         """Devuelve los templates incorporados."""
         return {k: v for k, v in self._templates.items() if v.meta.is_builtin}
 
-    def get_custom_templates(self) -> Dict[str, PluginTemplate]:
+    def get_custom_templates(self) -> dict[str, PluginTemplate]:
         """Devuelve los templates personalizados del usuario."""
         return {k: v for k, v in self._templates.items() if not v.meta.is_builtin}
 
@@ -405,7 +410,7 @@ class PluginManager:
             return True
         return False
 
-    def install_plugin(self, source_path: str) -> Tuple[bool, str]:
+    def install_plugin(self, source_path: str) -> tuple[bool, str]:
         """Instala un plugin desde un archivo.
 
         Copia el archivo al directorio custom/ y lo carga.
@@ -435,7 +440,7 @@ class PluginManager:
 
         return True, f"Plugin instalado: {os.path.basename(source_path)}"
 
-    def uninstall_plugin(self, template_id: str) -> Tuple[bool, str]:
+    def uninstall_plugin(self, template_id: str) -> tuple[bool, str]:
         """Desinstala un plugin personalizado."""
         template = self._templates.get(template_id)
         if not template:
@@ -451,7 +456,7 @@ class PluginManager:
         self._templates.pop(template_id, None)
         return True, f"Plugin desinstalado: {template_id}"
 
-    def create_plugin(self, plugin_data: dict) -> Tuple[bool, str]:
+    def create_plugin(self, plugin_data: dict) -> tuple[bool, str]:
         """Crea un nuevo plugin personalizado.
 
         plugin_data debe contener:
@@ -489,7 +494,7 @@ class PluginManager:
 
         return True, f"Plugin creado: {filename}"
 
-    def export_plugin(self, template_id: str, export_path: str) -> Tuple[bool, str]:
+    def export_plugin(self, template_id: str, export_path: str) -> tuple[bool, str]:
         """Exporta un plugin a un archivo."""
         template = self._templates.get(template_id)
         if not template:
@@ -501,7 +506,7 @@ class PluginManager:
 
         return True, f"Plugin exportado: {export_path}"
 
-    def get_plugin_dirs(self) -> List[str]:
+    def get_plugin_dirs(self) -> list[str]:
         """Devuelve la lista de directorios de plugins."""
         return list(self._plugin_dirs)
 
@@ -510,9 +515,9 @@ class PluginManager:
         template_id: str,
         text: str,
         engine,
-        progress_callback: Optional[Callable] = None,
+        progress_callback: Callable | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Ejecuta un template con un motor de adaptación.
 
         Args:
@@ -568,7 +573,7 @@ class PluginManager:
         except Exception as e:
             return {"error": f"Error ejecutando template: {e}"}
 
-    def to_compatible_dict(self, template_id: str) -> Optional[dict]:
+    def to_compatible_dict(self, template_id: str) -> dict | None:
         """Convierte un plugin al formato compatible con TEMPLATES de GeminiAdaptationEngine."""
         template = self._templates.get(template_id)
         if not template:
@@ -585,7 +590,7 @@ class PluginManager:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 
-_manager: Optional[PluginManager] = None
+_manager: PluginManager | None = None
 
 
 def get_plugin_manager(**kwargs) -> PluginManager:

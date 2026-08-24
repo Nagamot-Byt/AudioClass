@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """test_watchdog.py — El watchdog por chunk impide el cuelgue infinito.
 
 Replica el escenario del usuario (barra clavada en ~98% durante horas) de forma
@@ -17,8 +16,13 @@ el caso "parcial" se prueba en paralelo.
 
 Presupuesto mini: core.CHUNK_BUDGET_FLOOR=2, CHUNK_EST_SEED=0.5 -> 2s por chunk.
 """
+
 import itertools
-import os, sys, time, tempfile
+import os
+import sys
+import tempfile
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -26,6 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import numpy as np
 from scipy.io import wavfile
+
 import audioclass_core as core
 
 core.CHUNK_BUDGET_FLOOR = 2.0
@@ -73,14 +78,13 @@ def _engine():
 
 def test_sequential_all_hang():
     eng = _engine()
-    eng.model = _HungModel()   # camino secuencial usa self.model directamente
+    eng.model = _HungModel()  # camino secuencial usa self.model directamente
     t0 = time.time()
     try:
         # check_silence=False: los WAVs de prueba son puros ceros (silencio
         # digital) y la pre-validacion los rechazaria antes de probar el
         # watchdog de timeouts.
-        eng.transcribe(_wav(30), timestamps=False, progress_callback=lambda *a: None,
-                       check_silence=False)
+        eng.transcribe(_wav(30), timestamps=False, progress_callback=lambda *a: None, check_silence=False)
         raise AssertionError("deberia haber fallado con RuntimeError (todo colgado)")
     except RuntimeError as e:
         assert "omitidos por timeout" in str(e), e
@@ -92,11 +96,10 @@ def test_sequential_all_hang():
 
 def test_parallel_all_hang():
     eng = _engine()
-    eng._model_template = {MODEL: _HungModel()}   # deepcopy por worker -> todos cuelgan
+    eng._model_template = {MODEL: _HungModel()}  # deepcopy por worker -> todos cuelgan
     t0 = time.time()
     try:
-        eng.transcribe(_wav(100), timestamps=False, progress_callback=lambda *a: None,
-                       check_silence=False)
+        eng.transcribe(_wav(100), timestamps=False, progress_callback=lambda *a: None, check_silence=False)
         raise AssertionError("deberia haber fallado con RuntimeError (todo colgado)")
     except RuntimeError as e:
         assert "chunks" in str(e), e
@@ -110,8 +113,7 @@ def test_parallel_partial():
     _HangOneModel._seq = itertools.count(1)
     eng._model_template = {MODEL: _HangOneModel()}
     t0 = time.time()
-    res = eng.transcribe(_wav(100), timestamps=False, progress_callback=lambda *a: None,
-                         check_silence=False)
+    res = eng.transcribe(_wav(100), timestamps=False, progress_callback=lambda *a: None, check_silence=False)
     el = time.time() - t0
     assert el < 30, f"parcial tardo {el:.1f}s"
     assert res.get("chunks") == 4, res

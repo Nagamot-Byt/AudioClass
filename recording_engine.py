@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """recording_engine.py — Mixin de grabacion de audio para AudioClass.
 
 Modulo extraido de audioclass_v91.py. Contiene la logica de grabacion
@@ -20,13 +19,18 @@ Uso:
     class App(RecordingMixin, ...):
         pass
 """
+
 import os
 import tempfile
 import threading
 import time
 
 import numpy as np
-import sounddevice as sd
+
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
 
 
 # ── Constantes de audio ───────────────────────────────────────────────────
@@ -40,6 +44,9 @@ VISUAL_SAMPLES = 8000  # ~0.5s a 16kHz
 def mic_device_id_for(config):
     """Resuelve el ID del dispositivo de microfono desde la config.
 
+    Acepta tanto IDs numericos como nombres de dispositivo (en Linux,
+    PulseAudio/PipeWire usan nombres como 'pulse', 'pipewire', etc.).
+
     Args:
         config: Dict de configuracion (puede tener 'mic_device').
 
@@ -47,11 +54,29 @@ def mic_device_id_for(config):
         int o None: ID del dispositivo para sounddevice.
     """
     dev = config.get("mic_device") if config else None
-    if dev and isinstance(dev, (int, str)):
+    if not dev:
+        return None
+    # Intentar como entero primero
+    if isinstance(dev, (int,)):
+        return int(dev)
+    if isinstance(dev, str):
         try:
             return int(dev)
         except (ValueError, TypeError):
             pass
+        # Buscar por nombre en los dispositivos disponibles
+        if sd is not None:
+            try:
+                devs = sd.query_devices()
+                for i, d in enumerate(devs):
+                    if d["max_input_channels"] >= 1 and str(d["name"]) == dev:
+                        return i
+                # Busqueda parcial (case-insensitive)
+                for i, d in enumerate(devs):
+                    if d["max_input_channels"] >= 1 and dev.lower() in str(d["name"]).lower():
+                        return i
+            except Exception:
+                pass
     return None
 
 
@@ -82,6 +107,7 @@ class RecordingMixin:
                 return
             self.config["rec_consent_ack"] = True
             from config_manager import save_config
+
             save_config(self.config)
 
         self.recording = True
@@ -97,10 +123,7 @@ class RecordingMixin:
 
         # Streaming a disco: archivo temporal .raw (float32)
         try:
-            self._rec_raw_path = os.path.join(
-                tempfile.gettempdir(),
-                f"ac_rec_{int(time.time() * 1000)}.raw"
-            )
+            self._rec_raw_path = os.path.join(tempfile.gettempdir(), f"ac_rec_{int(time.time() * 1000)}.raw")
             self._rec_fp = open(self._rec_raw_path, "wb")
         except Exception as e:
             self.recording = False
@@ -154,9 +177,7 @@ class RecordingMixin:
         # Lanzar threads de captura y flusher
         try:
             threading.Thread(target=self.recloop, daemon=True).start()
-            self._flusher_thread = threading.Thread(
-                target=self.rec_flusher, daemon=True
-            )
+            self._flusher_thread = threading.Thread(target=self.rec_flusher, daemon=True)
             self._flusher_thread.start()
         except Exception as e:
             self.recording = False
@@ -257,9 +278,12 @@ class RecordingMixin:
 
         try:
             with sd.InputStream(
-                samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                blocksize=CHUNK_SIZE, callback=cb,
-                device=mic_device_id_for(getattr(self, "config", None) or {})
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype=DTYPE,
+                blocksize=CHUNK_SIZE,
+                callback=cb,
+                device=mic_device_id_for(getattr(self, "config", None) or {}),
             ):
                 self.stop_ev.wait()
         except Exception as e:
@@ -281,17 +305,13 @@ class RecordingMixin:
                 if n > KEEP:
                     cut = n - KEEP
                     arr = np.concatenate(self.buffer[:cut]).flatten()
-                    self._rec_fp.write(
-                        np.ascontiguousarray(arr, dtype=np.float32).tobytes()
-                    )
+                    self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                     self._rec_bytes += len(arr) * 4
                     del self.buffer[:cut]
             # Vaciado final al detener
             if self.buffer:
                 arr = np.concatenate(self.buffer).flatten()
-                self._rec_fp.write(
-                    np.ascontiguousarray(arr, dtype=np.float32).tobytes()
-                )
+                self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                 self._rec_bytes += len(arr) * 4
                 self.buffer = []
         except Exception:

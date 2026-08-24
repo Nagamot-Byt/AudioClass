@@ -98,6 +98,12 @@ a = Analysis(
         'ui_builder',
         'audio_quality_checker',
         'sound_error_solver',
+        # Modulos nuevos (v9.1+)
+        'template_plugins',
+        'plugin_manager_ui',
+        'waveform_widget',
+        'locales',
+        'locales.i18n',
     ],
     hookspath=[],
     hooksconfig={},

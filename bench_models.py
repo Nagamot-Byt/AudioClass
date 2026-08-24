@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """bench_models.py — Compara tiny/base/small sobre tts_clase.wav.
 
 Usa el MISMO motor de la app (LocalWhisperEngine) con language="auto",
@@ -8,12 +7,12 @@ original del TTS. Normaliza acentos/puntuacion y expande digitos a
 palabras en espanol ("1972" -> "mil novecientos setenta y dos") para no
 castigar a whisper por escribir numeros como digitos.
 """
+
 import re
 import sys
 import time
 import unicodedata
 
-import numpy as np
 from scipy.io import wavfile
 
 from audioclass_core import LocalWhisperEngine
@@ -21,23 +20,52 @@ from audioclass_core import LocalWhisperEngine
 WAV = "tts_clase.wav"
 GUION_PY = "gen_clase_tts.py"
 
+
 # ── Extraer el guion de referencia desde gen_clase_tts.py ─────────────────────
 def load_reference():
     src = open(GUION_PY, encoding="utf-8").read()
-    m = re.search(r'texto = \((.*?)\)', src, re.S)
+    m = re.search(r"texto = \((.*?)\)", src, re.S)
     parts = re.findall(r'"([^"]*)"', m.group(1))
     return " ".join(parts)
 
+
 # ── Normalizacion ─────────────────────────────────────────────────────────────
-_UNIDADES = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete",
-             "ocho", "nueve", "diez", "once", "doce", "trece", "catorce",
-             "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve",
-             "veinte"]
-_DECENAS = ["", "", "veinti", "treinta", "cuarenta", "cincuenta", "sesenta",
-            "setenta", "ochenta", "noventa"]
-_CENTENAS = ["", "ciento", "doscientos", "trescientos", "cuatrocientos",
-             "quinientos", "seiscientos", "setecientos", "ochocientos",
-             "novecientos"]
+_UNIDADES = [
+    "cero",
+    "uno",
+    "dos",
+    "tres",
+    "cuatro",
+    "cinco",
+    "seis",
+    "siete",
+    "ocho",
+    "nueve",
+    "diez",
+    "once",
+    "doce",
+    "trece",
+    "catorce",
+    "quince",
+    "dieciseis",
+    "diecisiete",
+    "dieciocho",
+    "diecinueve",
+    "veinte",
+]
+_DECENAS = ["", "", "veinti", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"]
+_CENTENAS = [
+    "",
+    "ciento",
+    "doscientos",
+    "trescientos",
+    "cuatrocientos",
+    "quinientos",
+    "seiscientos",
+    "setecientos",
+    "ochocientos",
+    "novecientos",
+]
 
 
 def _num_under_100(n):
@@ -87,8 +115,7 @@ def num_to_words(n):
 
 
 def _strip_accents(s):
-    return "".join(c for c in unicodedata.normalize("NFD", s)
-                   if unicodedata.category(c) != "Mn")
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
 def normalize(text):
@@ -102,6 +129,7 @@ def normalize(text):
         else:
             toks.append(tok)
     return toks
+
 
 # ── WER (Levenshtein a nivel palabra) ─────────────────────────────────────────
 def wer(ref, hyp):
@@ -150,17 +178,19 @@ def main():
         hyp = normalize(text)
         w = wer(ref, hyp)
         rows.append((name, w, elapsed, total, res.get("chunks"), res.get("workers"), text))
-        print(f"\n=== {name} | WER {w*100:.1f}% | transcribe {elapsed:.1f}s | "
-              f"total {total:.1f}s | chunks {res.get('chunks')} | workers {res.get('workers')} ===")
+        print(
+            f"\n=== {name} | WER {w * 100:.1f}% | transcribe {elapsed:.1f}s | "
+            f"total {total:.1f}s | chunks {res.get('chunks')} | workers {res.get('workers')} ==="
+        )
         print(f"  idioma detectado: {res.get('language')}")
         print(f"  texto ({len(text)} chars): {text[:150]}...")
 
     print("\n=== RESUMEN ===")
     print(f"{'modelo':<7} {'WER':>6} {'acc':>6} {'transc':>7} {'total':>7} {'x-duracion':>9}")
     for name, w, el, tot, *_ in sorted(rows, key=lambda r: r[1]):
-        print(f"{name:<7} {w*100:>5.1f}% {100-w*100:>5.1f}% {el:>6.1f}s {tot:>6.1f}s {el/dur:>8.2f}x")
+        print(f"{name:<7} {w * 100:>5.1f}% {100 - w * 100:>5.1f}% {el:>6.1f}s {tot:>6.1f}s {el / dur:>8.2f}x")
     best = min(rows, key=lambda r: r[1])
-    print(f"\nMejor precision: {best[0]} (WER {best[1]*100:.1f}%)")
+    print(f"\nMejor precision: {best[0]} (WER {best[1] * 100:.1f}%)")
     return 0
 
 

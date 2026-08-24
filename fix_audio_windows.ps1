@@ -97,7 +97,7 @@ try {
             $status = $dev.Status
             $friendly = $dev.FriendlyName
             $instanceId = $dev.InstanceId
-            
+
             if ($status -eq "OK") {
                 Write-Host "  [OK] $friendly" -ForegroundColor Green
             } elseif ($status -eq "Error") {
@@ -124,10 +124,10 @@ Write-Host ""
 Write-Host "=== PASO 4: Drivers de audio ===" -ForegroundColor White
 
 try {
-    $audioDrivers = Get-WmiObject Win32_PnPSignedDriver | Where-Object { 
+    $audioDrivers = Get-WmiObject Win32_PnPSignedDriver | Where-Object {
         $_.DeviceClass -eq "MEDIA" -and $_.DeviceName -like "*Audio*" -or $_.DeviceName -like "*Realtek*"
     }
-    
+
     if ($audioDrivers) {
         foreach ($drv in $audioDrivers) {
             $name = $drv.DeviceName
@@ -142,7 +142,7 @@ try {
             } else {
                 $dateStr = "N/A"
             }
-            
+
             Write-Host "  Driver: $name" -ForegroundColor White
             Write-Host "    Version: $version | Fecha: $dateStr" -ForegroundColor Gray
         }
@@ -174,18 +174,18 @@ foreach ($p in $pythonPaths) {
 
 if ($pythonExe) {
     Write-Host "  Python encontrado: $pythonExe" -ForegroundColor Gray
-    
+
     $testScript = @"
 import sys
 try:
     import sounddevice as sd
     import numpy as np
-    
+
     devs = sd.query_devices()
     input_devs = [(i, d) for i, d in enumerate(devs) if d['max_input_channels'] >= 1]
-    
+
     print(f'  Dispositivos de entrada: {len(input_devs)}')
-    
+
     for i, d in input_devs[:3]:
         name = str(d['name'])[:40]
         try:
@@ -194,7 +194,7 @@ try:
             flat = rec.flatten()
             rms = float(np.sqrt(np.mean(flat.astype(np.float64)**2)))
             peak = float(np.max(np.abs(flat)))
-            
+
             if rms < 0.005:
                 tag = 'SILENCIO'
                 color = 'RED'
@@ -204,7 +204,7 @@ try:
             else:
                 tag = 'OK'
                 color = 'GREEN'
-            
+
             print(f'  [{i:2d}] {name}')
             print(f'       RMS={rms:.4f} Peak={peak:.4f} -> {tag}')
         except Exception as e:
@@ -214,7 +214,7 @@ except ImportError:
 except Exception as e:
     print(f'  [ERROR] {e}')
 "@
-    
+
     $result = & $pythonExe -c $testScript 2>&1
     foreach ($line in $result) {
         Write-Host "  $line" -ForegroundColor Gray
@@ -227,18 +227,18 @@ Write-Host ""
 # ── PASO 6: Reiniciar servicios (si AutoFix) ─────────────────────────────
 if ($AutoFix -and $IsAdmin) {
     Write-Host "=== PASO 6: Reiniciando servicios de audio ===" -ForegroundColor White
-    
+
     Write-Host "  Deteniendo Windows Audio..." -ForegroundColor Yellow
     Stop-Service -Name "Audiosrv" -Force -ErrorAction SilentlyContinue
     Stop-Service -Name "AudioEndpointBuilder" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3
-    
+
     Write-Host "  Iniciando Windows Audio..." -ForegroundColor Yellow
     Start-Service -Name "AudioEndpointBuilder" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
     Start-Service -Name "Audiosrv" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3
-    
+
     # Verificar
     $audiosrv = Get-Service -Name "Audiosrv" -ErrorAction SilentlyContinue
     if ($audiosrv.Status -eq "Running") {

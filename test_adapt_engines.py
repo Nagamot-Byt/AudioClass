@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """Pruebas offline de los motores de adaptacion (Gemini + OpenAI).
 
 No toca la red: valida el contrato comun (test_key/adapt), la resolucion de
 modelos, la fabrica y los mensajes de error sin API key.
 """
+
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from audioclass_core import (GeminiAdaptationEngine, OpenAIAdaptationEngine,
-                             build_adaptation_engine)
+from audioclass_core import GeminiAdaptationEngine, OpenAIAdaptationEngine, build_adaptation_engine
 
 
 def test_contrato_comun():

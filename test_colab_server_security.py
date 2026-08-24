@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """test_colab_server_security.py — Endurecimiento del servidor Colab.
 
 Verifica con stubs ligeros (sin GPU ni instalar fastapi):
@@ -10,8 +9,15 @@ Verifica con stubs ligeros (sin GPU ni instalar fastapi):
 
 Ejecutar:  python test_colab_server_security.py
 """
-import asyncio, importlib.util, os, sys, types, tempfile
+
+import asyncio
+import importlib.util
+import os
+import sys
+import tempfile
+import types
 from pathlib import Path
+
 
 # ── Stubs de dependencias pesadas (whisper/torch/fpdf/fastapi) ───────────────
 def _mkmod(name, **attrs):
@@ -21,6 +27,7 @@ def _mkmod(name, **attrs):
     sys.modules[name] = m
     return m
 
+
 # whisper: solo hace falta load_model() -> objeto con transcribe()
 def _load_model(*a, **k):
     m = types.SimpleNamespace()
@@ -28,15 +35,20 @@ def _load_model(*a, **k):
     m.to = lambda d: m
     return m
 
+
 _mkmod("whisper", load_model=_load_model)
 _Tensor = type("Tensor", (), {})
 _mkmod("torch", cuda=types.SimpleNamespace(is_available=lambda: False), Tensor=_Tensor)
+
 
 # fpdf: stub minimo (generate_pdf no se ejecuta en estos tests)
 class _FPDF:
     def __getattr__(self, name):
         return lambda *a, **k: None
+
+
 _mkmod("fpdf", FPDF=_FPDF)
+
 
 # fastapi: FastAPI con decoradores get/post que guardan los handlers,
 # HTTPException, respuestas y middleware.
@@ -45,37 +57,68 @@ class HTTPException(Exception):
         self.status_code, self.detail = status_code, detail
         super().__init__(detail)
 
+
 class _FastAPI:
     def __init__(self, *a, **k):
         self.handlers = {}
         self.middleware_fn = None
+
     def add_middleware(self, *a, **k):
         pass
+
     def middleware(self, mtype):
         def deco(fn):
             self.middleware_fn = fn
             return fn
+
         return deco
+
     def _route(self, method, path):
         def deco(fn):
             self.handlers[(method, path)] = fn
             return fn
+
         return deco
+
     def get(self, path):
         return self._route("GET", path)
+
     def post(self, path):
         return self._route("POST", path)
 
-fastapi = _mkmod("fastapi", FastAPI=_FastAPI, HTTPException=HTTPException,
-                 File=lambda *a, **k: "FILE", Form=lambda *a, **k: "FORM",
-                 UploadFile=object, Request=object)
-_mkmod("fastapi.responses",
-       JSONResponse=type("JSONResponse", (), {"__init__": lambda self, d, **k: setattr(self, "data", d)}),
-       FileResponse=type("FileResponse", (), {"__init__": lambda self, p, filename=None: (setattr(self, "path", Path(p)), setattr(self, "filename", filename))[1]}))
+
+fastapi = _mkmod(
+    "fastapi",
+    FastAPI=_FastAPI,
+    HTTPException=HTTPException,
+    File=lambda *a, **k: "FILE",
+    Form=lambda *a, **k: "FORM",
+    UploadFile=object,
+    Request=object,
+)
+_mkmod(
+    "fastapi.responses",
+    JSONResponse=type("JSONResponse", (), {"__init__": lambda self, d, **k: setattr(self, "data", d)}),
+    FileResponse=type(
+        "FileResponse",
+        (),
+        {
+            "__init__": lambda self, p, filename=None: (
+                setattr(self, "path", Path(p)),
+                setattr(self, "filename", filename),
+            )[1]
+        },
+    ),
+)
 _mkmod("fastapi.middleware.cors", CORSMiddleware=object)
 _mkmod("uvicorn")
-_mkmod("pyngrok", ngrok=types.SimpleNamespace(set_auth_token=lambda *a, **k: None,
-                                              connect=lambda *a, **k: types.SimpleNamespace(public_url="http://localhost:8000")))
+_mkmod(
+    "pyngrok",
+    ngrok=types.SimpleNamespace(
+        set_auth_token=lambda *a, **k: None,
+        connect=lambda *a, **k: types.SimpleNamespace(public_url="http://localhost:8000"),
+    ),
+)
 
 # ── Importar el servidor REAL con los stubs ───────────────────────────────────
 SPEC = Path(__file__).parent / "audioclass_colab_server_v91.py"
@@ -83,19 +126,25 @@ spec = importlib.util.spec_from_file_location("colab_server_under_test", SPEC)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 class FakeRequest:
     def __init__(self, headers=None, query=None, form=None):
         self.headers = headers or {}
         self.query_params = query or {}
         self._form = form or {}
+
     async def form(self):
         return self._form
+
 
 def run(coro):
     return asyncio.run(coro)
 
+
 PASS = FAIL = 0
+
+
 def check(name, cond, extra=""):
     global PASS, FAIL
     if cond:
@@ -104,6 +153,7 @@ def check(name, cond, extra=""):
     else:
         FAIL += 1
         print(f"FAIL {name}  {extra}")
+
 
 # ── 1. Path traversal en /download ────────────────────────────────────────────
 mod._rate_hits = {}
@@ -122,9 +172,11 @@ mod.TEMP_DIR.mkdir(exist_ok=True)
 legit = mod.TEMP_DIR / "compilado_test.txt"
 legit.write_text("contenido", encoding="utf-8")
 res = run(mod.download(req, file=legit.name))
-check("download acepta archivo dentro de TEMP_DIR",
-      str(Path(res.path).resolve()) == str(legit.resolve()),
-      f"{res.path} != {legit}")
+check(
+    "download acepta archivo dentro de TEMP_DIR",
+    str(Path(res.path).resolve()) == str(legit.resolve()),
+    f"{res.path} != {legit}",
+)
 
 # ── 2. Clave por header X-API-Key ─────────────────────────────────────────────
 mod._rate_hits = {}
@@ -149,16 +201,20 @@ for i in range(mod._RATE_MAX + 1):
     except HTTPException as e:
         raised = e
         break
-check("rate limit -> 429 tras el maximo", raised is not None and raised.status_code == 429,
-      f"raised={raised}")
+check("rate limit -> 429 tras el maximo", raised is not None and raised.status_code == 429, f"raised={raised}")
 
 # ── 4. Tope de tamano de subida ───────────────────────────────────────────────
 old_max = mod.MAX_UPLOAD_BYTES
 mod.MAX_UPLOAD_BYTES = 1024  # 1 KB para el test
+
+
 class FakeUpload:
     filename = "grande.wav"
+
     async def read(self, n):
         return b"x" * 2048  # 2 KB > 1 KB
+
+
 try:
     run(mod._save_upload(FakeUpload()))
     check("tope de subida -> 413", False)
@@ -169,25 +225,29 @@ finally:
 
 # ── 5. Las URLs generadas ya NO llevan la clave ───────────────────────────────
 src = (SPEC).read_text(encoding="utf-8")
-check("ninguna URL generada con &key=", "&key=" not in src,
-      "aun se genera una URL con la clave")
+check("ninguna URL generada con &key=", "&key=" not in src, "aun se genera una URL con la clave")
+
 
 # ── 6. Headers de seguridad en TODAS las respuestas ───────────────────────────
 class FakeResponse:
     def __init__(self):
         self.headers = {}
 
+
 async def _call_next(_req):
     return FakeResponse()
 
+
 async def _check_headers():
     resp = await mod.app.middleware_fn(FakeRequest(), _call_next)
-    for h, v in (("X-Content-Type-Options", "nosniff"),
-                 ("X-Frame-Options", "DENY"),
-                 ("Referrer-Policy", "strict-origin-when-cross-origin"),
-                 ("Content-Security-Policy",
-                  "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")):
+    for h, v in (
+        ("X-Content-Type-Options", "nosniff"),
+        ("X-Frame-Options", "DENY"),
+        ("Referrer-Policy", "strict-origin-when-cross-origin"),
+        ("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"),
+    ):
         check(f"header {h}", resp.headers.get(h) == v, f"{resp.headers.get(h)!r}")
+
 
 run(_check_headers())
 

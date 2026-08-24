@@ -35,9 +35,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 LOG="despliegue.log"
-SPEC="AudioClass_v91_onefile.spec"
-EXE_SRC="dist_onefile/AudioClass.exe"
-EXE_DEST="AudioClass COMPLETA v9.1.exe"
+# Detectar SO para nombres de ejecutable
+if [ "$(uname)" = "Darwin" ]; then
+    EXE_EXT=""
+    SPEC="AudioClass_v91_onefile.spec"
+elif [ "$(uname)" = "Linux" ]; then
+    EXE_EXT=""
+    SPEC="AudioClass_v91_onefile_linux.spec"
+else
+    EXE_EXT=".exe"
+    SPEC="AudioClass_v91_onefile.spec"
+fi
+EXE_SRC="dist_onefile/AudioClass${EXE_EXT}"
+EXE_DEST="AudioClass COMPLETA v9.1${EXE_EXT}"
 ZIP_DEST="AudioClass_v9.1_COMPLETA.zip"
 AUDIO_TEST="tts_clase.wav"
 OUT_SELFTEST="selftest_result.txt"
@@ -247,7 +257,7 @@ if [ "$DO_ONEDIR" = 1 ]; then
         fail "Build onedir fallo (revisa el final de $LOG)"
         tail -20 "$LOG" | sed 's/^/      /'
     fi
-    EXE_ONEDIR="dist/AudioClass/AudioClass.exe"
+    EXE_ONEDIR="dist/AudioClass/AudioClass${EXE_EXT}"
     if [ -f "$EXE_ONEDIR" ]; then
         ok "Onedir generado: $EXE_ONEDIR ($(stat -c%s "$EXE_ONEDIR") bytes)"
         rm -f "$OUT_SELFTEST" "$PROG_SELFTEST"
@@ -343,8 +353,8 @@ if [ -f "$EXE_SRC" ]; then
     else
         fail "E2E UI onefile: al menos un escenario fallo"
     fi
-    if [ "$DO_ONEDIR" = 1 ] && [ -f "dist/AudioClass/AudioClass.exe" ]; then
-        if run_e2e_ui "dist/AudioClass/AudioClass.exe" onedir; then
+    if [ "$DO_ONEDIR" = 1 ] && [ -f "dist/AudioClass/AudioClass${EXE_EXT}" ]; then
+        if run_e2e_ui "dist/AudioClass/AudioClass${EXE_EXT}" onedir; then
             ok "E2E UI onedir: 3 escenarios en verde"
         else
             fail "E2E UI onedir: al menos un escenario fallo"

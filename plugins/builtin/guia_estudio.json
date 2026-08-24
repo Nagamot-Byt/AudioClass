@@ -1,0 +1,16 @@
+{
+  "id": "guia_estudio",
+  "name": "Guía de Estudio",
+  "description": "Secciones, definiciones y puntos clave para estudiar",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "📖",
+  "tags": ["guia", "estudio", "definiciones"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Convierte la siguiente transcripción de clase en una GUÍA DE ESTUDIO estructurada para estudiantes.\n\nInstrucciones:\n1. Identifica el tema principal y subtemas\n2. Crea secciones con títulos claros\n3. Destaca definiciones importantes en negrita\n4. Lista fórmulas, fechas o datos clave\n5. Añade una sección de 'Puntos Clave para Recordar'\n6. Formato: Markdown con headers (# ## ###)\n\nTranscripción:\n{TEXT}\n\nGuía de Estudio:",
+  "desc": "Secciones, definiciones y puntos clave",
+  "max_tokens": 4096,
+  "temperature": 0.2
+}

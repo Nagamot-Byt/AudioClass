@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """validar_segunda_maquina.py — Validacion TURNKEY en una segunda maquina.
 
 Confirma el flujo completo del exe con MICROFONO REAL y VOZ REAL:
@@ -20,10 +19,11 @@ Se usa el microfono por defecto del sistema salvo que elijas otro con
 
 Exit 0 = TODO OK. Exit 1 = algo fallo (imprime el detalle).
 """
+
 import os
+import subprocess
 import sys
 import time
-import subprocess
 
 import numpy as np
 
@@ -48,6 +48,7 @@ def find_exe():
 def default_input_id():
     """Id real del microfono por defecto del sistema (resuelve -1/None)."""
     import sounddevice as sd
+
     info = sd.query_devices(kind="input")
     return info["index"]
 
@@ -56,6 +57,7 @@ def resolve_device(sel):
     """Convierte un selector (None, id numerico o subcadena del nombre) en el
     id de un microfono de entrada. Sale con error claro si no es valido."""
     import sounddevice as sd
+
     devs = sd.query_devices()
     if sel is None:
         return default_input_id()
@@ -78,6 +80,7 @@ def resolve_device(sel):
 def list_devices_cli():
     """Imprime los microfonos disponibles con su id y sale con 0."""
     import sounddevice as sd
+
     devs = sd.query_devices()
     if not len(devs):
         sys.exit("No hay dispositivos de audio en esta maquina.")
@@ -98,21 +101,20 @@ def list_devices_cli():
 def mic_p90(dur=4.0, device=None):
     """Mide el p90 del RMS (misma metrica que optimizar_mic.py)."""
     import sounddevice as sd
+
     buf = []
 
     def cb(indata, frames, ti, status):
         buf.append(indata.copy().flatten())
 
     print(f" PRUEBA DE SEÑAL ({dur:.0f} s) — HABLA AHORA en voz alta cerca del microfono...")
-    with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                        blocksize=800, callback=cb, device=device):
+    with sd.InputStream(samplerate=SR, channels=1, dtype=np.float32, blocksize=800, callback=cb, device=device):
         sd.sleep(int(dur * 1000))
     x = np.concatenate(buf).flatten() if buf else np.zeros(0, np.float32)
     n = len(x)
     if n < SR:
         return 0.0
-    fr = np.array([np.sqrt(np.mean(c.astype(np.float64) ** 2))
-                   for c in np.array_split(x, max(1, n // 1600))])
+    fr = np.array([np.sqrt(np.mean(c.astype(np.float64) ** 2)) for c in np.array_split(x, max(1, n // 1600))])
     return float(np.percentile(fr, 90))
 
 
@@ -120,6 +122,7 @@ def record_voice(dur=12.0, device=None):
     """Graba voz real con auto-deteccion; guarda mic_voz_user.wav (16k mono)."""
     import sounddevice as sd
     from scipy.io import wavfile
+
     VOICE_THR = 0.0015
     LISTEN_MAX_S = 90
     QUIET_STOP_S = 2.5
@@ -138,8 +141,7 @@ def record_voice(dur=12.0, device=None):
             quiet_since = time.time()
 
     print(f"ESCUCHANDO (max {LISTEN_MAX_S}s)... HABLA AHORA en voz alta ~{dur:.0f} s. Paro al callar.")
-    stream = sd.InputStream(samplerate=SR, channels=1, dtype=np.float32,
-                            blocksize=800, callback=cb, device=device)
+    stream = sd.InputStream(samplerate=SR, channels=1, dtype=np.float32, blocksize=800, callback=cb, device=device)
     stream.start()
     try:
         while True:
@@ -189,6 +191,7 @@ def main():
     exe = os.path.abspath(exe)
 
     import sounddevice as sd
+
     try:
         did = resolve_device(device)
         dname = sd.query_devices(did)["name"]
@@ -198,7 +201,7 @@ def main():
         sys.exit(f"No pude resolver el microfono: {e}")
 
     print("=" * 62)
-    print(f"  VALIDACIÓN SEGUNDA MÁQUINA — AudioClass v9.1")
+    print("  VALIDACIÓN SEGUNDA MÁQUINA — AudioClass v9.1")
     print(f"  exe: {exe}")
     print(f"  microfono: {dname}  (id {did})")
     print("=" * 62)
@@ -238,8 +241,7 @@ def main():
             pass
     t0 = time.time()
     print(f"  Transcribiendo con el exe ({seg:.0f}s de audio)...")
-    rc = subprocess.run([exe, "--selftest-transcribe", "mic_voz_user.wav",
-                         out_txt, out_prog], timeout=600)
+    rc = subprocess.run([exe, "--selftest-transcribe", "mic_voz_user.wav", out_txt, out_prog], timeout=600)
     elapsed = time.time() - t0
 
     fails = []
@@ -261,11 +263,11 @@ def main():
     if not prog_ok:
         fails.append("progreso no llego a 100%")
     if elapsed > 2 * seg:
-        fails.append(f"tiempo {elapsed:.0f}s > 2x ({2*seg:.0f}s) la duracion del audio")
+        fails.append(f"tiempo {elapsed:.0f}s > 2x ({2 * seg:.0f}s) la duracion del audio")
 
     print()
     print("=" * 62)
-    print(f"  duracion audio: {seg:.1f}s | tiempo exe: {elapsed:.0f}s (x{elapsed/max(seg,0.1):.2f})")
+    print(f"  duracion audio: {seg:.1f}s | tiempo exe: {elapsed:.0f}s (x{elapsed / max(seg, 0.1):.2f})")
     print(f"  progreso: {'100% OK' if prog_ok else 'NO llego a 100%'}")
     print(f"  texto: {texto[:100]}{'…' if len(texto) > 100 else ''}")
     if fails:

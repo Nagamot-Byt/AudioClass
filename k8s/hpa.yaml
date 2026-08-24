@@ -11,10 +11,10 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: audioclass-server
-  
+
   minReplicas: 2
   maxReplicas: 10
-  
+
   metrics:
     # CPU-based scaling
     - type: Resource
@@ -23,7 +23,7 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-    
+
     # Memory-based scaling
     - type: Resource
       resource:
@@ -31,7 +31,7 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
-  
+
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300

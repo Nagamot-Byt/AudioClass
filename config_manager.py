@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 config_manager.py — Gestion de configuracion persistente de AudioClass
 ======================================================================
@@ -7,10 +6,9 @@ Extraido de audioclass_v91.py para mejorar la mantenibilidad.
 Maneja carga/guardado de config, cifrado de secretos (DPAPI/b64) y defaults.
 """
 
-import os
-import json
 import base64
-
+import json
+import os
 
 # ── Rutas por defecto ─────────────────────────────────────────────────────
 OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings")
@@ -65,6 +63,7 @@ CONFIG_VERSION = 5
 # ── Migración de configuración entre versiones ───────────────────────────
 # Cada migración es una función que transforma un dict in-place de la
 # versión N a la versión N+1. Se aplican en orden secuencial.
+
 
 def _migrate_v1_to_v2(cfg: dict) -> dict:
     """Migración v1 -> v2: renombrar 'colab_key' trivial a vacío.
@@ -201,9 +200,7 @@ def _encrypt_secret(secret):
 
             def _blob(data):
                 buf = ctypes.create_string_buffer(data)
-                return DATA_BLOB(
-                    len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
-                )
+                return DATA_BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
 
             crypt32 = ctypes.windll.crypt32
             crypt32.CryptProtectData.argtypes = [
@@ -221,9 +218,7 @@ def _encrypt_secret(secret):
 
                 inb = _blob(s.encode("utf-8"))
                 outb = DATA_BLOB()
-                if crypt32.CryptProtectData(
-                    byref(inb), "audioclass", None, None, None, 0, byref(outb)
-                ):
+                if crypt32.CryptProtectData(byref(inb), "audioclass", None, None, None, 0, byref(outb)):
                     raw = ctypes.string_at(outb.pbData, outb.cbData)
                     ctypes.windll.kernel32.LocalFree(outb.pbData)
                     return "dpapi:" + base64.b64encode(raw).decode("ascii")
@@ -272,13 +267,9 @@ def _decrypt_secret(value):
 
                 raw = base64.b64decode(v[6:])
                 buf = ctypes.create_string_buffer(raw)
-                inb = DATA_BLOB(
-                    len(raw), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))
-                )
+                inb = DATA_BLOB(len(raw), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
                 outb = DATA_BLOB()
-                if crypt32.CryptUnprotectData(
-                    byref(inb), None, None, None, None, 0, byref(outb)
-                ):
+                if crypt32.CryptUnprotectData(byref(inb), None, None, None, None, 0, byref(outb)):
                     out = ctypes.string_at(outb.pbData, outb.cbData).decode("utf-8")
                     ctypes.windll.kernel32.LocalFree(outb.pbData)
                     return out
@@ -297,7 +288,7 @@ def load_config(path=None):
     cfg_path = path or CONFIG_PATH
     if os.path.exists(cfg_path):
         try:
-            with open(cfg_path, "r", encoding="utf-8") as f:
+            with open(cfg_path, encoding="utf-8") as f:
                 cfg = json.load(f)
             # Aplicar migraciones de versión
             cfg = _migrate_config(cfg)
@@ -305,7 +296,7 @@ def load_config(path=None):
                 if k not in cfg:
                     cfg[k] = v
             for k in _SECRET_FIELDS:
-                if k in cfg and cfg[k]:
+                if cfg.get(k):
                     cfg[k] = _decrypt_secret(cfg[k])
             return cfg
         except Exception:
@@ -318,7 +309,7 @@ def save_config(cfg, path=None):
     cfg_path = path or CONFIG_PATH
     to_save = dict(cfg)
     for k in _SECRET_FIELDS:
-        if k in to_save and to_save[k]:
+        if to_save.get(k):
             to_save[k] = _encrypt_secret(to_save[k])
     with open(cfg_path, "w", encoding="utf-8") as f:
         json.dump(to_save, f, indent=2, ensure_ascii=False)

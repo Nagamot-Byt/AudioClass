@@ -1,0 +1,16 @@
+{
+  "id": "cronologia",
+  "name": "Cronología / Timeline",
+  "description": "Orden cronológico de eventos",
+  "author": "AudioClass",
+  "version": "1.0.0",
+  "license": "MIT",
+  "icon": "📅",
+  "tags": ["cronologia", "timeline", "eventos", "fechas"],
+  "is_builtin": true,
+  "is_enabled": true,
+  "prompt": "Extrae una CRONOLOGÍA o timeline de eventos, fechas o procesos mencionados en esta transcripción.\n\nInstrucciones:\n- Lista en orden cronológico\n- Formato: [Fecha/Evento] -> Descripción\n- Si no hay fechas exactas, usa orden lógico (primero, luego, después, finalmente)\n- Destaca causas y consecuencias\n\nTranscripción:\n{TEXT}\n\nCronología:",
+  "desc": "Orden cronológico de eventos",
+  "max_tokens": 2048,
+  "temperature": 0.2
+}

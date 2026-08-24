@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """export_utils.py — Funciones auxiliares de exportacion PDF y DOCX.
 
 Modulo extraido de audioclass_v91.py para reducir el tamano del monolito.
@@ -10,11 +9,11 @@ Uso:
 
 Estas funciones son deterministas y testables sin instanciar la GUI.
 """
-import re
-from datetime import datetime
 
+import re
 
 # ── Timestamps ─────────────────────────────────────────────────────────────
+
 
 def fmt_timestamp(sec):
     """Convierte segundos a formato mm:ss para timestamps de exportacion.
@@ -39,6 +38,7 @@ def fmt_timestamp(sec):
 
 
 # ── Lineas de exportacion ─────────────────────────────────────────────────
+
 
 def export_lines(last_text, last_segments=None, max_len=90):
     """Devuelve (has_timestamps, lines) para exportar transcripcion.
@@ -87,8 +87,8 @@ def export_lines(last_text, last_segments=None, max_len=90):
 
 # ── DOCX helpers ──────────────────────────────────────────────────────────
 
-def docx_paragraph(text, bold=False, size=22, color=None, shading=None,
-                   center=False, mono=False):
+
+def docx_paragraph(text, bold=False, size=22, color=None, shading=None, center=False, mono=False):
     """Genera un parrafo WordprocessingML a partir de texto plano.
 
     El orden de los hijos de w:pPr debe seguir la secuencia del esquema
@@ -108,6 +108,7 @@ def docx_paragraph(text, bold=False, size=22, color=None, shading=None,
         str con XML WordprocessingML del parrafo.
     """
     from xml.sax.saxutils import escape
+
     rpr = ""
     if bold:
         rpr += "<w:b/>"
@@ -122,8 +123,15 @@ def docx_paragraph(text, bold=False, size=22, color=None, shading=None,
     ppr += '<w:spacing w:after="60"/>' if not mono else '<w:spacing w:line="240" w:lineRule="auto"/>'
     if center:
         ppr += '<w:jc w:val="center"/>'
-    return ('<w:p><w:pPr>' + ppr + '</w:pPr><w:r><w:rPr>' + rpr +
-            '</w:rPr><w:t xml:space="preserve">' + escape(text) + '</w:t></w:r></w:p>')
+    return (
+        "<w:p><w:pPr>"
+        + ppr
+        + "</w:pPr><w:r><w:rPr>"
+        + rpr
+        + '</w:rPr><w:t xml:space="preserve">'
+        + escape(text)
+        + "</w:t></w:r></w:p>"
+    )
 
 
 def docx_heading(text, size=24):
@@ -142,21 +150,21 @@ def docx_heading(text, size=24):
 # ── PDF helpers ───────────────────────────────────────────────────────────
 
 _PDF_FALLBACK_CHARS = {
-    "\u2013": "-",   # en-dash
+    "\u2013": "-",  # en-dash
     "\u2014": "--",  # em-dash
-    "\u2018": "'",   # left single quote
-    "\u2019": "'",   # right single quote
-    "\u201c": '"',   # left double quote
-    "\u201d": '"',   # right double quote
+    "\u2018": "'",  # left single quote
+    "\u2019": "'",  # right single quote
+    "\u201c": '"',  # left double quote
+    "\u201d": '"',  # right double quote
     "\u2026": "...",  # ellipsis
-    "\u2022": "*",   # bullet
-    "\u00e9": "e",   # e-acute
-    "\u00e1": "a",   # a-acute
-    "\u00ed": "i",   # i-acute
-    "\u00f3": "o",   # o-acute
-    "\u00fa": "u",   # u-acute
-    "\u00f1": "n",   # n-tilde
-    "\u00fc": "u",   # u-diaeresis
+    "\u2022": "*",  # bullet
+    "\u00e9": "e",  # e-acute
+    "\u00e1": "a",  # a-acute
+    "\u00ed": "i",  # i-acute
+    "\u00f3": "o",  # o-acute
+    "\u00fa": "u",  # u-acute
+    "\u00f1": "n",  # n-tilde
+    "\u00fc": "u",  # u-diaeresis
 }
 
 
@@ -205,6 +213,7 @@ def pdf_badge(pdf, fam, tit_style, full_unicode):
 
 # ── Adaptacion academica ──────────────────────────────────────────────────
 
+
 def parse_adapt_sections(text):
     """Parsea la adaptacion academica de Gemini en secciones.
 
@@ -248,8 +257,8 @@ def parse_adapt_sections(text):
         m = re.search(pat, stripped, flags=re.IGNORECASE)
         inline = ""
         if m:
-            inline = re.sub(r"^[.:*\-#•]+", "", stripped[m.end():]).strip()
-        body_lines = [x.strip() for x in lines[idx + 1:end] if x.strip()]
+            inline = re.sub(r"^[.:*\-#•]+", "", stripped[m.end() :]).strip()
+        body_lines = [x.strip() for x in lines[idx + 1 : end] if x.strip()]
         body = "\n".join(filter(None, [inline] + body_lines)).strip()
         sections.append((label, body))
     return sections

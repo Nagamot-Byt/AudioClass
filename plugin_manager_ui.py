@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 plugin_manager_ui.py — Interfaz gráfica para gestionar plugins de templates
 ============================================================================
@@ -15,21 +14,19 @@ Proporciona widgets Tkinter/CTk para:
 Se integra en el diálogo de configuración de AudioClass.
 """
 
-import json
 import os
-import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from typing import Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from tkinter import filedialog, messagebox, ttk
 
 try:
     import customtkinter as ctk
+
     CTK = True
 except ImportError:
     CTK = False
 
 from template_plugins import PluginManager, PluginTemplate, get_plugin_manager
-
 
 # ── Colores por defecto (se sobreescriben con la paleta) ─────────────────────
 DEFAULT_COLORS = {
@@ -48,7 +45,7 @@ DEFAULT_COLORS = {
 class PluginManagerDialog:
     """Diálogo modal para gestionar plugins de templates."""
 
-    def __init__(self, parent, palette: Optional[dict] = None):
+    def __init__(self, parent, palette: dict | None = None):
         self.parent = parent
         self.C = palette or DEFAULT_COLORS
         self.manager = get_plugin_manager()
@@ -110,18 +107,26 @@ class PluginManagerDialog:
         for text, cmd in buttons:
             if CTK:
                 btn = ctk.CTkButton(
-                    toolbar, text=text, command=cmd,
-                    width=120, height=30, font=("Segoe UI", 10),
+                    toolbar,
+                    text=text,
+                    command=cmd,
+                    width=120,
+                    height=30,
+                    font=("Segoe UI", 10),
                     fg_color=self.C.get("button", "#0f3460"),
                     hover_color=self.C.get("accent", "#e94560"),
                 )
             else:
                 btn = tk.Button(
-                    toolbar, text=text, command=cmd,
+                    toolbar,
+                    text=text,
+                    command=cmd,
                     bg=self.C.get("button", "#0f3460"),
                     fg=self.C.get("text", "#ffffff"),
                     font=("Segoe UI", 9),
-                    relief="flat", padx=10, pady=4,
+                    relief="flat",
+                    padx=10,
+                    pady=4,
                 )
             btn.pack(side="left", padx=3)
 
@@ -130,7 +135,8 @@ class PluginManagerDialog:
         filter_frame.pack(fill="x", padx=10, pady=2)
 
         tk.Label(
-            filter_frame, text="Filtrar:",
+            filter_frame,
+            text="Filtrar:",
             bg=self.C.get("bg", "#1a1a2e"),
             fg=self.C.get("text", "#ffffff"),
             font=("Segoe UI", 10),
@@ -139,7 +145,10 @@ class PluginManagerDialog:
         self.filter_var = tk.StringVar(value="all")
         for text, value in [("Todos", "all"), ("Incorporados", "builtin"), ("Personales", "custom")]:
             rb = tk.Radiobutton(
-                filter_frame, text=text, variable=self.filter_var, value=value,
+                filter_frame,
+                text=text,
+                variable=self.filter_var,
+                value=value,
                 command=self._refresh_list,
                 bg=self.C.get("bg", "#1a1a2e"),
                 fg=self.C.get("text", "#ffffff"),
@@ -172,6 +181,7 @@ class PluginManagerDialog:
         # Mouse wheel scrolling
         def _on_mousewheel(event):
             self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
         self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Footer
@@ -191,17 +201,25 @@ class PluginManagerDialog:
         # Close button
         if CTK:
             close_btn = ctk.CTkButton(
-                footer, text="Cerrar", command=self.dialog.destroy,
-                width=100, height=30, font=("Segoe UI", 10),
+                footer,
+                text="Cerrar",
+                command=self.dialog.destroy,
+                width=100,
+                height=30,
+                font=("Segoe UI", 10),
                 fg_color=self.C.get("accent", "#e94560"),
             )
         else:
             close_btn = tk.Button(
-                footer, text="Cerrar", command=self.dialog.destroy,
+                footer,
+                text="Cerrar",
+                command=self.dialog.destroy,
                 bg=self.C.get("accent", "#e94560"),
                 fg=self.C.get("text", "#ffffff"),
                 font=("Segoe UI", 10),
-                relief="flat", padx=20, pady=4,
+                relief="flat",
+                padx=20,
+                pady=4,
             )
         close_btn.pack(side="right", padx=15, pady=5)
 
@@ -254,26 +272,33 @@ class PluginManagerDialog:
         # Icon + Name
         icon_name = f"{template.icon} {template.meta.name}" if template.icon else template.meta.name
         tk.Label(
-            header, text=icon_name,
+            header,
+            text=icon_name,
             font=("Segoe UI", 12, "bold"),
-            bg=card_bg, fg=self.C.get("text", "#ffffff"),
+            bg=card_bg,
+            fg=self.C.get("text", "#ffffff"),
         ).pack(side="left")
 
         # Version + Author
         tk.Label(
-            header, text=f"v{template.meta.version} por {template.meta.author}",
+            header,
+            text=f"v{template.meta.version} por {template.meta.author}",
             font=("Segoe UI", 9),
-            bg=card_bg, fg=self.C.get("text_dim", "#a0a0a0"),
+            bg=card_bg,
+            fg=self.C.get("text_dim", "#a0a0a0"),
         ).pack(side="right")
 
         # Description
         desc = template.desc or template.meta.description
         if desc:
             tk.Label(
-                card, text=desc,
+                card,
+                text=desc,
                 font=("Segoe UI", 9),
-                bg=card_bg, fg=self.C.get("text_dim", "#a0a0a0"),
-                wraplength=600, justify="left",
+                bg=card_bg,
+                fg=self.C.get("text_dim", "#a0a0a0"),
+                wraplength=600,
+                justify="left",
             ).pack(fill="x", padx=10, pady=(0, 4))
 
         # Tags
@@ -283,11 +308,13 @@ class PluginManagerDialog:
 
             for tag in template.meta.tags[:5]:
                 tag_label = tk.Label(
-                    tags_frame, text=f"#{tag}",
+                    tags_frame,
+                    text=f"#{tag}",
                     font=("Segoe UI", 8),
                     bg=self.C.get("button", "#0f3460"),
                     fg=self.C.get("text", "#ffffff"),
-                    padx=6, pady=2,
+                    padx=6,
+                    pady=2,
                 )
                 tag_label.pack(side="left", padx=2)
 
@@ -302,17 +329,25 @@ class PluginManagerDialog:
 
         if CTK:
             toggle_btn = ctk.CTkButton(
-                actions, text=toggle_text, command=toggle_cmd,
-                width=120, height=26, font=("Segoe UI", 9),
+                actions,
+                text=toggle_text,
+                command=toggle_cmd,
+                width=120,
+                height=26,
+                font=("Segoe UI", 9),
                 fg_color=self.C.get("success", "#00c853") if is_enabled else self.C.get("error", "#f44336"),
             )
         else:
             toggle_btn = tk.Button(
-                actions, text=toggle_text, command=toggle_cmd,
+                actions,
+                text=toggle_text,
+                command=toggle_cmd,
                 bg=self.C.get("success", "#00c853") if is_enabled else self.C.get("error", "#f44336"),
                 fg=self.C.get("text", "#ffffff"),
                 font=("Segoe UI", 9),
-                relief="flat", padx=8, pady=2,
+                relief="flat",
+                padx=8,
+                pady=2,
             )
         toggle_btn.pack(side="left", padx=3)
 
@@ -321,17 +356,25 @@ class PluginManagerDialog:
             export_cmd = lambda t=tid: self._export_plugin(t)
             if CTK:
                 export_btn = ctk.CTkButton(
-                    actions, text="📤 Exportar", command=export_cmd,
-                    width=100, height=26, font=("Segoe UI", 9),
+                    actions,
+                    text="📤 Exportar",
+                    command=export_cmd,
+                    width=100,
+                    height=26,
+                    font=("Segoe UI", 9),
                     fg_color=self.C.get("button", "#0f3460"),
                 )
             else:
                 export_btn = tk.Button(
-                    actions, text="📤 Exportar", command=export_cmd,
+                    actions,
+                    text="📤 Exportar",
+                    command=export_cmd,
                     bg=self.C.get("button", "#0f3460"),
                     fg=self.C.get("text", "#ffffff"),
                     font=("Segoe UI", 9),
-                    relief="flat", padx=8, pady=2,
+                    relief="flat",
+                    padx=8,
+                    pady=2,
                 )
             export_btn.pack(side="left", padx=3)
 
@@ -339,17 +382,25 @@ class PluginManagerDialog:
             delete_cmd = lambda t=tid: self._delete_plugin(t)
             if CTK:
                 delete_btn = ctk.CTkButton(
-                    actions, text="🗑️ Eliminar", command=delete_cmd,
-                    width=100, height=26, font=("Segoe UI", 9),
+                    actions,
+                    text="🗑️ Eliminar",
+                    command=delete_cmd,
+                    width=100,
+                    height=26,
+                    font=("Segoe UI", 9),
                     fg_color=self.C.get("error", "#f44336"),
                 )
             else:
                 delete_btn = tk.Button(
-                    actions, text="🗑️ Eliminar", command=delete_cmd,
+                    actions,
+                    text="🗑️ Eliminar",
+                    command=delete_cmd,
                     bg=self.C.get("error", "#f44336"),
                     fg=self.C.get("text", "#ffffff"),
                     font=("Segoe UI", 9),
-                    relief="flat", padx=8, pady=2,
+                    relief="flat",
+                    padx=8,
+                    pady=2,
                 )
                 delete_btn.pack(side="left", padx=3)
 
@@ -362,9 +413,11 @@ class PluginManagerDialog:
             info_parts.append(f"idiomas={','.join(template.language_hints)}")
 
         tk.Label(
-            actions, text=" | ".join(info_parts),
+            actions,
+            text=" | ".join(info_parts),
             font=("Segoe UI", 8),
-            bg=card_bg, fg=self.C.get("text_dim", "#a0a0a0"),
+            bg=card_bg,
+            fg=self.C.get("text_dim", "#a0a0a0"),
         ).pack(side="right", padx=5)
 
     def _toggle_plugin(self, tid: str, enable: bool):
@@ -432,8 +485,8 @@ class PluginManagerDialog:
 
     def _open_plugins_dir(self):
         """Abre el directorio de plugins en el explorador."""
-        import subprocess
         import platform
+        import subprocess
 
         custom_dir = self.manager.get_plugin_dirs()[1]  # plugins/custom/
         if platform.system() == "Windows":
@@ -447,7 +500,7 @@ class PluginManagerDialog:
 class CreatePluginDialog:
     """Diálogo para crear un nuevo plugin."""
 
-    def __init__(self, parent, manager: PluginManager, palette: dict, on_create: Optional[Callable] = None):
+    def __init__(self, parent, manager: PluginManager, palette: dict, on_create: Callable | None = None):
         self.parent = parent
         self.manager = manager
         self.C = palette
@@ -470,7 +523,8 @@ class CreatePluginDialog:
     def _build_ui(self):
         """Construye el formulario de creación."""
         canvas = tk.Canvas(
-            self.dialog, bg=self.C.get("bg", "#1a1a2e"),
+            self.dialog,
+            bg=self.C.get("bg", "#1a1a2e"),
             highlightthickness=0,
         )
         scrollbar = ttk.Scrollbar(self.dialog, orient="vertical", command=canvas.yview)
@@ -485,7 +539,8 @@ class CreatePluginDialog:
 
         # Title
         tk.Label(
-            form, text="📝 Nuevo Plugin de Template",
+            form,
+            text="📝 Nuevo Plugin de Template",
             font=("Segoe UI", 14, "bold"),
             bg=self.C.get("bg", "#1a1a2e"),
             fg=self.C.get("text", "#ffffff"),
@@ -508,11 +563,13 @@ class CreatePluginDialog:
             row.pack(fill="x", padx=20, pady=3)
 
             tk.Label(
-                row, text=label,
+                row,
+                text=label,
                 font=("Segoe UI", 10),
                 bg=self.C.get("bg", "#1a1a2e"),
                 fg=self.C.get("text", "#ffffff"),
-                width=15, anchor="w",
+                width=15,
+                anchor="w",
             ).pack(side="left")
 
             entry = tk.Entry(
@@ -528,14 +585,17 @@ class CreatePluginDialog:
 
         # Prompt
         tk.Label(
-            form, text="Prompt (requiere {TEXT}) *",
+            form,
+            text="Prompt (requiere {TEXT}) *",
             font=("Segoe UI", 10, "bold"),
             bg=self.C.get("bg", "#1a1a2e"),
             fg=self.C.get("text", "#ffffff"),
         ).pack(anchor="w", padx=20, pady=(10, 3))
 
         self.prompt_text = tk.Text(
-            form, height=10, width=50,
+            form,
+            height=10,
+            width=50,
             bg=self.C.get("card", "#16213e"),
             fg=self.C.get("text", "#ffffff"),
             font=("Segoe UI", 10),
@@ -547,7 +607,8 @@ class CreatePluginDialog:
 
         # Tags
         tk.Label(
-            form, text="Tags (separados por coma)",
+            form,
+            text="Tags (separados por coma)",
             font=("Segoe UI", 10),
             bg=self.C.get("bg", "#1a1a2e"),
             fg=self.C.get("text", "#ffffff"),
@@ -569,33 +630,49 @@ class CreatePluginDialog:
 
         if CTK:
             create_btn = ctk.CTkButton(
-                btn_frame, text="✅ Crear Plugin", command=self._create,
-                width=150, height=35, font=("Segoe UI", 11),
+                btn_frame,
+                text="✅ Crear Plugin",
+                command=self._create,
+                width=150,
+                height=35,
+                font=("Segoe UI", 11),
                 fg_color=self.C.get("success", "#00c853"),
             )
         else:
             create_btn = tk.Button(
-                btn_frame, text="✅ Crear Plugin", command=self._create,
+                btn_frame,
+                text="✅ Crear Plugin",
+                command=self._create,
                 bg=self.C.get("success", "#00c853"),
                 fg=self.C.get("text", "#ffffff"),
                 font=("Segoe UI", 11),
-                relief="flat", padx=20, pady=6,
+                relief="flat",
+                padx=20,
+                pady=6,
             )
         create_btn.pack(side="left")
 
         if CTK:
             cancel_btn = ctk.CTkButton(
-                btn_frame, text="Cancelar", command=self.dialog.destroy,
-                width=100, height=35, font=("Segoe UI", 11),
+                btn_frame,
+                text="Cancelar",
+                command=self.dialog.destroy,
+                width=100,
+                height=35,
+                font=("Segoe UI", 11),
                 fg_color=self.C.get("button", "#0f3460"),
             )
         else:
             cancel_btn = tk.Button(
-                btn_frame, text="Cancelar", command=self.dialog.destroy,
+                btn_frame,
+                text="Cancelar",
+                command=self.dialog.destroy,
                 bg=self.C.get("button", "#0f3460"),
                 fg=self.C.get("text", "#ffffff"),
                 font=("Segoe UI", 11),
-                relief="flat", padx=20, pady=6,
+                relief="flat",
+                padx=20,
+                pady=6,
             )
         cancel_btn.pack(side="left", padx=10)
 

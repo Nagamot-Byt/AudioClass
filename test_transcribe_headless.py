@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """test_transcribe_headless.py — Regresión del cuelgue/fallo de la transcripción local.
 
 Replica el bug reportado por el usuario (audio de 30s con la barra clavada en
@@ -23,7 +22,12 @@ Replica el bug reportado por el usuario (audio de 30s con la barra clavada en
   R4  SIN HUECO: el progreso llega a 100% (el ultimo callback = 1.0) y es
       monotonico.
 """
-import os, sys, time, tempfile
+
+import os
+import sys
+import tempfile
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -31,6 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import numpy as np
 from scipy.io import wavfile
+
 import audioclass_core as core
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +52,7 @@ def _speech_like(dur, seed=3):
         pink += rng.standard_normal(n) * (1.0 / k)
     pink /= np.std(pink)
     env = 0.5 + 0.5 * np.sin(2 * np.pi * 4.5 * t + 1.3)
-    env *= (1.0 - 0.85 * (np.sin(2 * np.pi * 1.25 * t) > 0.55).astype(float))
+    env *= 1.0 - 0.85 * (np.sin(2 * np.pi * 1.25 * t) > 0.55).astype(float)
     sig = pink * env + 0.3 * np.sin(2 * np.pi * 120 * t) * env
     return (sig * 0.5).astype(np.float32)
 
@@ -99,8 +104,7 @@ def test_headless_single_chunk():
         try:
             res = eng.transcribe(path, timestamps=True, progress_callback=cb)
         except Exception as e:
-            raise AssertionError(
-                f"transcribe con stdout=None revento (bug tqdm/whisper): {e!r}")
+            raise AssertionError(f"transcribe con stdout=None revento (bug tqdm/whisper): {e!r}")
         elapsed = time.time() - t0
     finally:
         sys.stdout, sys.stderr = real_out, real_err
@@ -112,9 +116,11 @@ def test_headless_single_chunk():
     assert calls, "sin callbacks de progreso"
     assert calls[-1] >= 0.99, f"el progreso no llego al 100% (ultimo {calls[-1]:.2f})"
     assert all(b >= a for a, b in zip(calls, calls[1:])), "progreso no monotonico"
-    print(f"R1+R3+R4 OK  30s headless (stdout=None) en {elapsed:.1f}s | "
-          f"monotonico={all(b >= a for a, b in zip(calls, calls[1:]))} | "
-          f"100%={calls[-1]:.2f} | {len(calls)} callbacks")
+    print(
+        f"R1+R3+R4 OK  30s headless (stdout=None) en {elapsed:.1f}s | "
+        f"monotonico={all(b >= a for a, b in zip(calls, calls[1:]))} | "
+        f"100%={calls[-1]:.2f} | {len(calls)} callbacks"
+    )
 
 
 def test_headless_parallel():
@@ -145,8 +151,9 @@ def test_headless_parallel():
     assert res.get("workers", 1) > 1
     assert elapsed < dur * 5, f"100s de audio tardaron {elapsed:.0f}s (>5x duracion)"
     assert calls[-1] >= 0.99, f"el progreso no llego al 100% (ultimo {calls[-1]:.2f})"
-    print(f"R1+R3 OK  100s headless (stdout=None) en {elapsed:.1f}s | "
-          f"{res.get('workers')} workers | 100%={calls[-1]:.2f}")
+    print(
+        f"R1+R3 OK  100s headless (stdout=None) en {elapsed:.1f}s | {res.get('workers')} workers | 100%={calls[-1]:.2f}"
+    )
 
 
 if __name__ == "__main__":

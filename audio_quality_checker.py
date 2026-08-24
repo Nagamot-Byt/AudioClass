@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 audio_quality_checker.py — Verificador de calidad de audio para transcripcion
 ==============================================================================
@@ -18,43 +17,42 @@ Uso tipico en la app:
         mostrar_consejo(report)
 """
 
-import os
-import numpy as np
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
 
+import numpy as np
 
 # -- Umbrales calibrados con optimizar_mic.py y test_mic_detection.py ---------
-RMS_SILENCE = 0.005       # p90 < este valor = silencio digital
-RMS_DEBIL = 0.03          # p90 < este valor = muy debil para buena transcripcion
-RMS_OK = 0.05             # p90 >= este valor = nivel aceptable
-RMS_IDEAL = 0.15          # p90 >= este valor = nivel ideal para whisper
-CLIP_THRESHOLD = 0.99     # muestras por encima de este valor = clipping
-CLIP_WARN_PCT = 0.5       # > 0.5% de samples clipping = problema
-SILENCE_RATIO_WARN = 0.70 # > 70% del tiempo en silencio = sospechoso
-SNR_MIN_DB = 10.0         # SNR < 10 dB = mucho ruido de fondo
-SPEECH_BAND_LOW = 200     # Hz - banda de voz
-SPEECH_BAND_HIGH = 4000   # Hz - banda de voz
+RMS_SILENCE = 0.005  # p90 < este valor = silencio digital
+RMS_DEBIL = 0.03  # p90 < este valor = muy debil para buena transcripcion
+RMS_OK = 0.05  # p90 >= este valor = nivel aceptable
+RMS_IDEAL = 0.15  # p90 >= este valor = nivel ideal para whisper
+CLIP_THRESHOLD = 0.99  # muestras por encima de este valor = clipping
+CLIP_WARN_PCT = 0.5  # > 0.5% de samples clipping = problema
+SILENCE_RATIO_WARN = 0.70  # > 70% del tiempo en silencio = sospechoso
+SNR_MIN_DB = 10.0  # SNR < 10 dB = mucho ruido de fondo
+SPEECH_BAND_LOW = 200  # Hz - banda de voz
+SPEECH_BAND_HIGH = 4000  # Hz - banda de voz
 
 
 @dataclass
 class AudioQualityReport:
     """Reporte de calidad de audio para transcripcion."""
-    verdict: str = "OK"           # "OK" | "WARN" | "FAIL"
+
+    verdict: str = "OK"  # "OK" | "WARN" | "FAIL"
     rms_mean: float = 0.0
     rms_p50: float = 0.0
     rms_p90: float = 0.0
     peak: float = 0.0
     snr_db: float = 0.0
     clipping_pct: float = 0.0
-    silence_ratio: float = 0.0    # fraccion de tiempo en silencio
-    speech_energy: float = 0.0    # energia en banda de voz (0-1 normalizada)
+    silence_ratio: float = 0.0  # fraccion de tiempo en silencio
+    speech_energy: float = 0.0  # energia en banda de voz (0-1 normalizada)
     duration_s: float = 0.0
-    issues: List[str] = field(default_factory=list)
-    suggestions: List[str] = field(default_factory=list)
-    severity: str = "info"        # "info" | "warning" | "error"
+    issues: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    severity: str = "info"  # "info" | "warning" | "error"
     message: str = ""
-    auto_fixable: bool = False    # True si el solver puede corregirlo automaticamente
+    auto_fixable: bool = False  # True si el solver puede corregirlo automaticamente
 
 
 def _rms_frames(audio: np.ndarray, sr: int, win_ms: int = 100) -> np.ndarray:
@@ -65,14 +63,12 @@ def _rms_frames(audio: np.ndarray, sr: int, win_ms: int = 100) -> np.ndarray:
     hop = win // 2
     frames = []
     for i in range(0, len(audio) - win + 1, hop):
-        chunk = audio[i:i + win]
-        frames.append(float(np.sqrt(np.mean(chunk ** 2))))
+        chunk = audio[i : i + win]
+        frames.append(float(np.sqrt(np.mean(chunk**2))))
     return np.array(frames, dtype=np.float64) if frames else np.array([0.0])
 
 
-def _spectral_energy(audio: np.ndarray, sr: int,
-                     f_low: int = SPEECH_BAND_LOW,
-                     f_high: int = SPEECH_BAND_HIGH) -> float:
+def _spectral_energy(audio: np.ndarray, sr: int, f_low: int = SPEECH_BAND_LOW, f_high: int = SPEECH_BAND_HIGH) -> float:
     """Fraccion de energia espectral en la banda de voz (0-1)."""
     n = len(audio)
     if n < sr * 0.1:  # menos de 100 ms
@@ -85,7 +81,7 @@ def _spectral_energy(audio: np.ndarray, sr: int,
     seg = audio[:fft_size]
     spectrum = np.abs(np.fft.rfft(seg * np.hanning(fft_size)))
     freqs = np.fft.rfftfreq(fft_size, d=1.0 / sr)
-    total_energy = np.sum(spectrum ** 2)
+    total_energy = np.sum(spectrum**2)
     if total_energy < 1e-20:
         return 0.0
     speech_mask = (freqs >= f_low) & (freqs <= f_high)
@@ -95,7 +91,7 @@ def _spectral_energy(audio: np.ndarray, sr: int,
 
 def _estimate_snr(audio: np.ndarray, sr: int) -> float:
     """Estima SNR en dB usando percentiles del RMS.
-    
+
     Usa percentil 10 como piso de ruido y percentil 90 como nivel de senal,
     que es mas robusto con senales periodicas (voz, musica) que el promedio
     de los mas bajos/altos."""
@@ -113,8 +109,7 @@ def _estimate_snr(audio: np.ndarray, sr: int) -> float:
     return float(20.0 * np.log10(max(snr, 1e-10)))
 
 
-def check_audio_quality(audio: np.ndarray, sr: int = 16000,
-                        config: Optional[dict] = None) -> AudioQualityReport:
+def check_audio_quality(audio: np.ndarray, sr: int = 16000, config: dict | None = None) -> AudioQualityReport:
     """Analiza la calidad de un buffer de audio y devuelve un reporte.
 
     Args:
@@ -147,7 +142,7 @@ def check_audio_quality(audio: np.ndarray, sr: int = 16000,
         return report
 
     # -- Metricas base ---------------------------------------------------------
-    report.rms_mean = float(np.sqrt(np.mean(audio ** 2)))
+    report.rms_mean = float(np.sqrt(np.mean(audio**2)))
     frames = _rms_frames(audio, sr, win_ms=100)
     report.rms_p50 = float(np.median(frames))
     report.rms_p90 = float(np.percentile(frames, 90))
@@ -204,7 +199,7 @@ def check_audio_quality(audio: np.ndarray, sr: int = 16000,
     # 5) Silencio excesivo (>70% del tiempo)
     if report.silence_ratio > SILENCE_RATIO_WARN and report.rms_p90 >= RMS_SILENCE:
         issues.append("mostly_silence")
-        suggestions.append(f"El audio tiene {report.silence_ratio*100:.0f}% de silencio. Puede haber muy poca voz.")
+        suggestions.append(f"El audio tiene {report.silence_ratio * 100:.0f}% de silencio. Puede haber muy poca voz.")
         suggestions.append("Verifica que estes hablando durante la grabacion.")
         suggestions.append("El pipeline de audio recortara el silencio, pero el texto puede ser muy corto.")
 
@@ -220,7 +215,7 @@ def check_audio_quality(audio: np.ndarray, sr: int = 16000,
         report.severity = "error"
         report.message = (
             f"Audio insuficiente para transcribir (p90={report.rms_p90:.4f}, "
-            f"{20*np.log10(max(report.rms_p90,1e-6)):.0f} dB). "
+            f"{20 * np.log10(max(report.rms_p90, 1e-6)):.0f} dB). "
             "La transcripcion saldra vacia o con basura."
         )
     elif len(issues) >= 2 or report.rms_p90 < RMS_DEBIL:
@@ -246,11 +241,11 @@ def check_audio_quality(audio: np.ndarray, sr: int = 16000,
     return report
 
 
-def check_wav_file(path: str, sr: int = 16000,
-                   config: Optional[dict] = None) -> AudioQualityReport:
+def check_wav_file(path: str, sr: int = 16000, config: dict | None = None) -> AudioQualityReport:
     """Analiza un archivo WAV y devuelve el reporte de calidad."""
     try:
         from scipy.io import wavfile
+
         sr_file, data = wavfile.read(path)
         if data.dtype == np.int16:
             data = data.astype(np.float64) / 32768.0
@@ -277,12 +272,12 @@ def format_report_text(report: AudioQualityReport) -> str:
 
     if report.duration_s > 0:
         lines.append(f"  Duracion: {report.duration_s:.1f}s")
-    lines.append(f"  RMS p90: {report.rms_p90:.4f} ({20*np.log10(max(report.rms_p90,1e-6)):.0f} dB)")
+    lines.append(f"  RMS p90: {report.rms_p90:.4f} ({20 * np.log10(max(report.rms_p90, 1e-6)):.0f} dB)")
     lines.append(f"  Pico: {report.peak:.4f}")
     lines.append(f"  SNR: {report.snr_db:.1f} dB")
     if report.clipping_pct > 0:
         lines.append(f"  Clipping: {report.clipping_pct:.2f}%")
-    lines.append(f"  Silencio: {report.silence_ratio*100:.0f}% del tiempo")
+    lines.append(f"  Silencio: {report.silence_ratio * 100:.0f}% del tiempo")
 
     if report.issues:
         lines.append(f"  Problemas: {', '.join(report.issues)}")

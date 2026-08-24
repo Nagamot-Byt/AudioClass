@@ -92,7 +92,7 @@ if [ "$DELETE" = true ]; then
         echo "Cancelado."
         exit 0
     fi
-    
+
     kubectl delete -f "$SCRIPT_DIR/" --ignore-not-found -n "$NAMESPACE"
     kubectl delete namespace "$NAMESPACE" --ignore-not-found
     log "Despliegue eliminado"
