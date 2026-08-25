@@ -49,6 +49,22 @@ jobs:
           ruff format --check . 2>&1 || true
           echo "FORMAT_CHECK_COMPLETE"
 
+  validate-changelog:
+    name: Validar CHANGELOG.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validar formato del changelog
+        run: python3 validate_changelog.py
+      - name: Validar version del tag (si aplica)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${{ github.ref_name }}".lstrip('v')
+          python3 validate_changelog.py --version "$TAG"
+
   compile:
     name: Compilar todos los .py
     runs-on: ubuntu-latest
@@ -68,6 +84,7 @@ jobs:
             app_metrics.py config_backup.py toast_ui.py \
             update_dialog_ui.py test_integration_mocks.py \
             test_security_audit.py \
+            validate_changelog.py \
             bench_models.py optimizar_mic.py run_ci_suite.py \
             test_*.py && echo COMPILE_OK
       # El import del núcleo necesita numpy/scipy/sounddevice: este job no

@@ -314,6 +314,10 @@ DESKTOP
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Validar CHANGELOG.md antes de publicar
+        run: |
+          TAG="${{ github.ref_name }}".lstrip('v')
+          python3 validate_changelog.py --version "$TAG"
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -333,20 +337,40 @@ DESKTOP
             echo "Deleting existing release $TAG"
             gh release delete "$TAG" --yes
           fi
+      - name: Generate release notes from CHANGELOG.md
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Extract the section for this tag from CHANGELOG.md
+          python3 - <<'PYEOF'
+          import re, sys
+          tag = "${{ github.ref_name }}".lstrip("v")
+          changelog = open("CHANGELOG.md", encoding="utf-8").read()
+          # Find the section for this version (e.g., ## [9.1.11] - 2026-08-24)
+          pattern = rf"## \[{re.escape(tag)}\].*?(?=## \[|$)"
+          match = re.search(pattern, changelog, re.DOTALL)
+          if match:
+              notes = match.group(0).strip()
+          else:
+              # Fallback: use NOTA_RELEASE.md
+              notes = open("NOTA_RELEASE.md", encoding="utf-8").read()
+          with open("RELEASE_NOTES.md", "w", encoding="utf-8") as f:
+              f.write(notes)
+          print(f"Release notes for {tag}: {len(notes)} chars")
+          PYEOF
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
             --title "AudioClass ${{ github.ref_name }}" \
-            --notes-file NOTA_RELEASE.md
+            --notes-file RELEASE_NOTES.md
       - name: Upload docs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ github.ref_name }}" \
             --clobber \
-            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md NOTA_RELEASE.md
+            EULA.txt AVISO_DE_PRIVACIDAD.txt TERCEROS_Y_LICENCIAS.md RELEASE_NOTES.md PRIVACY.md NOTICE
       - name: Upload Windows ZIP
         env:
           GH_TOKEN: ${{ github.token }}
