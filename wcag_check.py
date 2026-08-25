@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Verificacion de contraste WCAG AA para la UI de AudioClass.
 
 Reutilizable desde los tests (test_wcag_contrast.py, test_ui_smoke.py):
@@ -8,13 +7,14 @@ Reutilizable desde los tests (test_wcag_contrast.py, test_ui_smoke.py):
   'transparent' por la cadena de padres,
 - valida texto normal >= 4.5:1 y componentes/UI >= 3:1.
 """
+
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-TEXT_MIN = 4.5   # WCAG AA texto normal
-UI_MIN = 3.0     # WCAG AA componentes / UI
+TEXT_MIN = 4.5  # WCAG AA texto normal
+UI_MIN = 3.0  # WCAG AA componentes / UI
 
 
 def _channel(v):
@@ -36,7 +36,7 @@ def luminance(color):
             h = color[1:]
             if len(h) == 3:
                 h = "".join(ch * 2 for ch in h)
-            rgb = tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+            rgb = tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
         elif color.startswith("gray"):
             # 'gray60' etc. -> escala Tk 0-100
             v = int(color[4:]) * 255 // 100
@@ -117,6 +117,7 @@ def _frame_kind(widget):
     texto sobre su propio fg_color."""
     try:
         import customtkinter as ctk
+
         if isinstance(widget, ctk.CTkButton):
             return "button"
         if isinstance(widget, ctk.CTkRadioButton):
@@ -238,7 +239,13 @@ def check_pairs(pairs, min_text=TEXT_MIN, min_ui=UI_MIN, skip_disabled=True):
         # 4.5:1 para texto normal; 3:1 para componentes grandes/UI. Un boton
         # es componente UI, pero su texto debe leerse -> exigimos 4.5 cuando
         # el par es claramente texto (labels/entry/textbox) y 3 para el resto.
-        is_text = cls.startswith(("CTkLabel", "CTkEntry", "CTkTextbox")) or cls in ("Label", "Entry", "Text", "Checkbutton", "Radiobutton")
+        is_text = cls.startswith(("CTkLabel", "CTkEntry", "CTkTextbox")) or cls in (
+            "Label",
+            "Entry",
+            "Text",
+            "Checkbutton",
+            "Radiobutton",
+        )
         limit = min_text if is_text else min_ui
         if r < limit:
             violations.append((r, fg, bg, cls, txt, st))
