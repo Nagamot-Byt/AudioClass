@@ -9,9 +9,11 @@ para mantener el archivo de la interfaz enfocado en la UI.
 """
 
 import copy
+import gc
 import logging
 import os
 import sys
+import tempfile
 import threading
 import time
 import warnings
@@ -23,10 +25,12 @@ import numpy as np
 from scipy import signal
 from scipy.io import wavfile
 
+from transcription_engines import TranscriptionBackend
+
 warnings.filterwarnings("ignore")
 
 
-def _free_ram_mb():
+def _free_ram_mb() -> float | None:
     """RAM libre en MB usando SOLO la stdlib (None si no se puede medir).
     Windows: GlobalMemoryStatusEx; Linux: /proc/meminfo. No agrega dependencias
     al bundle y permite escalar los workers de transcripcion con la RAM real."""
@@ -90,8 +94,38 @@ _MODEL_CACHE_MAX = 6
 CHUNK_BUDGET_FLOOR = 120.0
 CHUNK_EST_SEED = 30.0  # estimacion inicial de segundos por chunk (1x 30s)
 
-OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+_RESOLVED_OUTPUT_DIR = None
+
+
+def get_output_dir():
+    """Retorna el directorio de salida para grabaciones y exportaciones.
+    Intenta ~/AudioClass_Recordings y si no es escribible cae en fallback a
+    ./AudioClass_Recordings o tempdir."""
+    global _RESOLVED_OUTPUT_DIR
+    if _RESOLVED_OUTPUT_DIR is not None:
+        return _RESOLVED_OUTPUT_DIR
+
+    candidates = [
+        os.path.join(os.path.expanduser("~"), "AudioClass_Recordings"),
+        os.path.abspath("AudioClass_Recordings"),
+        os.path.join(tempfile.gettempdir(), "AudioClass_Recordings"),
+    ]
+    for candidate in candidates:
+        try:
+            os.makedirs(candidate, exist_ok=True)
+            test_file = os.path.join(candidate, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("ok")
+            os.remove(test_file)
+            _RESOLVED_OUTPUT_DIR = candidate
+            return _RESOLVED_OUTPUT_DIR
+        except Exception:
+            continue
+    _RESOLVED_OUTPUT_DIR = os.path.abspath(".")
+    return _RESOLVED_OUTPUT_DIR
+
+
+OUTPUT_DIR = get_output_dir()
 
 # ─── LOGGING ROTATIVO ────────────────────────────────────────────────────────
 LOG_DIR = os.path.join(OUTPUT_DIR, "logs")
@@ -103,9 +137,10 @@ def _setup_logger():
     if _logger is not None:
         return _logger
     try:
-        os.makedirs(LOG_DIR, exist_ok=True)
+        log_dir = os.path.join(get_output_dir(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
         fh = RotatingFileHandler(
-            os.path.join(LOG_DIR, "audioclass.log"), maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
+            os.path.join(log_dir, "audioclass.log"), maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
         )
         fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(message)s"))
         _logger = logging.getLogger("audioclass")
@@ -239,7 +274,7 @@ class AudioPipeline:
         # transcripcion misma en clases de 1h+.
         self.long_audio_sec = 1200.0
 
-    def process(self, audio: np.ndarray, progress_callback: Callable | None = None) -> np.ndarray:
+    def process(self, audio: np.ndarray, progress_callback: Callable | None = None, vad: bool = False) -> np.ndarray:
         """Procesa audio crudo y devuelve audio mejorado.
 
         Aplica la cadena completa: reduccion de ruido, normalizacion,
@@ -249,6 +284,9 @@ class AudioPipeline:
         Args:
             audio: Array numpy float32 con el audio crudo.
             progress_callback: Callable(step, total, name) para reportar progreso.
+            vad: Si True, aplica detección de actividad de voz (Voice Activity Detection)
+                 antes de devolver, filtrando los segmentos silenciosos. Útil para
+                 transcripción streaming en tiempo real.
 
         Returns:
             Array numpy float64 con el audio procesado.
@@ -334,6 +372,27 @@ class AudioPipeline:
 
         audio = self._agc_vad_limiter(audio)
         report("AGC + VAD + Limitador final")
+
+        if vad:
+            # Voice Activity Detection simple: conserva solo los frames cuya energia
+            # supere el percentil configurable, atenuando el ruido de fondo en
+            # transcripciones en tiempo real.
+            frame_len = int(0.025 * SAMPLE_RATE)  # 25ms frames
+            frame_hop = int(0.01 * SAMPLE_RATE)  # 10ms hop
+            if len(audio) > frame_len:
+                # Energy per frame
+                frames = [audio[i : i + frame_len] for i in range(0, len(audio) - frame_len, frame_hop)]
+                energies = [np.mean(f**2) for f in frames]
+                threshold = np.percentile(energies, self.p.get("vad_threshold_percentile", 15))
+                mask = [e >= threshold for e in energies]
+                # Reconstruir audio: upsample el mask al largo original
+                filtered = np.zeros_like(audio)
+                for i, keep in enumerate(mask):
+                    start = i * frame_hop
+                    end = min(start + frame_len, len(filtered))
+                    if keep:
+                        filtered[start:end] += audio[start:end]
+                audio = filtered
 
         return audio.astype(np.float32)
 
@@ -493,7 +552,7 @@ class AudioPipeline:
         return np.concatenate(segments) if segments else audio
 
 
-def audio_silence_stats(data, sample_rate=SAMPLE_RATE):
+def audio_silence_stats(data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> dict:
     """Metricas de silencio digital de un array float32 [-1, 1]. Devuelve un
     dict con zero_frac (fraccion de muestras EXACTAMENTE cero, sello de un
     microfono muerto/desenchufado), rms global y pico. No lanza excepciones."""
@@ -506,7 +565,7 @@ def audio_silence_stats(data, sample_rate=SAMPLE_RATE):
     return {"zero_frac": zero_frac, "rms": rms, "peak": peak, "samples": len(x)}
 
 
-def is_digital_silence(stats, min_sec=1.0, sample_rate=SAMPLE_RATE):
+def is_digital_silence(stats: dict, min_sec: float = 1.0, sample_rate: int = SAMPLE_RATE) -> bool:
     """True si el audio es silencio DIGITAL: el sello de un microfono muerto o
     desenchufado es >50% de muestras exactamente en cero (en el caso real: 77%
     con vu_low=687) o RMS global < 5e-5 (ruido termico puro). Un audio de voz
@@ -533,7 +592,7 @@ _HALLUC_PHRASES = (
 )
 
 
-def detect_hallucination(text, segments=None):
+def detect_hallucination(text: str, segments: list | None = None) -> bool:
     """Detecta alucinaciones tipicas de whisper sobre audio debil/vacio.
 
     Cuando el microfono capta casi solo ruido (o la sala esta en silencio),
@@ -578,7 +637,7 @@ def detect_hallucination(text, segments=None):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class LocalWhisperEngine:
+class LocalWhisperEngine(TranscriptionBackend):
     """Motor de transcripción local con tiny/base/small.
 
     Backend dual (mejora #1):
@@ -759,6 +818,14 @@ class LocalWhisperEngine:
         check_silence: bool = True,
         partial_callback: Callable | None = None,
     ) -> dict[str, Any]:
+        # Cancelación temprana: si el evento ya está seteado antes de arrancar,
+        # no cargar el modelo ni procesar el audio; devolver cancelled al instante.
+        # (La cancelación cooperativa solo se rechequea en los bordes de chunk
+        # durante la transcripción, por lo que sin esto una cancelación previa al
+        # arranque colgaba el hilo hasta terminar la carga del modelo en CPU lento.)
+        if cancel_event and cancel_event.is_set():
+            return {"cancelled": True}
+
         # Anti-congestión: si una transcripción anterior fue cancelada, su pool
         # sigue drenando workers con sus modelos deepcopy. Esperamos a que
         # termine antes de arrancar otra (el camino secuencial no crea pool,
@@ -1365,8 +1432,13 @@ class LocalWhisperEngine:
                 # siguiente transcripcion arranque hasta liberar RAM/CPU (el
                 # arranque de transcribe tiene tope de 90s de espera).
                 pool.shutdown(wait=False, cancel_futures=True)
+
+                def _drain_and_set(p):
+                    p.shutdown(wait=True)
+                    self._drain_ev.set()
+
                 threading.Thread(
-                    target=lambda p=pool: (p.shutdown(wait=True), self._drain_ev.set()),
+                    target=lambda p=pool: _drain_and_set(p),
                     daemon=True,
                 ).start()
             else:
@@ -1823,12 +1895,107 @@ class OpenAIAdaptationEngine(GeminiAdaptationEngine):
             return False, f"Error inesperado: {e}"
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MOTOR DE ADAPTACIÓN INTELIGENTE (OLLAMA / IA LOCAL) — 100% Offline
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class OllamaAdaptationEngine(GeminiAdaptationEngine):
+    """Adapta transcripciones usando un servidor de IA Local (Ollama / LM Studio / llama.cpp).
+
+    Misma interfaz que GeminiAdaptationEngine y OpenAIAdaptationEngine (test_key + adapt).
+    Funciona 100% offline conectando a http://localhost:11434 o endpoint OpenAI-compatible.
+    """
+
+    PROVIDER = "Ollama (IA Local)"
+
+    def __init__(self, host_url="http://localhost:11434", model="qwen2.5"):
+        self.host_url = (host_url or "http://localhost:11434").rstrip("/")
+        self.model = model or "qwen2.5"
+
+    def _model_name(self):
+        return self.model
+
+    def _headers(self):
+        return {"Content-Type": "application/json"}
+
+    def _call(self, prompt, max_tokens, temperature, timeout=180):
+        import requests
+
+        if self.host_url.endswith("/v1"):
+            url = f"{self.host_url}/chat/completions"
+            payload = {
+                "model": self._model_name(),
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+        else:
+            url = f"{self.host_url}/api/generate"
+            payload = {
+                "model": self._model_name(),
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                },
+            }
+
+        try:
+            r = requests.post(url, json=payload, headers=self._headers(), timeout=timeout)
+        except Exception as e:
+            return {"error": f"Error {self.PROVIDER}: {e}"}
+        if r.status_code != 200:
+            detail = ""
+            try:
+                detail = r.json().get("error", "")
+            except Exception:
+                pass
+            return {"error": f"{self.PROVIDER} HTTP {r.status_code}: {detail or r.text[:300]}"}
+        data = r.json()
+        if "choices" in data:
+            choices = data.get("choices", [])
+            content = (choices[0].get("message") or {}).get("content") or "" if choices else ""
+        else:
+            content = data.get("response", "")
+        if not content:
+            return {"error": f"{self.PROVIDER} no generó respuesta"}
+        return {"text": content}
+
+    def test_key(self):
+        try:
+            import requests
+        except ImportError:
+            return False, "Falta el paquete 'requests'"
+        try:
+            if self.host_url.endswith("/v1"):
+                r = requests.get(f"{self.host_url}/models", timeout=10)
+            else:
+                r = requests.get(f"{self.host_url}/api/tags", timeout=10)
+            if r.status_code == 200:
+                return True, f"Servidor Ollama detectado ({self.model})"
+            return False, f"Servidor no respondió (HTTP {r.status_code})"
+        except requests.exceptions.ConnectionError:
+            return False, f"No se pudo conectar a {self.host_url}. ¿Está Ollama en ejecución?"
+        except Exception as e:
+            return False, f"Error al conectar con Ollama: {e}"
+
+
 def build_adaptation_engine(
-    provider="gemini", gemini_api_key="", gemini_model="flash", openai_api_key="", openai_model="mini"
+    provider="gemini",
+    gemini_api_key="",
+    gemini_model="flash",
+    openai_api_key="",
+    openai_model="mini",
+    ollama_url="http://localhost:11434",
+    ollama_model="qwen2.5",
 ):
     """Devuelve el motor de adaptacion segun el proveedor elegido por el usuario."""
     if provider == "openai":
         return OpenAIAdaptationEngine(openai_api_key, openai_model)
+    elif provider == "ollama":
+        return OllamaAdaptationEngine(ollama_url, ollama_model)
     return GeminiAdaptationEngine(gemini_api_key, gemini_model)
 
 

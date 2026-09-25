@@ -12,13 +12,13 @@ Cada entrada es (nombre del test sin .py, patrón de éxito). Los tests GUI
 display (Linux/CI); en Windows el display es nativo y no hace falta.
 
 Uso:
-    python -u run_ci_suite.py                 # suite completa (17 tests)
+    python -u run_ci_suite.py                 # suite completa (18 tests)
     python -u run_ci_suite.py --skip-benchmark # omite test_benchmark_models (lento)
     python -u run_ci_suite.py --list          # imprime la lista (nombres, 1 por línea)
     python -u run_ci_suite.py <nombre>        # un solo test (pasos nombrados del CI)
 
 Salida por test:  "OK   nombre (Ns)"  /  "FAIL nombre (rc=N, sin patron ...)"
-Resumen final:    "CI_SUITE_OK (17/17)"  /  "CI_SUITE_FAIL (N/17)"
+Resumen final:    "CI_SUITE_OK (18/18)"  /  "CI_SUITE_FAIL (N/18)"
 Exit code 0 si TODOS pasan, 1 si alguno falla, 2 si el nombre no existe.
 """
 
@@ -69,6 +69,7 @@ SUITE = [
     ("test_config_manager", r"CONFIG_MANAGER_OK"),
     ("test_api_integration", r"API_INTEGRATION_OK"),
     ("test_mic_detection", r"MIC_DETECTION_OK"),
+    ("test_transcribe_stub", r"STUB_TRANSCRIBE_OK"),
     ("test_audio_quality_solver", r"Todos los tests pasaron."),
     ("test_quality_gate_e2e", r"QUALITY_GATE_E2E_OK"),
     ("test_exe_has_modules", r"EXE_MODULES_OK"),
@@ -82,7 +83,9 @@ SUITE = [
 # lentos. El benchmark (118-183s reales) ya tenía 600s; el resto nunca pasó
 # de 68s (default 300s).
 TIMEOUTS = {"test_benchmark_models": 600, "test_stress_transcripcion": 480}
-SKIP_BENCHMARK = "--skip-benchmark" in sys.argv
+# El benchmark carga modelos whisper reales y es pesado/depende de GPU; se omite
+# por defecto en CI y solo se ejecuta con --benchmark (o --skip-benchmark para forzar omision).
+SKIP_BENCHMARK = "--benchmark" not in sys.argv or "--skip-benchmark" in sys.argv
 
 USE_XVFB = os.name != "nt" and not os.environ.get("DISPLAY") and shutil.which("xvfb-run") is not None
 

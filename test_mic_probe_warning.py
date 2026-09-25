@@ -112,7 +112,7 @@ check("nivel OK graba sin dialogo", s.began == 1 and s.opened_warn == 0)
 
 s = StubApp()
 ac.App._mic_probe_done(s, None)
-check("probe None graba sin dialogo", s.began == 1 and s.opened_warn == 0)
+check("probe None abre advertencia", s.opened_warn == 1 and s.began == 0, f"warn={s.opened_warn} began={s.began}")
 
 s = StubApp()
 ac.App._mic_probe_done(s, ac.MIC_PROBE_P90_MIN)
@@ -274,7 +274,16 @@ def _run_probe(level, fail=False):
         ac.App._mic_probe_worker(stub)
     finally:
         ac.sd.InputStream, ac.time.sleep = orig_stream, orig_sleep
-    return q.get_nowait()
+    # Drenar: devolver el ULTIMO mensaje mic_probe (puede precederle un status).
+    out = None
+    while True:
+        try:
+            m = q.get_nowait()
+        except Exception:
+            break
+        if m[0] == "mic_probe":
+            out = m
+    return out
 
 
 mt, lvl = _run_probe(0.1)

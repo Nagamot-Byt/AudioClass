@@ -31,6 +31,8 @@ try:
 
     CTK = True
 except ImportError:
+    import tkinter as ctk
+
     CTK = False
 
 if TYPE_CHECKING:
@@ -131,11 +133,11 @@ class ConfigDialogMixin:
         adapt_provider = ctk.StringVar(value=self.config.get("adapt_provider", "gemini"))
         prov_row = self._frame(f1, fg_color="transparent")
         prov_row.pack(anchor="w", padx=15, pady=(0, 8))
-        for val, lbl in (("gemini", "Gemini (Google)"), ("openai", "OpenAI (GPT)")):
+        for val, lbl in (("gemini", "Gemini (Google)"), ("openai", "OpenAI (GPT)"), ("ollama", "Ollama (IA Local)")):
             rb = ctk.CTkRadioButton(
                 prov_row, text=lbl, variable=adapt_provider, value=val, font=(self.FB, 11), text_color=C["text"]
             )
-            rb.pack(side="left", padx=(0, 25))
+            rb.pack(side="left", padx=(0, 15))
             self._themeable.append(("label", rb, "text"))
 
         # ── Sección Gemini ──
@@ -223,10 +225,47 @@ class ConfigDialogMixin:
         )
         self.btn_test_openai.pack(side="left")
 
-        # Auto-test solo del proveedor activo al abrir la ventana
-        if self.config.get("adapt_provider", "gemini") == "openai":
-            if self.config.get("openai_api_key"):
-                self.after(400, lambda: self._test_adapt(openai_entry, openai_model, "openai"))
+        # ── Sección Ollama / IA Local (100% Offline) ──
+        f1oll = self._frame(f1, fg_color="transparent")
+        f1oll.pack(fill="x", padx=15, pady=(0, 8))
+        self._lbl(f1oll, "Servidor de IA Local (Ollama / LM Studio)", font=(self.FH, 12, "bold")).pack(
+            anchor="w", pady=(4, 2)
+        )
+        self._lbl(
+            f1oll,
+            "URL del servidor (ej. http://localhost:11434) y modelo (ej. qwen2.5, llama3.2):",
+            font=(self.FB, 10),
+            text_color=C["muted"],
+        ).pack(anchor="w", pady=(0, 4))
+        ollama_url_entry = self._entry(f1oll, width=500, font=(self.FB, 11))
+        ollama_url_entry.pack(anchor="w", pady=(0, 4))
+        ollama_url_entry.insert(0, self.config.get("ollama_url", "http://localhost:11434"))
+
+        ollama_model_entry = self._entry(f1oll, width=300, font=(self.FB, 11))
+        ollama_model_entry.pack(anchor="w", pady=(0, 4))
+        ollama_model_entry.insert(0, self.config.get("ollama_model", "qwen2.5"))
+        ollama_model_var = ctk.StringVar(value=self.config.get("ollama_model", "qwen2.5"))
+
+        oll_test_row = self._frame(f1oll, fg_color="transparent")
+        oll_test_row.pack(fill="x", pady=(0, 4))
+        self.ollama_test_lbl = self._lbl(oll_test_row, "", font=(self.FB, 10), text_color=C["muted"])
+        self.ollama_test_lbl.pack(side="left", padx=(0, 10))
+        self.btn_test_ollama = self._btn(
+            oll_test_row,
+            "Probar Conexión",
+            lambda: self._test_adapt(ollama_url_entry, ollama_model_entry, "ollama"),
+            width=150,
+            height=30,
+            fg_color=C["accent"],
+        )
+        self.btn_test_ollama.pack(side="left")
+
+        # Auto-test del proveedor activo
+        active_prov = self.config.get("adapt_provider", "gemini")
+        if active_prov == "openai" and self.config.get("openai_api_key"):
+            self.after(400, lambda: self._test_adapt(openai_entry, openai_model, "openai"))
+        elif active_prov == "ollama":
+            self.after(400, lambda: self._test_adapt(ollama_url_entry, ollama_model_entry, "ollama"))
         elif self.config.get("gemini_api_key"):
             self.after(400, lambda: self._test_adapt(gemini_entry, gemini_model, "gemini"))
 
@@ -405,9 +444,9 @@ class ConfigDialogMixin:
         self._lbl(status_frame, "Modelo Local:", font=(self.FB, 11)).pack(side="left")
         self._lbl(
             status_frame,
-            "Listo" if self.local_engine.ready else "Cargando...",
+            "Listo" if self.transcription_service.local_engine.ready else "Cargando...",
             font=(self.FB, 11),
-            text_color=C["ok"] if self.local_engine.ready else C["warn"],
+            text_color=C["ok"] if self.transcription_service.local_engine.ready else C["warn"],
         ).pack(side="left", padx=(5, 20))
 
         self._lbl(status_frame, "Colab:", font=(self.FB, 11)).pack(side="left")
@@ -541,6 +580,8 @@ class ConfigDialogMixin:
             self.config["gemini_model"] = gemini_model.get()
             self.config["openai_api_key"] = openai_entry.get().strip()
             self.config["openai_model"] = openai_model.get()
+            self.config["ollama_url"] = ollama_url_entry.get().strip()
+            self.config["ollama_model"] = ollama_model_entry.get().strip()
             self.config["colab_url"] = colab_entry.get().strip()
             self.config["colab_key"] = colab_key.get().strip()
             self.config["google_creds_path"] = gdoc_entry.get().strip()
@@ -549,7 +590,7 @@ class ConfigDialogMixin:
             self.config["ia_consent"] = bool(ia_consent_var.get())
             _cm_save_config(self.config)
 
-            self.adapt_engine = self._build_adapt_engine()
+            self.transcription_service.adapt_engine = self.transcription_service._build_adapt_engine()
             self.cloud_engine = _CCE(
                 self.config["colab_url"], self.config["colab_key"], self.config.get("whisper_language", "auto")
             )

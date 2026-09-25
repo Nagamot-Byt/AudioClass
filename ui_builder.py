@@ -41,6 +41,7 @@ try:
 
     CTK = True
 except ImportError:
+    ctk = None
     CTK = False
 
 try:
@@ -492,7 +493,7 @@ def build_config_bar(app: App, parent):
 
     # Perfil
     app._lbl(cfg, "Perfil:", font=(app.FB, 12)).pack(side="left", padx=(18, 6), pady=12)
-    app.profile_var = ctk.StringVar(value=app.config.get("audio_profile", "Clase Universitaria"))
+    app.profile_var = tk.StringVar(value=app.config.get("audio_profile", "Clase Universitaria"))
     if CTK:
         app.cmb_profile = ctk.CTkOptionMenu(
             cfg,
@@ -508,7 +509,7 @@ def build_config_bar(app: App, parent):
 
     # Motor
     app._lbl(cfg, "Motor:", font=(app.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
-    app.mode_var = ctk.StringVar(value=app.config.get("transcription_mode", "local"))
+    app.mode_var = tk.StringVar(value=app.config.get("transcription_mode", "local"))
     if CTK:
         for val, lbl in (("local", "Local"), ("cloud", "Cloud")):
             rb = ctk.CTkRadioButton(
@@ -527,7 +528,7 @@ def build_config_bar(app: App, parent):
 
     # Modelo
     app._lbl(cfg, "Modelo:", font=(app.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
-    app.model_var = ctk.StringVar(value=app.config.get("local_model", "base"))
+    app.model_var = tk.StringVar(value=app.config.get("local_model", "base"))
     if CTK:
         app.cmb_model = ctk.CTkOptionMenu(
             cfg,
@@ -543,7 +544,7 @@ def build_config_bar(app: App, parent):
 
     # Idioma
     app._lbl(cfg, "Idioma:", font=(app.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
-    app.lang_var = ctk.StringVar(value=app.config.get("whisper_language", "auto"))
+    app.lang_var = tk.StringVar(value=app.config.get("whisper_language", "auto"))
     _langs = ["auto", "es", "en", "pt", "fr", "de", "it"]
     if CTK:
         app.cmb_lang = ctk.CTkOptionMenu(
@@ -554,17 +555,17 @@ def build_config_bar(app: App, parent):
     app.cmb_lang.pack(side="left", padx=(0, 20), pady=12)
 
     # Switches: Rapido + VAD
-    app.fast_var = ctk.BooleanVar(value=False)
+    app.fast_var = tk.BooleanVar(value=False)
     if CTK:
         ctk.CTkSwitch(cfg, text="Rapido", variable=app.fast_var, font=(app.FB, 11)).pack(
-            side="left", padx=(0, 15), pady=12
+            side="left", padx=(0, 14), pady=12
         )
     else:
         tk.Checkbutton(cfg, text="Rapido", variable=app.fast_var, bg=C["card"], fg=C["text"]).pack(
-            side="left", padx=(0, 15), pady=12
+            side="left", padx=(0, 14), pady=12
         )
 
-    app.vad_var = ctk.BooleanVar(value=True)
+    app.vad_var = tk.BooleanVar(value=True)
     if CTK:
         ctk.CTkSwitch(cfg, text="VAD", variable=app.vad_var, font=(app.FB, 11), progress_color=C["ok"]).pack(
             side="left", padx=(0, 15), pady=12

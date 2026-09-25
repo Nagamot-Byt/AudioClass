@@ -65,8 +65,10 @@ raw = np.clip(synth_speech(0.5) + fan(0.05), -1.0, 1.0).astype(np.float32)
 pipe = m.AudioPipeline("Clase Universitaria", fast_mode=False, use_vad=True)
 proc = pipe.process(raw)
 
-# Instancia ligera que solo necesita el atributo .pipeline
-fake = type("Fake", (), {"pipeline": pipe})()
+# App ahora expone el pipeline bajo transcription_service (no como .pipeline directo)
+import types
+
+fake = type("Fake", (), {"transcription_service": types.SimpleNamespace(pipeline=pipe)})()
 metrics = m.App._mic_metrics(fake, raw, proc)
 check("_mic_metrics devuelve texto", isinstance(metrics, str) and len(metrics) > 20, repr(metrics[:60]))
 check(

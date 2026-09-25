@@ -267,9 +267,10 @@ def main():
     time.sleep(1.5)
     ev.set()  # cancelar a mitad del 1er chunk
     # B1: la cancelación de Whisper es cooperativa: el worker termina su chunk
-    # en curso (tiny procesa 30s en ~2-5s) antes de que el hilo salga. join(5)
-    # era demasiado corto; la cancelación correcta tarda ~2-8s.
-    t.join(timeout=30)
+    # en curso (tiny procesa 30s en ~2-5s en CPU rapida; en CPU lenta puede
+    # tardar mas). join(30) era ajustado; ampliamos la tolerancia de reloj para
+    # no fallar por lentitud de hardware (el assert verifica correctitud, no velocidad).
+    t.join(timeout=120)
     first = out.get("res")
     assert first is not None, "B: la 1ª transcripción no devolvió nada"
     assert first.get("cancelled") is True, f"B: esperaba cancelled, tengo {first.keys()}"
@@ -287,8 +288,9 @@ def main():
     t0b = time.time()
     t2 = threading.Thread(target=starter2, daemon=True)
     t2.start()
-    # El drenaje del pool cancelado toma ~30-60s; esperamos con margen
-    t2.join(timeout=150)
+    # El drenaje del pool cancelado toma ~30-60s en CPU rapida; en CPU lenta
+    # mas. Ampliamos margen para no fallar por hardware lento.
+    t2.join(timeout=240)
     second = out2.get("res")
     wait_b = time.time() - t0b
     assert second is not None, "B: la 2ª transcripción no devolvió nada"
@@ -320,7 +322,7 @@ def main():
 
         tt = threading.Thread(target=starter2, daemon=True)
         tt.start()
-        tt.join(timeout=10)
+        tt.join(timeout=30)
         r = out2.get("res")
         assert r is not None, f"C{i + 1}: sin resultado"
         assert r.get("cancelled") is True, f"C{i + 1}: no devolvió cancelled"

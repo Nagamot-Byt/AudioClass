@@ -1,0 +1,22 @@
+E2E-UI widgets: FAIL (0/1)
+  FAIL excepcion no capturada  [invalid syntax. Perhaps you forgot a comma? (ui_builder.py, line 492)
+Traceback (most recent call last):
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 5129, in _run_e2e_ui
+    app = App()
+          ^^^^^
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 580, in __init__
+    self._fatal(e)
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 4777, in <lambda>
+    App._fatal = lambda self, e: (_ for _ in ()).throw(e)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 4777, in <genexpr>
+    App._fatal = lambda self, e: (_ for _ in ()).throw(e)
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 569, in __init__
+    self._build_main_ui()
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 1079, in _build_main_ui
+    from ui_builder import (
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/ui_builder.py", line 492
+    app.lcfg_sum.pack(anchor="w", padx=18, pady    # Perfil
+                                           ^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+]

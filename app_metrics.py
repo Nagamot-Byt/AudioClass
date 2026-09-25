@@ -125,6 +125,21 @@ def record_session() -> None:
     _increment("sessions")
 
 
+def record_streaming(duration: float = 0.0) -> None:
+    """Registra una transcripcion en streaming.
+
+    Args:
+        duration: Duracion en segundos del audio transcrito en streaming.
+    """
+    _increment("streaming_transcriptions")
+    _increment("streaming_audio_seconds", int(duration))
+
+
+def record_vad_detection() -> None:
+    """Registra una deteccion de actividad de voz."""
+    _increment("vad_detections")
+
+
 def get_summary() -> dict[str, Any]:
     """Devuelve un resumen de todas las metricas.
 
@@ -143,6 +158,9 @@ def get_summary() -> dict[str, Any]:
             "sessions": _counters.get("sessions", 0),
             "errors": _counters.get("errors", 0),
             "audio_seconds_total": _counters.get("audio_seconds", 0),
+            "streaming_transcriptions": _counters.get("streaming_transcriptions", 0),
+            "streaming_audio_seconds_total": _counters.get("streaming_audio_seconds", 0),
+            "vad_detections": _counters.get("vad_detections", 0),
             "avg_transcription_duration": round(avg_duration, 2),
             "uptime_seconds": round(time.time() - _start_time, 1),
             "models_used": {k.split(".")[-1]: v for k, v in _counters.items() if k.startswith("transcriptions.model.")},
@@ -186,9 +204,17 @@ def to_prometheus_text() -> str:
     lines.append("# TYPE audioclass_transcription_duration_avg gauge")
     lines.append(f"audioclass_transcription_duration_avg {s['avg_transcription_duration']}")
 
-    lines.append("# HELP audioclass_uptime_seconds Process uptime")
-    lines.append("# TYPE audioclass_uptime_seconds gauge")
-    lines.append(f"audioclass_uptime_seconds {s['uptime_seconds']}")
+    lines.append("# HELP audioclass_streaming_transcriptions_total Total streaming transcriptions performed")
+    lines.append("# TYPE audioclass_streaming_transcriptions_total counter")
+    lines.append(f"audioclass_streaming_transcriptions_total {s['streaming_transcriptions']}")
+
+    lines.append("# HELP audioclass_streaming_audio_seconds_total Total audio seconds processed in streaming")
+    lines.append("# TYPE audioclass_streaming_audio_seconds_total counter")
+    lines.append(f"audioclass_streaming_audio_seconds_total {s['streaming_audio_seconds_total']}")
+
+    lines.append("# HELP audioclass_vad_detections_total Total VAD detections")
+    lines.append("# TYPE audioclass_vad_detections_total counter")
+    lines.append(f"audioclass_vad_detections_total {s['vad_detections']}")
 
     for model, count in s.get("models_used", {}).items():
         lines.append(f'audioclass_transcriptions_by_model{{model="{model}"}} {count}')

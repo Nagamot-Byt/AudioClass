@@ -1,0 +1,22 @@
+E2E-UI wizard: FAIL (8/9)
+  OK  wizard: casilla de privacidad
+  OK  wizard: casilla de consentimiento IA
+  OK  wizard: campo API key
+  OK  wizard: selector de transcripcion (local)
+  OK  wizard: selector de perfil
+  OK  wizard: selector de nivel (nuevo)
+  OK  wizard: selector de microfono
+  OK  wizard gate: bloqueado sin aceptar aviso
+  FAIL excepcion no capturada  ['NoneType' object has no attribute 'StringVar'
+Traceback (most recent call last):
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 4845, in _run_e2e_ui
+    app._finish_wizard()
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 1055, in _finish_wizard
+    self._build_main_ui()
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/audioclass_v91.py", line 1114, in _build_main_ui
+    build_config_bar(self, mn)
+  File "/home/daniel/Escritorio/Proyectos/Projects/AudioClass/ui_builder.py", line 496, in build_config_bar
+    app.profile_var = ctk.StringVar(value=app.config.get("audio_profile", "Clase Universitaria"))
+                      ^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'StringVar'
+]

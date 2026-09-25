@@ -39,7 +39,6 @@ import torch
 import uvicorn
 import whisper
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fpdf import FPDF
 from pyngrok import ngrok
@@ -71,6 +70,9 @@ def _resolve_api_key():
 API_KEY = _resolve_api_key()
 NGROK_TOKEN = ""  # <- PEGA AQUI TU TOKEN DE NGROK
 MODEL_NAME = "large-v3"
+# Por defecto expone en todas las interfaces (uso remoto via ngrok/Colab).
+# Para restringir a solo este equipo, usar AUDIOCLASS_HOST=127.0.0.1.
+HOST = os.environ.get("AUDIOCLASS_HOST", "0.0.0.0")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Directorio temporal de la app: tempfile.gettempdir() es /tmp en Linux
 # (Colab/produccion, igual que antes) y %TEMP% en Windows (los tests locales
@@ -154,13 +156,12 @@ print(f"Modelo listo en {DEVICE.upper()}")
 
 HISTORY = []
 
-app = FastAPI(title="AudioClass Cloud v9.1", version="9.1")
+from server_app import create_base_app
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = create_base_app(
+    title="AudioClass Cloud v9.1",
+    description="API REST de transcripción y adaptación en GPU (Colab)",
+    version="9.1",
 )
 
 
@@ -278,9 +279,9 @@ def transcribe_audio(path: str, timestamps: bool = False, language: str = "es"):
     # cualquier otro valor es un codigo ISO (es, en, pt, ...) que se fuerza.
     lang = (language or "es").strip().lower()
     if lang == "auto":
-        lang_kw = {"language": None, "initial_prompt": None}
+        lang_kw: dict[str, str | None] = {"language": None, "initial_prompt": None}
     else:
-        lang_kw = {
+        lang_kw: dict[str, str | None] = {
             "language": lang,
             "initial_prompt": (
                 "Esta es una transcripcion de una clase universitaria o conferencia academica en espanol. "
@@ -515,6 +516,14 @@ async def clear_history(request: Request):
     return JSONResponse({"status": "cleared"})
 
 
+@app.get("/ping")
+@app.get("/health")
+async def ping_health():
+    return JSONResponse(
+        {"status": "ok", "service": "AudioClass Cloud Server", "device": str(DEVICE), "model": MODEL_NAME}
+    )
+
+
 if __name__ == "__main__":
     # Dependencias SOLO al ejecutar como script (no al importar como modulo).
     for pkg in [
@@ -548,4 +557,7 @@ if __name__ == "__main__":
     print(f"Modelo: {MODEL_NAME} | Dispositivo: {DEVICE.upper()}")
     print("=" * 60 + "\n")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    if HOST == "0.0.0.0":
+        print("ADVERTENCIA: el servidor escucha en 0.0.0.0 (todas las interfaces).")
+        print("           En redes no confiables usa AUDIOCLASS_HOST=127.0.0.1 o un tunel (ngrok).")
+    uvicorn.run(app, host=HOST, port=8000)

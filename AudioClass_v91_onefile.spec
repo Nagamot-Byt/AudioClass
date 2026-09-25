@@ -37,6 +37,11 @@ def _assets():
         if os.path.isdir(d) and os.path.exists(os.path.join(d, "model.bin")):
             for f in os.listdir(d):
                 datas.append((os.path.join(d, f), os.path.join("models_ct2", name)))
+    # Archivos de localizacion i18n (es/en)
+    for f in ("es.json", "en.json"):
+        src = os.path.join("locales", f)
+        if os.path.exists(src):
+            datas.append((src, "locales"))
     # Datos internos de whisper (mel_filters.npz, gpt2.tiktoken,
     # multilingual.tiktoken) — sin ellos falla la transcripcion en el exe:
     #   FileNotFoundError: whisper/assets/mel_filters.npz

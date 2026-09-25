@@ -40,6 +40,10 @@ if TYPE_CHECKING:
 class ToastMixin:
     """Mixin que proporciona notificaciones toast animadas."""
 
+    _toast_after: int | None = None
+    _toast_lbl: object | None = None
+    _toast_btn: object | None = None
+
     def _show_toast(self, msg: str, kind: str = "ok", retry=None) -> None:
         """Muestra un toast animado (ok/err/warn) junto al indicador de pasos.
 

@@ -37,7 +37,6 @@ from pathlib import Path
 try:
     import uvicorn
     from fastapi import FastAPI, File, Form, Header, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
-    from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 except ImportError:
     print("ERROR: Dependencias del servidor no instaladas.")
@@ -66,24 +65,18 @@ except ImportError as e:
 # ── Configuración ────────────────────────────────────────────────────────────
 CONFIG = load_config()
 API_KEY = os.environ.get("AUDIOCLASS_API_KEY", CONFIG.get("server_api_key", ""))
-HOST = os.environ.get("AUDIOCLASS_HOST", "0.0.0.0")
+HOST = os.environ.get("AUDIOCLASS_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AUDIOCLASS_PORT", "8000"))
 MAX_UPLOAD_MB = int(os.environ.get("AUDIOCLASS_MAX_UPLOAD_MB", "200"))
 RATE_LIMIT_PER_MIN = int(os.environ.get("AUDIOCLASS_RATE_LIMIT", "30"))
 
-# ── App FastAPI ──────────────────────────────────────────────────────────────
-app = FastAPI(
+# ── App FastAPI (base compartida: crea la app y configura CORS) ──────────────
+from server_app import create_base_app
+
+app = create_base_app(
     title="AudioClass Transcription Server",
     description="API REST para transcripción y adaptación de audio universitario",
     version="9.1.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # ── Estado global ────────────────────────────────────────────────────────────

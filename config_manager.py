@@ -10,10 +10,10 @@ import base64
 import json
 import os
 
-# ── Rutas por defecto ─────────────────────────────────────────────────────
-OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+from audioclass_core import get_output_dir
 
+# ── Rutas por defecto ─────────────────────────────────────────────────────
+OUTPUT_DIR = get_output_dir()
 CONFIG_PATH = os.path.join(OUTPUT_DIR, "audioclass_config.json")
 
 
@@ -34,6 +34,9 @@ DEFAULT_CONFIG = {
     "adapt_provider": "gemini",
     "openai_api_key": "",
     "openai_model": "mini",
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "qwen2.5",
+    "app_language": "es",
     "modo_facil": False,
     "modo_guiado": True,
     "auto_adaptar": False,
@@ -182,7 +185,7 @@ def _migrate_config(cfg: dict) -> dict:
 _SECRET_FIELDS = ("gemini_api_key", "openai_api_key", "colab_key")
 
 
-def _encrypt_secret(secret):
+def _encrypt_secret(secret: str) -> str:
     """Cifra un secreto. Devuelve string con prefijo 'dpapi:' o 'b64:'."""
     if not secret:
         return ""
@@ -229,7 +232,7 @@ def _encrypt_secret(secret):
     return "b64:" + base64.b64encode(s.encode("utf-8")).decode("ascii")
 
 
-def _decrypt_secret(value):
+def _decrypt_secret(value: str) -> str:
     """Descifra un secreto cifrado con _encrypt_secret. Valores legados en
     texto plano se devuelven tal cual (y luego se re-guardan cifrados)."""
     if not value:
@@ -281,7 +284,7 @@ def _decrypt_secret(value):
 
 
 # ── Carga / Guardado ──────────────────────────────────────────────────────
-def load_config(path=None):
+def load_config(path: str | None = None) -> dict:
     """Carga la configuracion desde JSON. Aplica defaults para claves faltantes,
     descifra secretos y ejecuta migraciones entre versiones. Si el archivo
     no existe, devuelve DEFAULT_CONFIG."""
@@ -304,7 +307,7 @@ def load_config(path=None):
     return DEFAULT_CONFIG.copy()
 
 
-def save_config(cfg, path=None):
+def save_config(cfg: dict, path: str | None = None) -> None:
     """Guarda la configuracion a JSON, cifrando los campos secretos."""
     cfg_path = path or CONFIG_PATH
     to_save = dict(cfg)

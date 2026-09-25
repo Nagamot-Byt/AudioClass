@@ -232,13 +232,90 @@ audioclass_v91.py          # App GUI principal (migrando lógica a módulos)
 
 ## Testing
 
-### Ejecutar todos los tests
+### Ejecutar la suite completa localmente
+
+El proyecto tiene **177+ tests** repartidos en 7 suites. Para una verificación completa:
 
 ```bash
-python3 test_core_units.py          # 25 tests unitarios del core
-python3 test_config_migration.py    # 40 tests de migración de config
-python3 test_colab_server_security.py # 11 tests de seguridad del servidor
+# 0. Requisitos previos
+pip install -r requirements_v91.txt
+sudo apt-get install xvfb   # Solo Linux (para tests GUI)
+
+# 1. Unit tests (sin GUI, rápidos, ~1s total)
+python3 -m pytest test_core_units.py -v            # 25 tests: core pipeline, theme, audio
+python3 -m pytest test_refactored_modules.py -v     # 37 tests: módulos extraídos del monolito
+python3 -m pytest test_config_manager.py -v         # 15 tests: load/save config
+python3 -m pytest test_config_migration.py -v       # 40 tests: migración v1→v5
+
+# 2. Integration + Security (sin GUI, ~1s)
+python3 -m pytest test_integration_mocks.py -v     # 35 tests: APIs mockeadas, plugins, backup
+python3 -m pytest test_security_audit.py -v         # 16 tests: path traversal, credenciales
+
+# 3. E2E UI (requiere display — usa xvfb en Linux headless)
+xvfb-run --auto-servernum python3 test_ui_smoke.py    # Smoke test: app abre sin crashes
+xvfb-run --auto-servernum python3 test_ui_v91.py      # Widgets: botones, temas, mic selector
+xvfb-run --auto-servernum python3 test_wcag_contrast.py  # WCAG AA 4.5:1 contrast ratios
+
+# 4. Validación de changelog
+python3 validate_changelog.py --file CHANGELOG.md
+
+# 5. Verificar compilación de módulos
+for f in audioclass_v91.py audioclass_server.py toast_ui.py update_dialog_ui.py \
+         config_dialog.py mic_optimizer_ui.py export_utils.py app_metrics.py \
+         config_backup.py theme.py config_manager.py template_plugins.py \
+         ui_builder.py validate_changelog.py; do
+    python3 -c "import py_compile; py_compile.compile('$f', doraise=True)" && \
+        echo "✅ $f" || echo "❌ $f"
+done
 ```
+
+### Ejecutar todo de una sola vez
+
+```bash
+# Script rápido: unit + integration + security (~2s)
+python3 -m pytest test_core_units.py test_refactored_modules.py \
+    test_config_manager.py test_config_migration.py \
+    test_integration_mocks.py test_security_audit.py -v
+
+# Script rápido: E2E GUI (Linux headless, ~10s)
+xvfb-run --auto-servernum python3 -m pytest \
+    test_ui_smoke.py test_ui_v91.py test_wcag_contrast.py -v
+```
+
+### Resumen de las suites
+
+| Suite | Tests | Requisitos | Velocidad |
+|-------|-------|------------|----------|
+| test_core_units.py | 25 | Ninguno | ~0.5s |
+| test_refactored_modules.py | 37 | Ninguno | ~0.4s |
+| test_config_manager.py | 15 | Ninguno | ~0.05s |
+| test_config_migration.py | 40 | Ninguno | ~0.5s |
+| test_integration_mocks.py | 35 | Ninguno | ~0.5s |
+| test_security_audit.py | 16 | Ninguno | ~0.3s |
+| test_ui_smoke.py | 1+ | xvfb | ~3s |
+| test_ui_v91.py | 10+ | xvfb | ~5s |
+| test_wcag_contrast.py | 30+ | xvfb | ~2s |
+| **Total** | **177+** | | **~3s** |
+
+### Qué cubren los tests
+
+- **Core**: pipeline de audio (ruido, silencio, segmentación), tema/colores, solver de errores
+- **Config**: load/save, migración v1→v5, backward compat, campos requeridos
+- **Integration**: plugin manager, providers mockeados, export PDF/DOCX, config backup/restore
+- **Security**: path traversal, secrets hardcoded, config integrity, metric persistence
+- **UI**: launch smoke test, widget creation, mic selector, temas dark/light, WCAG contrast
+
+### CI Suite Drivers
+
+Los archivos `test_refactored_modules.py`, `test_config_manager.py` y `test_config_migration.py` también se ejecutan como drivers CI (verifican que el test output contiene la palabra clave esperada: `CI_SUITE_OK`, `REFACTORED_OK`, etc.). Esto es lo que `.github/workflows/ci.yml` usa para validar cada push.
+
+### Tests conocidos como flaky
+
+| Test | Problema | Severidad |
+|------|----------|----------|
+| test_e2e_ui.py::silence_detection | Timing-dependent bajo xvfb | 🟡 Flaky |
+
+Estos tests **no son regresiones** — fallan intermitentemente por condiciones de carrera en el timing de grabación bajo xvfb. Si un test falla, re-ejecútalo una vez antes de asumir un regression real.
 
 ### Escribir tests para tu nuevo motor
 

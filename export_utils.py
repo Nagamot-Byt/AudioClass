@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from typing import Optional, Union
+from typing import Union
 
 # ── Seguridad: Validacion de paths ────────────────────────────────────────
 
@@ -24,22 +24,34 @@ def validate_export_path(filepath: str, allowed_dir: str | None = None) -> str:
     """Valida que un path de exportacion no contenga path traversal.
 
     Protege contra ataques donde un usuario (o input malicioso) intenta
-    escribir fuera del directorio permitido usando '..', '~', o paths absolutos.
+    escribir fuera de los directorios permitidos usando '..', '~', o paths
+    absolutos tramposos.
+
+    Raices permitidas (el destino debe quedar bajo al menos una):
+      - ``allowed_dir`` (si se indica; en produccion es OUTPUT_DIR).
+      - El home del usuario (~), para permitir exportar a Escritorio/Descargas.
+      - El directorio temporal del sistema (donde escriben los tests y la app).
+
+    Esto sigue bloqueando traversal, pero ya no obliga a exportar dentro de
+    OUTPUT_DIR exclusivamente.
 
     Args:
         filepath: Path de destino para la exportacion.
-        allowed_dir: Directorio permitido (default: OUTPUT_DIR o temp dir).
+        allowed_dir: Directorio permitido adicional (default: OUTPUT_DIR o temp dir).
 
     Returns:
         str: Path absoluto validado y seguro.
 
     Raises:
-        ValueError: Si el path contiene path traversal o esta fuera del
-            directorio permitido.
+        ValueError: Si el path contiene path traversal o queda fuera de las
+            raices permitidas.
     """
-    if allowed_dir is None:
-        allowed_dir = os.environ.get("AUDIOCLASS_OUTPUT_DIR", tempfile.gettempdir())
-    allowed_dir = os.path.realpath(allowed_dir)
+    roots = []
+    if allowed_dir:
+        roots.append(os.path.realpath(allowed_dir))
+    roots.append(os.path.realpath(os.path.expanduser("~")))
+    roots.append(os.path.realpath(tempfile.gettempdir()))
+    roots = [r for r in roots if r]
 
     # Rechazar paths vacios
     if not filepath or not str(filepath).strip():
@@ -49,9 +61,9 @@ def validate_export_path(filepath: str, allowed_dir: str | None = None) -> str:
     expanded = os.path.expanduser(str(filepath))
     real = os.path.realpath(expanded)
 
-    # Verificar que no escapa del directorio permitido
-    if not real.startswith(allowed_dir + os.sep) and real != allowed_dir:
-        raise ValueError(f"Path de exportacion fuera del directorio permitido: {real} (permitido: {allowed_dir})")
+    # Verificar que no escapa de ninguna raiz permitida
+    if not any(real == r or real.startswith(r + os.sep) for r in roots):
+        raise ValueError(f"Path de exportacion fuera de los directorios permitidos: {real} (permitido: una de {roots})")
 
     # Rechazar componentes sospechosos
     parts = os.path.normpath(expanded).split(os.sep)

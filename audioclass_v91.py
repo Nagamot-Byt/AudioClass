@@ -113,8 +113,6 @@ try:
     import matplotlib
 
     matplotlib.use("TkAgg")
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-    from matplotlib.figure import Figure
 
     MPL = True
 except ImportError:
@@ -140,8 +138,9 @@ VISUAL_SAMPLES = int(SAMPLE_RATE * 2.0)
 MIC_PROBE_SECONDS = 1.5
 MIC_PROBE_P90_MIN = 0.01
 
-OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "AudioClass_Recordings")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+from audioclass_core import get_output_dir
+
+OUTPUT_DIR = get_output_dir()
 
 
 def _sweep_stale_temps(max_age=3600):
@@ -163,33 +162,34 @@ def _sweep_stale_temps(max_age=3600):
         pass
 
 
-# Importar config_manager (extraido para mantenibilidad)
+# Configuración: fuente única en config_manager. Se re-exporta aquí en un solo
+# bloque para evitar los 3 imports con aliases de antes y preservar la API que
+# usan los tests (ac.CONFIG_PATH, ac.load_config, ac.save_config).
 from config_manager import (
     DEFAULT_CONFIG,
 )
 from config_manager import (
     OUTPUT_DIR as _CM_OUTPUT_DIR,
 )
+from config_manager import (
+    load_config as _cm_load_config,
+)
+from config_manager import (
+    save_config as _cm_save_config,
+)
 
-# Mantener OUTPUT_DIR del modulo original para backward compat
+# OUTPUT_DIR/CONFIG_PATH de este namespace (tests overridean ac.CONFIG_PATH).
 OUTPUT_DIR = _CM_OUTPUT_DIR
 CONFIG_PATH = os.path.join(OUTPUT_DIR, "audioclass_config.json")
 
-# Wrappers que usan CONFIG_PATH de este namespace (los tests overridean
-# ac.CONFIG_PATH para redirigir la config a un archivo temporal).
-from config_manager import load_config as _cm_load_config
-
 
 def load_config(path=None):
-    """Metodo interno: load config."""
+    """Carga la config; usa ac.CONFIG_PATH salvo override (tests lo redirigen)."""
     return _cm_load_config(path=path or CONFIG_PATH)
 
 
-from config_manager import save_config as _cm_save_config
-
-
 def save_config(cfg, path=None):
-    """Metodo interno: save config."""
+    """Guarda la config; usa ac.CONFIG_PATH salvo override (tests lo redirigen)."""
     return _cm_save_config(cfg, path=path or CONFIG_PATH)
 
 
@@ -208,9 +208,10 @@ C = PALETTES["dark"].copy()
 
 # ── Modulos extraidos ──────────────────────────────────────────────────
 from config_dialog import ConfigDialogMixin
-from mic_optimizer_ui import MicTestMixin
+from services.mic_service import MicService, MicTestMixin
+from services.recording_service import RecordingService
+from services.update_service import UpdateDialogMixin, UpdateService
 from toast_ui import ToastMixin
-from update_dialog_ui import UpdateDialogMixin
 
 try:
     from waveform_widget import WaveformPlayer
@@ -253,8 +254,10 @@ from audioclass_core import (
     GeminiAdaptationEngine,
     GoogleDocsExporter,
     LocalWhisperEngine,
+    OllamaAdaptationEngine,
     OpenAIAdaptationEngine,
 )
+from services.transcription_service import TranscriptionService
 
 # Plugin system for custom templates
 try:
@@ -346,7 +349,12 @@ def _find_best_mic():
     """Busca automaticamente el microfono con mejor senal entre todos los
     dispositivos de entrada. Prueba multiples sample rates y selecciona
     el dispositivo que tenga mayor RMS p90 sin ser corrupto (< 10.0).
-    Devuelve (device_id, p90) o (None, 0.0) si ninguno tiene senal."""
+    Devuelve (device_id, p90) o (None, 0.0) si ninguno tiene senal.
+
+    Usa sd.InputStream (el mismo camino de PortAudio que el resto de la app
+    y que los tests mockean), NO sd.rec/sd.wait: asi el auto-detect del
+    pre-check es determinista en headless/CI y no abre una segunda via de
+    I/O real no controlada."""
     try:
         import numpy as _np
         import sounddevice as sd
@@ -354,10 +362,9 @@ def _find_best_mic():
         devs = sd.query_devices()
         best_id = None
         best_p90 = 0.0
-        SR = 16000
         DUR = 0.5
         # Sample rates a probar (en orden de preferencia)
-        SR_TO_TRY = [SR, 44100, 48000]
+        SR_TO_TRY = [SAMPLE_RATE, 44100, 48000]
         for i, d in enumerate(devs):
             if d["max_input_channels"] < 1:
                 continue
@@ -365,9 +372,21 @@ def _find_best_mic():
                 continue
             for sr in SR_TO_TRY:
                 try:
-                    rec = sd.rec(int(DUR * sr), samplerate=sr, channels=1, dtype="float32", device=i)
-                    sd.wait()
-                    flat = rec.flatten().astype(_np.float64)
+                    collected = []
+
+                    def _cb(indata, frames, ti, status, _c=collected):
+                        _c.append(indata.copy().flatten())
+
+                    with sd.InputStream(
+                        samplerate=sr,
+                        channels=1,
+                        dtype="float32",
+                        device=i,
+                        blocksize=int(0.1 * sr),
+                        callback=_cb,
+                    ):
+                        time.sleep(DUR)
+                    flat = _np.concatenate(collected).flatten().astype(_np.float64) if collected else _np.zeros(0)
                     if len(flat) == 0:
                         continue
                     # Verificar que no sea datos corruptos (WDM-KS puede
@@ -413,7 +432,7 @@ def _same_mic(a, b):
         return False
 
 
-class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
+class App(ToastMixin, ConfigDialogMixin, ctk.CTk if CTK else ctk.Tk):
     """Aplicacion principal de AudioClass v9.1.
 
     Interfaz grafica para grabar, transcribir y exportar clases universitarias.
@@ -434,6 +453,12 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
 
     def __init__(self):
         """Metodo interno: init  ."""
+        try:
+            import pyi_splash
+
+            pyi_splash.close()
+        except ImportError:
+            pass
         try:
             if CTK:
                 super().__init__()
@@ -537,20 +562,17 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
             self.vu_rms_hist_full = []  # historial RMS ultimos 10 s (125 lecturas) para mini-grafico
             self.vu_sens = float(self.config.get("vu_sensitivity", 0.25))  # umbral CV de sensibilidad
 
-            self.local_engine = LocalWhisperEngine(
-                self.config.get("local_model", "base"), self.config.get("whisper_language", "auto")
-            )
+            self.transcription_service = TranscriptionService(self.config, on_model_loaded=self._on_model_loaded)
+            self.transcription_service.build()
+            self.mic_service = MicService()
+            self.recording_service = RecordingService()
+            self.update_service = UpdateService()
             self.cloud_engine = CloudColabEngine(
                 self.config.get("colab_url", ""),
                 self.config.get("colab_key", ""),
                 self.config.get("whisper_language", "auto"),
             )
-            self.adapt_engine = self._build_adapt_engine()
             self.docs_exporter = GoogleDocsExporter(self.config.get("google_creds_path", ""))
-
-            self.pipeline = AudioPipeline(
-                self.config.get("audio_profile", "Clase Universitaria"), fast_mode=False, use_vad=True
-            )
 
             if self.config.get("first_run", True):
                 self._show_wizard()
@@ -1037,8 +1059,8 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         self.config["first_run"] = False
         save_config(self.config)
 
-        self.pipeline = AudioPipeline(self.config["audio_profile"])
-        self.adapt_engine = self._build_adapt_engine()
+        self.transcription_service.pipeline = AudioPipeline(self.config["audio_profile"])
+        self.transcription_service.adapt_engine = self.transcription_service._build_adapt_engine()
 
         self.wizard.destroy()
         self._build_main_ui()
@@ -1121,7 +1143,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         self._loadhist()
         self._update_adapt_status()
         self._chmode(self.mode_var.get())
-        self.local_engine.load(callback=self._on_model_loaded)
+        self.transcription_service.local_engine.load(callback=self._on_model_loaded)
         self._apply_guided()
         self._update_next_step()
         self._bind_shortcuts()
@@ -1195,9 +1217,21 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         """Cambia el perfil de procesamiento de audio."""
         self.config["audio_profile"] = name
         save_config(self.config)
-        self.pipeline = AudioPipeline(name, self.fast_var.get(), self.vad_var.get())
+        self.transcription_service.pipeline = AudioPipeline(name, self.fast_var.get(), self.vad_var.get())
         self._update_cfg_summary()
         self._apptxt(f"\nPerfil cambiado a: {name}\n")
+
+    def _cfg_lbl(self, lbl, text, color):
+        try:
+            if CTK:
+                lbl.configure(text=text, text_color=color)
+            else:
+                lbl.configure(text=text, fg=color)
+        except Exception:
+            try:
+                lbl.configure(text=text)
+            except Exception:
+                pass
 
     def _chmode(self, mode):
         """Cambia entre motor local y cloud."""
@@ -1207,29 +1241,35 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         # El label de conexion vive en el header (fondo oscuro en ambos temas),
         # asi que su texto siempre va en head_text (claro) para mantener contraste.
         if mode == "local":
-            self.cmb_model.configure(state="normal")
-            self.lmodel.configure(text=f"Local: {self.model_var.get()}", text_color=C["muted"])
+            try:
+                self.cmb_model.configure(state="normal")
+            except Exception:
+                pass
+            self._cfg_lbl(self.lmodel, f"Local: {self.model_var.get()}", C["muted"])
             if hasattr(self, "lconn"):
-                self.lconn.configure(text=f"Motor local · {self.model_var.get()}", text_color=C["head_text"])
+                self._cfg_lbl(self.lconn, f"Motor local · {self.model_var.get()}", C["head_text"])
         else:
-            self.cmb_model.configure(state="disabled")
+            try:
+                self.cmb_model.configure(state="disabled")
+            except Exception:
+                pass
             if self.config.get("colab_url"):
-                self.lmodel.configure(text="Cloud: Colab GPU", text_color=C["cloud"])
+                self._cfg_lbl(self.lmodel, "Cloud: Colab GPU", C["cloud"])
                 if hasattr(self, "lconn"):
-                    self.lconn.configure(text="Motor Cloud · GPU", text_color=C["head_text"])
+                    self._cfg_lbl(self.lconn, "Motor Cloud · GPU", C["head_text"])
             else:
-                self.lmodel.configure(text="Cloud: Sin URL", text_color=C["warn"])
+                self._cfg_lbl(self.lmodel, "Cloud: Sin URL", C["warn"])
                 if hasattr(self, "lconn"):
-                    self.lconn.configure(text="Motor Cloud · sin URL", text_color=C["head_text"])
+                    self._cfg_lbl(self.lconn, "Motor Cloud · sin URL", C["head_text"])
 
     def _chlocalmodel(self, name):
         """Cambia el modelo de whisper local."""
         self.config["local_model"] = name
         save_config(self.config)
-        self.local_engine = LocalWhisperEngine(name, self.config.get("whisper_language", "auto"))
+        self.transcription_service.local_engine = LocalWhisperEngine(name, self.config.get("whisper_language", "auto"))
         self._update_cfg_summary()
-        self.local_engine.load(callback=self._on_model_loaded)
-        self.lmodel.configure(text=f"Cargando {name}...", text_color=C["warn"])
+        self.transcription_service.local_engine.load(callback=self._on_model_loaded)
+        self._cfg_lbl(self.lmodel, f"Cargando {name}...", C["warn"])
 
     def _chlang(self, name):
         """Cambia el idioma de whisper: 'auto' detecta solo, ISO lo fuerza.
@@ -1238,7 +1278,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         self.config["whisper_language"] = name
         save_config(self.config)
         if hasattr(self, "local_engine"):
-            self.local_engine.language = name
+            self.transcription_service.local_engine.language = name
         if hasattr(self, "cloud_engine"):
             self.cloud_engine.language = name
         self._update_cfg_summary()
@@ -1251,14 +1291,6 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         else:
             self.q.put(("model_err", msg))
 
-    def _build_adapt_engine(self):
-        """Motor de adaptacion segun el proveedor elegido (gemini por defecto)."""
-        if self.config.get("adapt_provider", "gemini") == "openai":
-            return OpenAIAdaptationEngine(
-                self.config.get("openai_api_key", ""), self.config.get("openai_model", "mini")
-            )
-        return GeminiAdaptationEngine(self.config.get("gemini_api_key", ""), self.config.get("gemini_model", "flash"))
-
     def _update_adapt_status(self):
         """Metodo interno: update adapt status."""
         if not hasattr(self, "ladapt"):
@@ -1267,13 +1299,21 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         if prov == "openai":
             key = self.config.get("openai_api_key", "")
             label = "OpenAI"
+        elif prov == "ollama":
+            key = self.config.get("ollama_url", "")
+            label = "Ollama"
         else:
             key = self.config.get("gemini_api_key", "")
             label = "Gemini"
-        if key and len(key) > 10:
-            self.ladapt.configure(text=f"{label} listo", text_color=C["ok"])
-        else:
-            self.ladapt.configure(text="Sin API Key", text_color=C["warn"])
+        text_str = f"{label} listo" if (key and len(key) >= 5) else "Sin API Key"
+        color = C["ok"] if (key and len(key) >= 5) else C["warn"]
+        try:
+            if CTK:
+                self.ladapt.configure(text=text_str, text_color=color)
+            else:
+                self.ladapt.configure(text=text_str, fg=color)
+        except Exception:
+            pass
 
     def _set_step(self, n):
         """Ilumina el paso actual del flujo guiado (1=Graba, 2=Transcribe, 3=Analiza, 4=Guarda)."""
@@ -1799,11 +1839,10 @@ CONSEJOS:
             pass
 
     def _test_adapt(self, entry, model_var, provider="gemini"):
-        """Prueba la API Key de un proveedor (gemini/openai) desde configuracion (asincrono)."""
-        is_gemini = provider == "gemini"
-        lbl_attr = "gemini_test_lbl" if is_gemini else "openai_test_lbl"
-        btn_attr = "btn_test_gemini" if is_gemini else "btn_test_openai"
-        prov_label = "Gemini" if is_gemini else "OpenAI"
+        """Prueba la API Key/Conexion de un proveedor (gemini/openai/ollama) desde configuracion (asincrono)."""
+        lbl_attr = f"{provider}_test_lbl"
+        btn_attr = f"btn_test_{provider}"
+        prov_label = {"gemini": "Gemini", "openai": "OpenAI", "ollama": "Ollama"}.get(provider, provider)
         try:
             # El dialogo pudo haberse cerrado (auto-test con after): no tocar widgets destruidos
             if not (hasattr(self, lbl_attr) and getattr(self, lbl_attr).winfo_exists()):
@@ -1813,7 +1852,7 @@ CONSEJOS:
         except Exception:
             return
 
-        if len(key) < 10:
+        if provider != "ollama" and len(key) < 10:
             getattr(self, lbl_attr).configure(text="Introduce una API Key primero", text_color=C["warn"])
             return
         if hasattr(self, btn_attr) and getattr(self, btn_attr).winfo_exists():
@@ -1823,10 +1862,14 @@ CONSEJOS:
         def worker():
             """Metodo interno: worker."""
             try:
-                if is_gemini:
+                if provider == "gemini":
                     engine = GeminiAdaptationEngine(key, model)
-                else:
+                elif provider == "openai":
                     engine = OpenAIAdaptationEngine(key, model)
+                elif provider == "ollama":
+                    engine = OllamaAdaptationEngine(key, model)
+                else:
+                    engine = GeminiAdaptationEngine(key, model)
                 self.q.put(("adapt_test", (provider, engine.test_key())))
             except Exception as e:
                 self.q.put(("adapt_test", (provider, (False, f"Error inesperado: {e}"))))
@@ -1945,38 +1988,37 @@ CONSEJOS:
             self._msg("error", "Error", f"No se pudo abrir la carpeta:\n{e}")
 
     def _test_mic(self):
-        """Ventana de prueba nativa del microfono (delega a MicTestMixin)."""
-        self.open_mic_test()
+        """Ventana de prueba nativa del microfono (delega a MicService)."""
+        self.mic_service.open_mic_test()
 
     def _mic_test_start(self):
-        """Wrapper: delega a MicTestMixin."""
-        self._mic_test_start_inner()
+        """Wrapper: delega a MicService."""
+        self.mic_service._mic_test_start_inner()
 
     def _mic_test_worker(self):
-        """Wrapper: delega a MicTestMixin."""
-        self._mic_test_worker_inner()
+        """Wrapper: delega a MicService."""
+        self.mic_service._mic_test_worker_inner()
 
     def _mic_metrics(self, raw, proc):
-        """Wrapper: delega a MicTestMixin (con fallback standalone)."""
-        if hasattr(self, "_compute_mic_metrics"):
-            return self._compute_mic_metrics(raw, proc)
+        """Wrapper: delega a MicService (con fallback standalone)."""
+        ms = getattr(self, "mic_service", None)
+        if ms is not None and hasattr(ms, "_compute_mic_metrics"):
+            return ms._compute_mic_metrics(raw, proc)
         # Fallback: implementación inline para compatibilidad con tests Fake
-        from mic_optimizer_ui import MicTestMixin
-
         return MicTestMixin._compute_mic_metrics(self, raw, proc)
 
     # ── Optimizador de microfono (integrado, sin salir de la app) ──────────
     def _open_mic_opt(self):
-        """Ventana del optimizador de microfono (delega a MicTestMixin)."""
-        self.open_mic_optimizer()
+        """Ventana del optimizador de microfono (delega a MicService)."""
+        self.mic_service.open_mic_optimizer()
 
     def _mic_opt_start(self, do_apply):
-        """Wrapper: delega a MicTestMixin."""
-        self._mic_opt_start_inner(do_apply)
+        """Wrapper: delega a MicService."""
+        self.mic_service._mic_opt_start_inner(do_apply)
 
     def _mic_opt_worker(self, do_apply, mic_name=""):
-        """Wrapper: delega a MicTestMixin."""
-        self._mic_opt_worker_inner(do_apply, mic_name)
+        """Wrapper: delega a MicService."""
+        self.mic_service._mic_opt_worker_inner(do_apply, mic_name)
 
     def _open_config(self):
         """Abre el diálogo de configuración (delega a ConfigDialogMixin)."""
@@ -1988,7 +2030,7 @@ CONSEJOS:
             files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.endswith("_mejorado.wav")], reverse=True)[:30]
             for f in files:
                 self._addhist(os.path.join(OUTPUT_DIR, f))
-        except:
+        except OSError:
             pass
 
     def _addhist(self, path):
@@ -2088,7 +2130,7 @@ CONSEJOS:
             for s in ["_mejorado.wav", "_raw.wav", "_transcripcion.txt", "_con_timestamps.txt", "_adaptacion.txt"]:
                 try:
                     os.remove(base + s)
-                except:
+                except OSError:
                     pass
             self.history = [h for h in self.history if h["path"] != self.sel]
             for c in list(self.hist_frame.winfo_children()):
@@ -2205,10 +2247,14 @@ CONSEJOS:
     def _mic_probe_worker(self):
         """Hilo del pre-check: captura ~1.5 s y calcula el p90 del RMS de
         tramos de 100 ms (misma metrica que optimizar_mic.py). Envia el nivel
-        por la cola; None si el microfono no se puede abrir (entonces NO se
-        bloquea la grabacion: el flujo real ya reporta el error si existe).
+        por la cola. Si el microfono no se puede abrir, el nivel reportado es
+        None y _mic_probe_done lo trata como debil (abre advertencia) en vez de
+        grabar en silencio.
         Si el mic configurado produce silencio, intenta auto-detectar el mejor
-        micrófono disponible."""
+        microfono disponible (via _find_best_mic, que usa sd.InputStream). En
+        ese caso se CONSERVA la primera medicion silenciosa para no perderla:
+        si el auto-detect no encuentra nada mejor, se reporta ese nivel
+        silencioso (no None) y asi se dispara la advertencia."""
         try:
             win = int(0.1 * SAMPLE_RATE)
             buf = []
@@ -2232,14 +2278,23 @@ CONSEJOS:
             except Exception:
                 pass
 
-            # Si el mic configurado produce silencio, auto-detectar el mejor
-            if not buf or all(np.max(np.abs(b)) < 0.001 for b in buf):
-                buf = []
-                self.q.put(("status", "Buscando microfono activo..."))
+            # Medir el nivel del intento inicial (aunque sea silencio) para no
+            # perderlo al entrar a auto-detectar.
+            first_p90 = None
+            if buf:
+                raw0 = np.concatenate(buf).flatten()
+                fr0 = self.transcription_service.pipeline._frame_rms(raw0.astype(np.float64), win, win // 2)
+                first_p90 = float(np.percentile(fr0, 90)) if len(fr0) else 0.0
+
+            # Si el mic configurado da silencio, auto-detectar el mejor microfono.
+            if first_p90 is None or first_p90 < MIC_PROBE_P90_MIN:
+                if not buf or all(np.max(np.abs(b)) < 0.001 for b in buf):
+                    self.q.put(("status", "Buscando microfono activo..."))
                 best_id, best_p90 = _find_best_mic()
                 if best_id is not None and best_p90 > 0.005:
                     # Encontramos un mic con senal, usarlo
                     try:
+                        buf = []
                         with sd.InputStream(
                             samplerate=SAMPLE_RATE,
                             channels=CHANNELS,
@@ -2258,14 +2313,20 @@ CONSEJOS:
                     except Exception:
                         pass
 
-            if not buf:
-                self.q.put(("mic_probe", None))
-                return
-            raw = np.concatenate(buf).flatten()
-            fr = self.pipeline._frame_rms(raw.astype(np.float64), win, win // 2)
-            p90 = float(np.percentile(fr, 90)) if len(fr) else 0.0
+            # Decidir el nivel a reportar: preferir la medicion real del buffer;
+            # si el auto-detect no encontro nada, conservar el nivel silencioso
+            # inicial (no None) para que se abra la advertencia en vez de grabar
+            # en silencio. Solo es None si no hubo NINGUN audio en absoluto.
+            if buf:
+                raw = np.concatenate(buf).flatten()
+                fr = self.transcription_service.pipeline._frame_rms(raw.astype(np.float64), win, win // 2)
+                p90 = float(np.percentile(fr, 90)) if len(fr) else 0.0
+            elif first_p90 is not None:
+                p90 = first_p90
+            else:
+                p90 = None
             self.q.put(("mic_probe", p90))
-        except Exception as e:
+        except Exception:
             log_exc("mic probe")
             self.q.put(("mic_probe", None))
 
@@ -2276,8 +2337,10 @@ CONSEJOS:
         que el usuario cancele explicitamente."""
         self._mic_probe_pending = False
         try:
-            if level is not None and level < MIC_PROBE_P90_MIN:
-                self._open_mic_warn_dialog(level)
+            # level None (microfono no detectable / fallo de apertura) se trata
+            # como debil: se abre la advertencia en vez de grabar en silencio.
+            if level is None or level < MIC_PROBE_P90_MIN:
+                self._open_mic_warn_dialog(level if level is not None else 0.0)
                 return
         except Exception:
             # Si abrir el dialogo falla (p.ej. la ventana se cerro), no
@@ -2656,7 +2719,7 @@ CONSEJOS:
         self._cleartxt()
         self._clear_adapt()
         self._apptxt(
-            f"Grabacion iniciada...\nPerfil: {self.pipeline.profile}\nManten silencio los primeros segundos para perfil de ruido.\n\n"
+            f"Grabacion iniciada...\nPerfil: {self.transcription_service.pipeline.profile}\nManten silencio los primeros segundos para perfil de ruido.\n\n"
         )
 
         self.t0rec = time.time()
@@ -2796,7 +2859,7 @@ CONSEJOS:
                 self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                 self._rec_bytes += len(arr) * 4
                 self.buffer = []
-        except Exception as e:
+        except Exception:
             log_exc("rec_flusher")
         finally:
             try:
@@ -2816,7 +2879,6 @@ CONSEJOS:
             except Exception:
                 pass
             # Indicador REC parpadeante mientras se graba
-            dot = ""
             self.lstatus.configure(text=f"GRABANDO · {tstr}", text_color=C["err"])
             self.after(500, self._updtimer)
 
@@ -3027,7 +3089,7 @@ CONSEJOS:
                 self.q.put(("log", f"{step}/{total}: {name}\n"))
                 self.q.put(("progress", (step / total, name)))
 
-            proc = self.pipeline.process(raw, progress_callback=progress)
+            proc = self.transcription_service.pipeline.process(raw, progress_callback=progress)
 
             pp = os.path.join(OUTPUT_DIR, f"clase_{ts}_mejorado.wav")
             self._savewav(pp, proc)
@@ -3106,7 +3168,7 @@ CONSEJOS:
                             rp_fixed = os.path.join(OUTPUT_DIR, f"clase_{ts}_corregido.wav")
                             self._savewav(rp_fixed, raw)
                             # Re-ejecutar pipeline con audio corregido
-                            proc = self.pipeline.process(raw, progress_callback=progress)
+                            proc = self.transcription_service.pipeline.process(raw, progress_callback=progress)
                             pp = os.path.join(OUTPUT_DIR, f"clase_{ts}_mejorado.wav")
                             self._savewav(pp, proc)
                             self.last_path = pp
@@ -3254,8 +3316,8 @@ CONSEJOS:
         self._trans_ticker()
 
         if mode == "local":
-            if not self.local_engine.ready:
-                if self.local_engine.loading:
+            if not self.transcription_service.local_engine.ready:
+                if self.transcription_service.local_engine.loading:
                     # El modelo sigue cargandose: la transcripcion se iniciara
                     # sola en cuanto termine (model_ready). No bloquear la UI.
                     self._pending_trans = (timestamps, auto_adapt)
@@ -3263,7 +3325,7 @@ CONSEJOS:
                     self._apptxt("\nCargando modelo Whisper (la primera vez puede tardar)...\n")
                     self.q.put(("enable", None))
                     return
-                err = self.local_engine.error or "causa desconocida"
+                err = self.transcription_service.local_engine.error or "causa desconocida"
                 self._msg(
                     "error",
                     "Modelo local no disponible",
@@ -3295,7 +3357,7 @@ CONSEJOS:
                 """Metodo interno: partial."""
                 self.q.put(("partial", txt))
 
-            result = self.local_engine.transcribe(
+            result = self.transcription_service.local_engine.transcribe(
                 path, True, cancel_event=self.stop_ev, progress_callback=progress, partial_callback=partial
             )
 
@@ -3582,11 +3644,13 @@ CONSEJOS:
                     pm.discover()
                     plugin = pm.get_template(template_name)
                     if plugin:
-                        result = pm.run_template(template_name, text, self.adapt_engine, progress_callback=progress)
+                        result = pm.run_template(
+                            template_name, text, self.transcription_service.adapt_engine, progress_callback=progress
+                        )
                 except Exception:
                     pass
             if result is None:
-                result = self.adapt_engine.adapt(text, template_name, progress_callback=progress)
+                result = self.transcription_service.adapt_engine.adapt(text, template_name, progress_callback=progress)
 
             if self.cancel:
                 self.q.put(("log", "\nCancelado.\n"))
@@ -3606,7 +3670,9 @@ CONSEJOS:
             with open(ap, "w", encoding="utf-8") as f:
                 f.write(f"{icon} {template_name}\n")
                 f.write(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Motor: {result.get('provider', self.adapt_engine.PROVIDER)} {result.get('model', '?')}\n")
+                f.write(
+                    f"Motor: {result.get('provider', self.transcription_service.adapt_engine.PROVIDER)} {result.get('model', '?')}\n"
+                )
                 f.write("Contenido generado por IA — puede contener errores. Verifica los datos importantes.\n")
                 f.write("=" * 60 + "\n\n")
                 f.write(adapted)
@@ -3802,7 +3868,7 @@ CONSEJOS:
             return
         try:
             from fpdf import FPDF
-        except:
+        except ImportError:
             self._msg("error", "Falta fpdf2", "pip install fpdf2")
             return
 
@@ -4175,23 +4241,25 @@ CONSEJOS:
                     self._show_toast("Grabación lista")
 
                 elif mt == "model_ready":
-                    self.lmodel.configure(text=f"Whisper {d} listo", text_color=C["ok"])
+                    self._cfg_lbl(self.lmodel, f"Whisper {d} listo", C["ok"])
                     # Transcripcion pendiente: se inicia sola al terminar la carga.
                     # Se guarda el id del after para poder cancelarlo si el
                     # usuario pulsa Cancelar en la ventana de 150 ms.
                     if getattr(self, "_pending_trans", None):
                         ts, aa = self._pending_trans
                         self._pending_trans = None
-                        self._pending_after = self.after(150, lambda: self._starttrans(ts, aa))
+                        self._pending_after = self.after(150, lambda ts=ts, aa=aa: self._starttrans(ts, aa))
 
                 elif mt == "model_err":
-                    self.lmodel.configure(text=f"Error: {d[:30]}", text_color=C["err"])
+                    self._cfg_lbl(self.lmodel, f"Error: {d[:30]}", C["err"])
                     self._pending_trans = None
 
                 elif mt == "trans_err":
                     self._clear_live()
                     _req = getattr(self, "_last_trans_req", (False, False))
-                    self._show_toast("Error de transcripción", kind="err", retry=lambda: self._starttrans(*_req))
+                    self._show_toast(
+                        "Error de transcripción", kind="err", retry=lambda _req=_req: self._starttrans(*_req)
+                    )
 
                 elif mt == "adapt_test":
                     prov, (ok, msg) = d
@@ -4890,15 +4958,18 @@ def _run_e2e_ui(scenario, out_path):
 
                 check(
                     "config: motor Gemini con adapt_provider=gemini",
-                    isinstance(app.adapt_engine, GeminiAdaptationEngine),
+                    isinstance(app.transcription_service.adapt_engine, GeminiAdaptationEngine),
                 )
                 app.config["adapt_provider"] = "openai"
                 check(
                     "config: motor OpenAI al cambiar proveedor",
-                    isinstance(app._build_adapt_engine(), OpenAIAdaptationEngine),
+                    isinstance(app.transcription_service._build_adapt_engine(), OpenAIAdaptationEngine),
                 )
                 app.config["adapt_provider"] = "gemini"
-                check("config: motor Gemini al volver", isinstance(app._build_adapt_engine(), GeminiAdaptationEngine))
+                check(
+                    "config: motor Gemini al volver",
+                    isinstance(app.transcription_service._build_adapt_engine(), GeminiAdaptationEngine),
+                )
                 top.destroy()
 
             # Optimizador de microfono: la ventana tiene su propio selector
@@ -5194,7 +5265,7 @@ if __name__ == "__main__":
             with open(prog_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(msgs))
             sys.exit(0)
-        except Exception as e:
+        except Exception:
             try:
                 with open("selftest_error.txt", "w", encoding="utf-8") as f:
                     f.write(traceback.format_exc())

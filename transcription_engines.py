@@ -9,7 +9,28 @@ Uso:
     engine = select_engine(config)
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
+
+class TranscriptionBackend(ABC):
+    """Interfaz comun de los motores de transcripcion de voz (speech-to-text).
+
+    Centraliza el contrato que debe cumplir cualquier implementacion local
+    (whisper openai, faster-whisper, etc.) para que la UI/servicios puedan
+    usarlas de forma intercambiable sin acoplarse a la implementacion.
+    """
+
+    @abstractmethod
+    def transcribe(
+        self,
+        audio_path: str,
+        timestamps: bool = False,
+        cancel_event=None,
+        progress_callback=None,
+        check_silence: bool = True,
+        partial_callback=None,
+    ) -> dict: ...
 
 
 @dataclass
