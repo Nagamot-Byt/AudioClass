@@ -6,7 +6,7 @@ shared libraries on Linux that aren't needed at runtime (CT2 models
 are loaded from models_ct2/ directory).
 """
 import os, sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 
@@ -28,13 +28,17 @@ def _assets():
             for f in os.listdir(d):
                 datas.append((os.path.join(d, f), os.path.join("models_ct2", name)))
     datas += collect_data_files('whisper')
+    try:
+        datas += collect_data_files('sherpa_onnx')
+    except Exception:
+        pass
     # EXCLUDED: collect_data_files('faster_whisper') — saves ~2GB of .so on Linux
     return datas
 
 a = Analysis(
     ['audioclass_v91.py'],
     pathex=[],
-    binaries=[],
+    binaries=collect_dynamic_libs('sherpa_onnx') if 'sherpa_onnx' in sys.modules or os.path.exists('/usr') else [],
     datas=_assets(),
     hiddenimports=[
         'scipy.special._cdflib',
@@ -104,6 +108,17 @@ a = Analysis(
         'waveform_widget',
         'locales',
         'locales.i18n',
+        'sherpa_onnx',
+        'soundfile',
+        '_soundfile',
+        'cffi',
+        'services',
+        'services.transcription_service',
+        'services.mic_service',
+        'services.recording_service',
+        'services.update_service',
+        'toast_ui',
+        'update_dialog_ui',
     ],
     hookspath=[],
     hooksconfig={},

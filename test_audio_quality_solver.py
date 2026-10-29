@@ -302,9 +302,10 @@ check("None -> FAIL", r_none.verdict == "FAIL")
 print("\n" + "=" * 60)
 total = passed + failed
 print(f"RESULTADO: {passed}/{total} tests pasaron")
-if failed > 0:
-    print(f"  {failed} tests fallaron")
-    sys.exit(1)
-else:
-    print("  Todos los tests pasaron.")
-    sys.exit(0)
+if __name__ == "__main__":
+    if failed > 0:
+        print(f"  {failed} tests fallaron")
+        sys.exit(1)
+    else:
+        print("  Todos los tests pasaron.")
+        sys.exit(0)

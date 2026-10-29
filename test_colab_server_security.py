@@ -262,4 +262,5 @@ except Exception:
     pass
 
 print(f"\nCOLAB_SERVER_SECURITY: {PASS} OK, {FAIL} fallos")
-sys.exit(0 if FAIL == 0 else 1)
+if __name__ == "__main__":
+    sys.exit(0 if FAIL == 0 else 1)

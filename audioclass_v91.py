@@ -209,7 +209,7 @@ C = PALETTES["dark"].copy()
 # ── Modulos extraidos ──────────────────────────────────────────────────
 from config_dialog import ConfigDialogMixin
 from services.mic_service import MicService, MicTestMixin
-from services.recording_service import RecordingService
+from services.recording_service import RecordingMixin, RecordingService
 from services.update_service import UpdateDialogMixin, UpdateService
 from toast_ui import ToastMixin
 
@@ -433,7 +433,7 @@ def _same_mic(a, b):
         return False
 
 
-class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
+class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, RecordingMixin, ctk.CTk if CTK else tk.Tk):
     """Aplicacion principal de AudioClass v9.1.
 
     Interfaz grafica para grabar, transcribir y exportar clases universitarias.
@@ -566,8 +566,15 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
             self.transcription_service = TranscriptionService(self.config, on_model_loaded=self._on_model_loaded)
             self.transcription_service.build()
             self.mic_service = self
-            self.recording_service = RecordingService()
-            self.update_service = UpdateService()
+            self.recording_service = self
+            self.update_service = self
+            try:
+                from locales.i18n import load_language_from_config, t
+
+                load_language_from_config(self.config)
+                self.t = t
+            except Exception:
+                self.t = lambda k, **kw: k
             self.cloud_engine = CloudColabEngine(
                 self.config.get("colab_url", ""),
                 self.config.get("colab_key", ""),
@@ -1312,6 +1319,8 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         """Metodo interno: on model loaded."""
         if status in ("ready", True):
             self.q.put(("model_ready", msg or "listo"))
+        elif status == "downloading":
+            self.q.put(("model_downloading", msg))
         else:
             self.q.put(("model_err", msg or "error"))
 
@@ -2859,7 +2868,7 @@ CONSEJOS:
                 self.stop_ev.wait()
         except Exception as e:
             log_exc("recloop")
-            self.q.put(("status", f"Error: {str(e)[:40]}"))
+            self.q.put(("rec_error", str(e)))
             self.recording = False
 
     def _rec_flusher(self):
@@ -4275,6 +4284,24 @@ CONSEJOS:
                         ts, aa = self._pending_trans
                         self._pending_trans = None
                         self._pending_after = self.after(150, lambda ts=ts, aa=aa: self._starttrans(ts, aa))
+
+                elif mt == "model_downloading":
+                    self._cfg_lbl(self.lmodel, f"Descargando: {d}", C["warn"])
+                    if hasattr(self, "lprog"):
+                        self.lprog.configure(text=f"Descargando modelo: {d}", text_color=C["warn"])
+
+                elif mt == "rec_error":
+                    self.recording = False
+                    self.stop_ev.set()
+                    self._stop_done = False
+                    try:
+                        self.bstop.pack_forget()
+                        self.brec.pack(side="left", padx=(18, 12), pady=16, before=self.btr)
+                        self.lstatus.configure(text=f"Error en microfono: {str(d)[:30]}", text_color=C["err"])
+                        self.ltime.configure(text="")
+                        self._show_toast(f"Error de captura: {str(d)[:40]}", kind="err")
+                    except Exception:
+                        pass
 
                 elif mt == "model_err":
                     self._cfg_lbl(self.lmodel, f"Error: {d[:30]}", C["err"])

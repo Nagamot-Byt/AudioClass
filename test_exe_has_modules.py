@@ -68,7 +68,8 @@ if exe is None:
     print("\n  SKIP  No se encontro exe empaquetado")
     print("  Compila primero con: pyinstaller AudioClass_v91.spec")
     print("EXE_MODULES_OK")
-    sys.exit(0)
+    if __name__ == "__main__":
+        sys.exit(0)
 
 size_mb = os.path.getsize(exe) / (1024 * 1024)
 print(f"\n  Exe encontrado: {os.path.basename(exe)} ({size_mb:.1f} MB)")
@@ -190,12 +191,13 @@ check("audioclass_v91 en PYZ", _module_in_binary(exe, "audioclass_v91"))
 # ============================================================================
 print("\n" + "=" * 60)
 print(f"RESULTADO: {passed}/{passed + failed} checks pasaron")
-if failed > 0:
-    print(f"  {failed} checks fallaron:")
-    for f in failures:
-        print(f"    - {f}")
-    print("EXE_MODULES_FAIL")
-    sys.exit(1)
-else:
-    print("EXE_MODULES_OK")
-    sys.exit(0)
+if __name__ == "__main__":
+    if failed > 0:
+        print(f"  {failed} checks fallaron:")
+        for f in failures:
+            print(f"    - {f}")
+        print("EXE_MODULES_FAIL")
+        sys.exit(1)
+    else:
+        print("EXE_MODULES_OK")
+        sys.exit(0)

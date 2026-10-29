@@ -29,6 +29,8 @@ dependencies = [
     "pyaudio>=0.2.13",
     "sounddevice>=0.4",
     "faster-whisper>=1.0",
+    "sherpa-onnx>=1.10.0",
+    "soundfile>=0.12.0",
     "requests>=2.28",
 ]
 
@@ -52,6 +54,7 @@ include = ["audioclass*", "config_manager*", "export_utils*"]
 [tool.pytest.ini_options]
 testpaths = ["."]
 python_files = ["test_*.py"]
+norecursedirs = ["backup_*", "dist*", "build*", ".venv", "venv", ".git"]
 addopts = "-v --tb=short"
 
 # ── Ruff (linter + formatter) ───────────────────────────────────────────────

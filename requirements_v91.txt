@@ -14,6 +14,8 @@ noisereduce==3.0.3
 openai-whisper==20250625
 faster-whisper==1.2.1
 torch==2.13.0+cpu
+sherpa-onnx>=1.10.0
+soundfile>=0.12.0
 
 # Exportacion
 fpdf2==2.8.7

@@ -7,7 +7,7 @@ en descomprimirse a temp). Ver AudioClass_v91.spec para la version
 onedir (carpeta, arranque rapido).
 """
 import os, sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 
@@ -49,12 +49,16 @@ def _assets():
     # faster-whisper: silero VAD (aunque no usamos vad_filter, el paquete lo
     # referencian algunos imports) — se empaqueta por robustez.
     datas += collect_data_files('faster_whisper')
+    try:
+        datas += collect_data_files('sherpa_onnx')
+    except Exception:
+        pass
     return datas
 
 a = Analysis(
     ['audioclass_v91.py'],
     pathex=[],
-    binaries=[],
+    binaries=collect_dynamic_libs('sherpa_onnx') if 'sherpa_onnx' in sys.modules or os.path.exists('/usr') else [],
     datas=_assets(),
     hiddenimports=[
         'scipy.special._cdflib',
@@ -126,6 +130,17 @@ a = Analysis(
         'mic_optimizer_ui',
         'ai_providers',
         'update_checker',
+        'sherpa_onnx',
+        'soundfile',
+        '_soundfile',
+        'cffi',
+        'services',
+        'services.transcription_service',
+        'services.mic_service',
+        'services.recording_service',
+        'services.update_service',
+        'toast_ui',
+        'update_dialog_ui',
     ],
     hookspath=[],
     hooksconfig={},

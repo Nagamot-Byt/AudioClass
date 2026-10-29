@@ -266,11 +266,12 @@ for f in [wav_silence, wav_weak, wav_normal]:
 print("\n" + "=" * 60)
 total = passed + failed
 print(f"RESULTADO: {passed}/{total} checks pasaron")
-if failed > 0:
-    print(f"  {failed} checks fallaron")
-    print("QUALITY_GATE_E2E_FAIL")
-    sys.exit(1)
-else:
-    print("  Todos los checks pasaron.")
-    print("QUALITY_GATE_E2E_OK")
-    sys.exit(0)
+if __name__ == "__main__":
+    if failed > 0:
+        print(f"  {failed} checks fallaron")
+        print("QUALITY_GATE_E2E_FAIL")
+        sys.exit(1)
+    else:
+        print("  Todos los checks pasaron.")
+        print("QUALITY_GATE_E2E_OK")
+        sys.exit(0)

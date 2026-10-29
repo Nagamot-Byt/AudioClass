@@ -1598,7 +1598,18 @@ class SherpaParakeetEngine(TranscriptionBackend):
             self.loading = True
             try:
                 if not self.is_model_available():
-                    self.ensure_model()
+
+                    def _dl_cb(count_bytes, total_bytes):
+                        if total_bytes > 0 and callback:
+                            pct = int((count_bytes / total_bytes) * 100)
+                            mb_curr = count_bytes / (1024 * 1024)
+                            mb_tot = total_bytes / (1024 * 1024)
+                            try:
+                                callback("downloading", f"{pct}% ({mb_curr:.0f}/{mb_tot:.0f} MB)")
+                            except Exception:
+                                pass
+
+                    self.ensure_model(progress_callback=_dl_cb)
                 import sherpa_onnx
 
                 self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
@@ -1699,8 +1710,11 @@ class SherpaParakeetEngine(TranscriptionBackend):
                     ),
                 }
 
-        # Procesar en ventanas de 45s
-        chunk_len = 45 * 16000
+        # Procesar en ventanas de 45s con solapamiento de 2.0s para evitar cortes de palabras en límites
+        CHUNK_SEC = 45.0
+        OVERLAP_SEC = 2.0
+        chunk_len = int(CHUNK_SEC * 16000)
+        step_len = int((CHUNK_SEC - OVERLAP_SEC) * 16000)
         total_samples = len(data)
         if total_samples == 0:
             return {
@@ -1713,8 +1727,13 @@ class SherpaParakeetEngine(TranscriptionBackend):
                 "language": "es",
             }
 
-        chunks = [data[i : i + chunk_len] for i in range(0, total_samples, chunk_len)]
-        starts = [i / 16000.0 for i in range(0, total_samples, chunk_len)]
+        if total_samples <= chunk_len:
+            chunks = [data]
+            starts = [0.0]
+        else:
+            starts_samples = list(range(0, total_samples, step_len))
+            chunks = [data[s : s + chunk_len] for s in starts_samples]
+            starts = [s / 16000.0 for s in starts_samples]
         total = len(chunks)
 
         segments = []
