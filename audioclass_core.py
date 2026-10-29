@@ -1588,7 +1588,10 @@ class SherpaParakeetEngine(TranscriptionBackend):
         """Carga el reconocedor sherpa-onnx en un hilo."""
         if self.ready and self.recognizer is not None:
             if callback:
-                callback(True, None)
+                try:
+                    callback("ready", self.model_name)
+                except Exception:
+                    callback(True, None)
             return
 
         def _worker():
@@ -1613,12 +1616,18 @@ class SherpaParakeetEngine(TranscriptionBackend):
                 self.ready = True
                 self.error = None
                 if callback:
-                    callback(True, None)
+                    try:
+                        callback("ready", self.model_name)
+                    except Exception:
+                        callback(True, None)
             except Exception as e:
                 self.error = str(e)
                 self.ready = False
                 if callback:
-                    callback(False, str(e))
+                    try:
+                        callback("error", str(e))
+                    except Exception:
+                        callback(False, str(e))
             finally:
                 self.loading = False
 

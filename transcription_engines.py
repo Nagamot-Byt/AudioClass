@@ -107,7 +107,7 @@ def select_engine(config):
     Returns:
         Tupla (engine_key, engine_info) o (None, None) si no hay motor.
     """
-    mode = config.get("mode", "local")
+    mode = config.get("transcription_mode") or config.get("mode", "local")
 
     if mode == "parakeet":
         return "parakeet", TRANSCRIPTION_ENGINES["parakeet"]

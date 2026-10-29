@@ -38,7 +38,8 @@ class TranscriptionService:
             fast_mode=cfg.get("fast_mode", False),
             use_vad=cfg.get("use_vad", True),
         )
-        if cfg.get("mode") == "parakeet":
+        mode = cfg.get("transcription_mode") or cfg.get("mode", "local")
+        if mode == "parakeet":
             from audioclass_core import SherpaParakeetEngine
 
             self.local_engine = SherpaParakeetEngine()

@@ -441,13 +441,25 @@ class ConfigDialogMixin:
         status_frame = self._frame(f3, fg_color="transparent")
         status_frame.pack(fill="x", padx=15, pady=(0, 12))
 
-        self._lbl(status_frame, "Modelo Local:", font=(self.FB, 11)).pack(side="left")
+        self._lbl(status_frame, "Motor Local:", font=(self.FB, 11)).pack(side="left")
+        engine_ready = getattr(self.transcription_service.local_engine, "ready", False)
         self._lbl(
             status_frame,
-            "Listo" if self.transcription_service.local_engine.ready else "Cargando...",
+            "Listo" if engine_ready else "Cargando...",
             font=(self.FB, 11),
-            text_color=C["ok"] if self.transcription_service.local_engine.ready else C["warn"],
-        ).pack(side="left", padx=(5, 20))
+            text_color=C["ok"] if engine_ready else C["warn"],
+        ).pack(side="left", padx=(5, 15))
+
+        self._lbl(status_frame, "Parakeet INT8:", font=(self.FB, 11)).pack(side="left")
+        from audioclass_core import SherpaParakeetEngine
+
+        has_parakeet = SherpaParakeetEngine().is_model_available()
+        self._lbl(
+            status_frame,
+            "Disponible" if has_parakeet else "Sin descargar",
+            font=(self.FB, 11),
+            text_color=C["ok"] if has_parakeet else C["warn"],
+        ).pack(side="left", padx=(5, 15))
 
         self._lbl(status_frame, "Colab:", font=(self.FB, 11)).pack(side="left")
         has_url = bool(self.config.get("colab_url"))

@@ -511,7 +511,7 @@ def build_config_bar(app: App, parent):
     app._lbl(cfg, "Motor:", font=(app.FB, 12)).pack(side="left", padx=(0, 6), pady=12)
     app.mode_var = tk.StringVar(value=app.config.get("transcription_mode", "local"))
     if CTK:
-        for val, lbl in (("local", "Local"), ("cloud", "Cloud")):
+        for val, lbl in (("parakeet", "Parakeet TDT"), ("local", "Whisper"), ("cloud", "Cloud")):
             rb = ctk.CTkRadioButton(
                 cfg,
                 text=lbl,
@@ -524,7 +524,9 @@ def build_config_bar(app: App, parent):
             rb.pack(side="left", padx=(0, 14), pady=12)
             app._themeable.append(("label", rb, "text"))
     else:
-        tk.OptionMenu(cfg, app.mode_var, "local", "cloud", command=app._chmode).pack(side="left", padx=(0, 20), pady=12)
+        tk.OptionMenu(cfg, app.mode_var, "parakeet", "local", "cloud", command=app._chmode).pack(
+            side="left", padx=(0, 20), pady=12
+        )
 
     # Modelo
     app._lbl(cfg, "Modelo:", font=(app.FB, 12)).pack(side="left", padx=(0, 6), pady=12)

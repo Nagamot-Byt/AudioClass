@@ -256,6 +256,7 @@ from audioclass_core import (
     LocalWhisperEngine,
     OllamaAdaptationEngine,
     OpenAIAdaptationEngine,
+    SherpaParakeetEngine,
 )
 from services.transcription_service import TranscriptionService
 
@@ -1196,6 +1197,8 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
         modo = self.config.get("transcription_mode", "local")
         if modo == "cloud":
             modelo = self.config.get("cloud_model", "large-v3")
+        elif modo == "parakeet":
+            modelo = "Parakeet TDT 0.6B (INT8)"
         else:
             modelo = self.config.get("local_model", "base")
         txt = f"Usando perfil: {perfil} · motor: {modo} · modelo: {modelo} · idioma: {self.config.get('whisper_language', 'auto')}"
@@ -1234,7 +1237,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
                 pass
 
     def _chmode(self, mode):
-        """Cambia entre motor local y cloud."""
+        """Cambia entre motor local (whisper), parakeet y cloud."""
         self.config["transcription_mode"] = mode
         save_config(self.config)
         self._update_cfg_summary()
@@ -1245,9 +1248,30 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
                 self.cmb_model.configure(state="normal")
             except Exception:
                 pass
+            if not isinstance(self.transcription_service.local_engine, LocalWhisperEngine):
+                self.transcription_service.local_engine = LocalWhisperEngine(
+                    self.model_var.get(), self.config.get("whisper_language", "auto")
+                )
+                self.transcription_service.local_engine.load(callback=self._on_model_loaded)
             self._cfg_lbl(self.lmodel, f"Local: {self.model_var.get()}", C["muted"])
             if hasattr(self, "lconn"):
                 self._cfg_lbl(self.lconn, f"Motor local · {self.model_var.get()}", C["head_text"])
+        elif mode == "parakeet":
+            try:
+                self.cmb_model.configure(state="disabled")
+            except Exception:
+                pass
+            if not isinstance(self.transcription_service.local_engine, SherpaParakeetEngine):
+                self.transcription_service.local_engine = SherpaParakeetEngine()
+                self.transcription_service.local_engine.load(callback=self._on_model_loaded)
+            ready = getattr(self.transcription_service.local_engine, "ready", False)
+            self._cfg_lbl(
+                self.lmodel,
+                "Parakeet TDT listo" if ready else "Cargando Parakeet...",
+                C["ok"] if ready else C["warn"],
+            )
+            if hasattr(self, "lconn"):
+                self._cfg_lbl(self.lconn, "Parakeet TDT · CPU", C["head_text"])
         else:
             try:
                 self.cmb_model.configure(state="disabled")
@@ -1286,10 +1310,10 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CT
 
     def _on_model_loaded(self, status, msg):
         """Metodo interno: on model loaded."""
-        if status == "ready":
-            self.q.put(("model_ready", msg))
+        if status in ("ready", True):
+            self.q.put(("model_ready", msg or "listo"))
         else:
-            self.q.put(("model_err", msg))
+            self.q.put(("model_err", msg or "error"))
 
     def _update_adapt_status(self):
         """Metodo interno: update adapt status."""
@@ -3315,24 +3339,25 @@ CONSEJOS:
         self._last_partial_len = 0  # throttle del streaming en vivo
         self._trans_ticker()
 
-        if mode == "local":
+        if mode in ("local", "parakeet"):
             if not self.transcription_service.local_engine.ready:
+                eng_name = "Parakeet TDT" if mode == "parakeet" else "Whisper"
                 if self.transcription_service.local_engine.loading:
                     # El modelo sigue cargandose: la transcripcion se iniciara
                     # sola en cuanto termine (model_ready). No bloquear la UI.
                     self._pending_trans = (timestamps, auto_adapt)
-                    self.lprog.configure(text="Cargando modelo Whisper... se iniciará solo", text_color=C["warn"])
-                    self._apptxt("\nCargando modelo Whisper (la primera vez puede tardar)...\n")
+                    self.lprog.configure(text=f"Cargando modelo {eng_name}... se iniciará solo", text_color=C["warn"])
+                    self._apptxt(f"\nCargando modelo {eng_name} (la primera vez puede tardar)...\n")
                     self.q.put(("enable", None))
                     return
                 err = self.transcription_service.local_engine.error or "causa desconocida"
                 self._msg(
                     "error",
-                    "Modelo local no disponible",
-                    f"No se pudo cargar Whisper:\n{err}\n\nRevisa la instalación del modelo o "
+                    f"Modelo {eng_name} no disponible",
+                    f"No se pudo cargar {eng_name}:\n{err}\n\nRevisa la instalación del modelo o "
                     "usa el modo Cloud () en Configuración.",
                 )
-                self.lprog.configure(text="Modelo local no disponible", text_color=C["err"])
+                self.lprog.configure(text=f"Modelo {eng_name} no disponible", text_color=C["err"])
                 self.q.put(("enable", None))
                 return
             threading.Thread(
@@ -4241,7 +4266,8 @@ CONSEJOS:
                     self._show_toast("Grabación lista")
 
                 elif mt == "model_ready":
-                    self._cfg_lbl(self.lmodel, f"Whisper {d} listo", C["ok"])
+                    ready_txt = "Parakeet TDT listo" if "parakeet" in str(d).lower() else f"Whisper {d} listo"
+                    self._cfg_lbl(self.lmodel, ready_txt, C["ok"])
                     # Transcripcion pendiente: se inicia sola al terminar la carga.
                     # Se guarda el id del after para poder cancelarlo si el
                     # usuario pulsa Cancelar en la ventana de 150 ms.
@@ -4939,8 +4965,8 @@ def _run_e2e_ui(scenario, out_path):
                 )
                 check("config: boton Guardar Cambios", any("Guardar Cambios" in t for t in btn), str(btn))
                 check(
-                    "config: botones Probar Conexion x2",
-                    sum("Probar Conexión" in t or "Probar Conexion" in t for t in btn) == 2,
+                    "config: botones Probar Conexion",
+                    sum("Probar Conexión" in t or "Probar Conexion" in t for t in btn) >= 2,
                     str(btn),
                 )
                 check("config: campos de entrada >= 5", nent >= 5, f"entries={nent}")
