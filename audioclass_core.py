@@ -651,13 +651,20 @@ class LocalWhisperEngine(TranscriptionBackend):
     openai en el exe compilado. Se puede forzar con backend="...".
     """
 
-    def __init__(self, model_name: str = "base", language: str = "es", backend: str | None = None) -> None:
+    def __init__(
+        self,
+        model_name: str = "base",
+        language: str = "es",
+        backend: str | None = None,
+        vad_filter: bool = True,
+    ) -> None:
         self.model_name = model_name
         # Idioma de transcripcion: "auto" = whisper detecta el idioma del audio
         # con detect_language; si no, un codigo ISO (es, en, pt, fr, ...) que
         # se fuerza en todos los chunks.
         self.language = (language or "es").strip().lower()
         self.backend = self._pick_backend(backend)
+        self.vad_filter = vad_filter
         self.model = None
         self.loading = False
         self.ready = False
@@ -925,7 +932,14 @@ class LocalWhisperEngine(TranscriptionBackend):
         # por defecto, el SO alternaria 64 hilos en 8 nucleos y el total
         # tardaria MAS que en secuencial. Presupuesto de RAM: ~1.5 GB maximo en
         # copias del modelo.
-        cores = os.cpu_count() or 4
+        # Optimización CPU: usar núcleos físicos (no lógicos) y reservar 1 para la UI/SO
+        try:
+            import psutil
+
+            phys_cores = psutil.cpu_count(logical=False) or os.cpu_count() or 4
+        except Exception:
+            phys_cores = os.cpu_count() or 4
+        cores = max(1, phys_cores - 1)
         mb = {"tiny": 75, "base": 142, "small": 466}.get(self.model_name, 150)
         by_mem = max(1, min(8, int(1536 / mb)))  # piso: presupuesto base 1.5 GB
         free_mb = _free_ram_mb()
@@ -1024,15 +1038,18 @@ class LocalWhisperEngine(TranscriptionBackend):
             # el primer worker -> la transcripcion fallaba al instante (bug
             # confirmado en ~/AudioClass_Recordings/logs/audioclass.log).
             if self.backend == "faster":
-                segs, _info = mdl.transcribe(
-                    chunk,
-                    language=_lang,
-                    task="transcribe",
-                    beam_size=5,
-                    initial_prompt=_prompt,
-                    condition_on_previous_text=use_cond,
-                    without_timestamps=not timestamps,
-                )
+                transcribe_kwargs = {
+                    "language": _lang,
+                    "task": "transcribe",
+                    "beam_size": 5,
+                    "initial_prompt": _prompt,
+                    "condition_on_previous_text": use_cond,
+                    "without_timestamps": not timestamps,
+                }
+                if getattr(self, "vad_filter", True):
+                    transcribe_kwargs["vad_filter"] = True
+                    transcribe_kwargs["vad_parameters"] = dict(min_silence_duration_ms=500, threshold=0.5)
+                segs, _info = mdl.transcribe(chunk, **transcribe_kwargs)
                 seg_list = [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()} for s in segs]
                 return {
                     "text": " ".join(s["text"] for s in seg_list if s["text"]),
@@ -1502,6 +1519,240 @@ class LocalWhisperEngine(TranscriptionBackend):
             _res["hallucination"] = True
             _res["hallucination_msg"] = _hall
         return _res
+
+
+class SherpaParakeetEngine(TranscriptionBackend):
+    """Motor de transcripción ultrarrápido con NVIDIA Parakeet TDT 0.6B v3 (INT8).
+
+    Utiliza sherpa-onnx con arquitectura Transducer (FastConformer-TDT) para decodificar
+    en una sola pasada feed-forward.
+    Optimizaciones para CPU:
+      * Decodificación no autorregresiva (1.5x a 3x más veloz que Whisper Small).
+      * Modelo cuantizado INT8 (~640 MB RAM).
+      * Timestamps nativos.
+      * Límite de hilos a núcleos físicos dejando 1 libre para la UI.
+    """
+
+    MODEL_URL = (
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+        "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2"
+    )
+    MODEL_DIR_NAME = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+
+    def __init__(self, model_dir: str | None = None, num_threads: int | None = None) -> None:
+        self.model_name = "parakeet-tdt-0.6b-v3"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.target_dir = model_dir or os.path.join(base_dir, "models_parakeet")
+        self.model_path = os.path.join(self.target_dir, self.MODEL_DIR_NAME)
+
+        try:
+            import psutil
+
+            phys = psutil.cpu_count(logical=False) or os.cpu_count() or 4
+        except Exception:
+            phys = os.cpu_count() or 4
+        self.num_threads = num_threads or max(1, min(4, phys - 1))
+
+        self.recognizer = None
+        self.ready = False
+        self.loading = False
+        self.error = None
+        self._lock = threading.Lock()
+
+    def is_model_available(self) -> bool:
+        """Verifica si los ficheros del modelo existen localmente."""
+        required = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"]
+        return all(os.path.isfile(os.path.join(self.model_path, f)) for f in required)
+
+    def ensure_model(self, progress_callback=None) -> str:
+        """Descarga y extrae el modelo si no existe."""
+        if self.is_model_available():
+            return self.model_path
+        os.makedirs(self.target_dir, exist_ok=True)
+        tar_path = os.path.join(self.target_dir, "parakeet.tar.bz2")
+        import tarfile
+        import urllib.request
+
+        def _reporthook(count, block_size, total_size):
+            if progress_callback and total_size > 0:
+                progress_callback(count * block_size, total_size)
+
+        urllib.request.urlretrieve(self.MODEL_URL, tar_path, reporthook=_reporthook)
+        with tarfile.open(tar_path, "r:bz2") as tar:
+            tar.extractall(self.target_dir)
+        if os.path.exists(tar_path):
+            os.remove(tar_path)
+        return self.model_path
+
+    def load(self, callback=None) -> None:
+        """Carga el reconocedor sherpa-onnx en un hilo."""
+        if self.ready and self.recognizer is not None:
+            if callback:
+                callback(True, None)
+            return
+
+        def _worker():
+            self.loading = True
+            try:
+                if not self.is_model_available():
+                    self.ensure_model()
+                import sherpa_onnx
+
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+                    encoder=os.path.join(self.model_path, "encoder.int8.onnx"),
+                    decoder=os.path.join(self.model_path, "decoder.int8.onnx"),
+                    joiner=os.path.join(self.model_path, "joiner.int8.onnx"),
+                    tokens=os.path.join(self.model_path, "tokens.txt"),
+                    num_threads=self.num_threads,
+                    sample_rate=16000,
+                    feature_dim=80,
+                    decoding_method="greedy_search",
+                    model_type="nemo_transducer",
+                    provider="cpu",
+                )
+                self.ready = True
+                self.error = None
+                if callback:
+                    callback(True, None)
+            except Exception as e:
+                self.error = str(e)
+                self.ready = False
+                if callback:
+                    callback(False, str(e))
+            finally:
+                self.loading = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def transcribe(
+        self,
+        audio_path: str,
+        timestamps: bool = False,
+        cancel_event=None,
+        progress_callback=None,
+        check_silence: bool = True,
+        partial_callback=None,
+    ) -> dict:
+        """Transcribe audio usando Parakeet TDT INT8."""
+        if not self.ready or self.recognizer is None:
+            if self.is_model_available():
+                import sherpa_onnx
+
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+                    encoder=os.path.join(self.model_path, "encoder.int8.onnx"),
+                    decoder=os.path.join(self.model_path, "decoder.int8.onnx"),
+                    joiner=os.path.join(self.model_path, "joiner.int8.onnx"),
+                    tokens=os.path.join(self.model_path, "tokens.txt"),
+                    num_threads=self.num_threads,
+                    sample_rate=16000,
+                    feature_dim=80,
+                    decoding_method="greedy_search",
+                    model_type="nemo_transducer",
+                    provider="cpu",
+                )
+                self.ready = True
+            else:
+                self.ensure_model()
+                return self.transcribe(
+                    audio_path,
+                    timestamps=timestamps,
+                    cancel_event=cancel_event,
+                    progress_callback=progress_callback,
+                    check_silence=check_silence,
+                    partial_callback=partial_callback,
+                )
+
+        import soundfile as sf
+        from scipy import signal
+
+        data, sr = sf.read(audio_path, dtype="float32")
+        if len(data.shape) > 1:
+            data = data.mean(axis=1)
+        if sr != 16000:
+            data = signal.resample(data, int(len(data) * 16000 / sr)).astype(np.float32)
+
+        if check_silence:
+            _stats = audio_silence_stats(data)
+            if is_digital_silence(_stats):
+                return {
+                    "silence": True,
+                    "text": "",
+                    "segments": [],
+                    "model": self.model_name,
+                    "device": "cpu",
+                    "backend": "sherpa-onnx",
+                    "chunks": 0,
+                    "language": "es",
+                    "silence_msg": (
+                        "El audio parece SILENCIO DIGITAL ("
+                        f"{_stats['zero_frac'] * 100:.0f}% de muestras en cero, "
+                        f"RMS {_stats['rms']:.2e})."
+                    ),
+                }
+
+        # Procesar en ventanas de 45s
+        chunk_len = 45 * 16000
+        total_samples = len(data)
+        if total_samples == 0:
+            return {
+                "text": "",
+                "segments": [],
+                "model": self.model_name,
+                "device": "cpu",
+                "backend": "sherpa-onnx",
+                "chunks": 0,
+                "language": "es",
+            }
+
+        chunks = [data[i : i + chunk_len] for i in range(0, total_samples, chunk_len)]
+        starts = [i / 16000.0 for i in range(0, total_samples, chunk_len)]
+        total = len(chunks)
+
+        segments = []
+        text_parts = []
+
+        for idx, chunk in enumerate(chunks):
+            if cancel_event and cancel_event.is_set():
+                break
+
+            if progress_callback:
+                progress_callback(idx, total, f"Chunk {idx + 1}/{total} (Parakeet TDT)")
+
+            stream = self.recognizer.create_stream()
+            stream.accept_waveform(16000, chunk)
+            self.recognizer.decode_stream(stream)
+            res = stream.result
+            chunk_text = (res.text or "").strip()
+
+            if chunk_text:
+                text_parts.append(chunk_text)
+                c_start = starts[idx]
+                c_end = min(total_samples / 16000.0, c_start + len(chunk) / 16000.0)
+
+                segments.append(
+                    {
+                        "start": round(c_start, 2),
+                        "end": round(c_end, 2),
+                        "text": chunk_text,
+                    }
+                )
+
+            if partial_callback:
+                partial_callback(idx + 1, total, chunk_text)
+
+        if progress_callback:
+            progress_callback(total, total, "Transcripción completada")
+
+        full_text = " ".join(text_parts)
+        return {
+            "text": full_text,
+            "segments": segments,
+            "model": self.model_name,
+            "device": "cpu",
+            "backend": "sherpa-onnx",
+            "chunks": total,
+            "language": "es",
+        }
 
 
 class CloudColabEngine:

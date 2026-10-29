@@ -10,6 +10,7 @@ dist_onefile/
 # ── Modelos de whisper (se descargan en CI, se empaquetan en el exe) ──
 models/
 models_ct2/
+models_parakeet/
 
 # ── Audios y bases de datos locales ──
 demo_audio/

@@ -39,6 +39,30 @@ class TestRealModels(unittest.TestCase):
         print(f"  Texto: {result.get('text', '')[:100]}...")
         print(f"  Tiempo: {elapsed:.2f}s")
 
+    def test_parakeet_real_audio(self):
+        """Transcripcion con NVIDIA Parakeet TDT 0.6B INT8."""
+        from audioclass_core import SherpaParakeetEngine
+
+        engine = SherpaParakeetEngine()
+        if not engine.is_model_available():
+            self.skipTest("Modelo Parakeet no descargado")
+        engine.load()
+        for _ in range(150):
+            if engine.ready:
+                break
+            time.sleep(0.1)
+        self.assertTrue(engine.ready, f"Parakeet no cargó a tiempo (error: {engine.error})")
+
+        start = time.time()
+        result = engine.transcribe("prueba_voz_es.wav")
+        elapsed = time.time() - start
+
+        self.assertEqual(result.get("language"), "es")
+        self.assertGreater(len(result.get("text", "")), 100)
+        self.assertIn("biología", result.get("text", "").lower())
+        print(f"  [Parakeet] Texto: {result.get('text', '')[:100]}...")
+        print(f"  [Parakeet] Tiempo: {elapsed:.2f}s")
+
     def test_vad_deterministic(self):
         """process(vad=True) deterministico con seed fija."""
         import numpy as np

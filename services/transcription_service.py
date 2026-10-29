@@ -38,10 +38,15 @@ class TranscriptionService:
             fast_mode=cfg.get("fast_mode", False),
             use_vad=cfg.get("use_vad", True),
         )
-        self.local_engine = LocalWhisperEngine(
-            model_name=cfg.get("local_model", "base"),
-            language=cfg.get("whisper_language", "auto"),
-        )
+        if cfg.get("mode") == "parakeet":
+            from audioclass_core import SherpaParakeetEngine
+
+            self.local_engine = SherpaParakeetEngine()
+        else:
+            self.local_engine = LocalWhisperEngine(
+                model_name=cfg.get("local_model", "base"),
+                language=cfg.get("whisper_language", "auto"),
+            )
         # La carga del modelo se dispara donde la hacia App originalmente
         # (self.local_engine.load(callback=...)), no aqui, para no cargarlo
         # en la construccion de la app.

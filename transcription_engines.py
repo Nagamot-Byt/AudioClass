@@ -63,6 +63,12 @@ TRANSCRIPTION_ENGINES = {
         requires_key=False,
         description="Transcripcion offline con modelos Tiny/Base/Small. Sin internet.",
     ),
+    "parakeet": TranscriptionEngine(
+        name="Parakeet TDT (sherpa-onnx)",
+        key="parakeet",
+        requires_key=False,
+        description="NVIDIA Parakeet TDT 0.6B INT8. Transducer ultrarrapido en CPU.",
+    ),
     "local_whisper": TranscriptionEngine(
         name="Local (openai-whisper)",
         key="local_whisper",
@@ -103,7 +109,9 @@ def select_engine(config):
     """
     mode = config.get("mode", "local")
 
-    if mode == "local":
+    if mode == "parakeet":
+        return "parakeet", TRANSCRIPTION_ENGINES["parakeet"]
+    elif mode == "local":
         return "local", TRANSCRIPTION_ENGINES["local"]
     elif mode == "local_whisper":
         return "local_whisper", TRANSCRIPTION_ENGINES["local_whisper"]

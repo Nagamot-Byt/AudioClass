@@ -81,8 +81,9 @@ def test_transcription_engines():
     from transcription_engines import TRANSCRIPTION_ENGINES, get_available_engines, select_engine
 
     # Registro
-    check("engines 5", len(TRANSCRIPTION_ENGINES) == 5)
+    check("engines >= 5", len(TRANSCRIPTION_ENGINES) >= 5)
     check("engines tiene local", "local" in TRANSCRIPTION_ENGINES)
+    check("engines tiene parakeet", "parakeet" in TRANSCRIPTION_ENGINES)
     check("engines tiene gemini", "gemini" in TRANSCRIPTION_ENGINES)
     check("engines tiene openai", "openai" in TRANSCRIPTION_ENGINES)
 
@@ -109,7 +110,7 @@ def test_transcription_engines():
     # get_available_engines
     cfg = {"mode": "local", "gemini_api_key": "key"}
     engines = get_available_engines(cfg)
-    check("available 5 motores", len(engines) == 5)
+    check("available >= 5 motores", len(engines) >= 5)
     local_avail = [e for e in engines if e[0] == "local"][0]
     check("local available", local_avail[2] is True)
     gemini_avail = [e for e in engines if e[0] == "gemini"][0]

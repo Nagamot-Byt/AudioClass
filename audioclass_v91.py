@@ -432,7 +432,7 @@ def _same_mic(a, b):
         return False
 
 
-class App(ToastMixin, ConfigDialogMixin, ctk.CTk if CTK else ctk.Tk):
+class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, ctk.CTk if CTK else ctk.Tk):
     """Aplicacion principal de AudioClass v9.1.
 
     Interfaz grafica para grabar, transcribir y exportar clases universitarias.
@@ -564,7 +564,7 @@ class App(ToastMixin, ConfigDialogMixin, ctk.CTk if CTK else ctk.Tk):
 
             self.transcription_service = TranscriptionService(self.config, on_model_loaded=self._on_model_loaded)
             self.transcription_service.build()
-            self.mic_service = MicService()
+            self.mic_service = self
             self.recording_service = RecordingService()
             self.update_service = UpdateService()
             self.cloud_engine = CloudColabEngine(

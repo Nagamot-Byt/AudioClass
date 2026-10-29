@@ -201,6 +201,15 @@ def create_default_registry() -> ProviderRegistry:
         ),
     )
     registry.register_transcription(
+        "parakeet",
+        TranscriptionProvider(
+            name="Parakeet TDT (sherpa-onnx)",
+            key="parakeet",
+            requires_key=False,
+            description="NVIDIA Parakeet TDT 0.6B INT8. Transducer ultrarrapido en CPU.",
+        ),
+    )
+    registry.register_transcription(
         "local_whisper",
         TranscriptionProvider(
             name="Local (openai-whisper)",
