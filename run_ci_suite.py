@@ -57,6 +57,7 @@ SUITE = [
     ("test_colab_server_security", r"COLAB_SERVER_SECURITY: \d+ OK, 0 fallos"),
     ("test_code_signing", r"CODESIGN_OK"),
     ("test_refactored_modules", r"REFACTORED_OK"),
+    ("test_model_manager", r"MODEL_MANAGER_OK"),
     # Motor y exportación (voz real + modelos)
     ("test_parallel_transcribe", r"ALL_OK"),
     ("test_export_docx_pdf", r"EXPORT_OK"),

@@ -691,6 +691,8 @@ class LocalWhisperEngine(TranscriptionBackend):
         # disco simultaneas sobre el mismo .pt (lento y con traqueteo de disco).
         self._model_template = {}
         self._template_lock = threading.Lock()
+        self.last_activity = time.time()
+        self.unloaded_idle = False
 
     @staticmethod
     def _bundle_ct2_root():
@@ -773,39 +775,62 @@ class LocalWhisperEngine(TranscriptionBackend):
         """Devuelve la ruta del modelo empaquetado en el bundle (modo frozen,
         para funcionar sin internet) o el nombre del modelo (modo desarrollo,
         donde whisper usa su cache o lo descarga la primera vez)."""
+        from services.model_manager import get_default_model_manager
+
+        mgr = get_default_model_manager()
+        eng_type = "ct2" if self.backend == "faster" else "whisper"
+        resolved = mgr.resolve_model_path(eng_type, self.model_name)
+        if resolved:
+            return resolved
+
         if getattr(sys, "frozen", False):
             base = getattr(sys, "_MEIPASS", "") or os.path.dirname(os.path.abspath(sys.executable))
             if self.backend == "faster":
-                # faster-whisper: directorio CT2 (model.bin + tokenizer.json +
-                # vocabulary.txt + config.json), autocontenido, sin internet.
                 for name in (self.model_name, "tiny", "base"):
                     d = os.path.join(base, "models_ct2", name)
                     if os.path.isdir(d) and os.path.exists(os.path.join(d, "model.bin")):
-                        # Si el modelo pedido no va empaquetado, cargamos tiny
-                        # y actualizamos self.model_name para que el resultado
-                        # no reporte un modelo distinto del realmente cargado.
                         self.model_name = name
                         return d
-                return self.model_name  # sin CT2 empaquetado: nombre (descarga)
+                return self.model_name
             for name in (self.model_name, "tiny"):
                 p = os.path.join(base, "models", f"{name}.pt")
                 if os.path.exists(p):
-                    # Si el modelo pedido no va empaquetado, cargamos tiny y
-                    # actualizamos self.model_name para que el resultado no
-                    # reporte un modelo distinto del realmente cargado.
                     self.model_name = name
                     return p
         return self.model_name
+
+    def unload(self) -> None:
+        """Libera el modelo en memoria, plantillas y cachés para liberar RAM/VRAM."""
+        with self._cache_lock:
+            self._model_cache.clear()
+            self._cache_order.clear()
+        with self._template_lock:
+            self._model_template.clear()
+        self.model = None
+        self.ready = False
+        self.loading = False
+        self.unloaded_idle = True
+
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
     def load(self, callback=None):
         if self.loading or self.ready:
             return
         self.loading = True
+        self.unloaded_idle = False
 
         def _load():
             try:
                 self.model = self._load_model_obj(self._resolve_model())
                 self.ready = True
+                self.last_activity = time.time()
                 if callback:
                     callback("ready", self.model_name)
             except Exception as e:
@@ -827,6 +852,7 @@ class LocalWhisperEngine(TranscriptionBackend):
         check_silence: bool = True,
         partial_callback: Callable | None = None,
     ) -> dict[str, Any]:
+        self.last_activity = time.time()
         # Cancelación temprana: si el evento ya está seteado antes de arrancar,
         # no cargar el modelo ni procesar el audio; devolver cancelled al instante.
         # (La cancelación cooperativa solo se rechequea en los bordes de chunk
@@ -1560,32 +1586,40 @@ class SherpaParakeetEngine(TranscriptionBackend):
         self.ready = False
         self.loading = False
         self.error = None
+        self.last_activity = time.time()
+        self.unloaded_idle = False
         self._lock = threading.Lock()
 
     def is_model_available(self) -> bool:
         """Verifica si los ficheros del modelo existen localmente."""
+        from services.model_manager import get_default_model_manager
+
+        mgr = get_default_model_manager()
+        resolved = mgr.resolve_model_path("parakeet", self.model_name)
+        if resolved:
+            self.model_path = resolved
+            return True
         required = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"]
         return all(os.path.isfile(os.path.join(self.model_path, f)) for f in required)
 
     def ensure_model(self, progress_callback=None) -> str:
-        """Descarga y extrae el modelo si no existe."""
-        if self.is_model_available():
-            return self.model_path
-        os.makedirs(self.target_dir, exist_ok=True)
-        tar_path = os.path.join(self.target_dir, "parakeet.tar.bz2")
-        import tarfile
-        import urllib.request
+        """Descarga y extrae el modelo si no existe usando ModelManager."""
+        from services.model_manager import get_default_model_manager
 
-        def _reporthook(count, block_size, total_size):
-            if progress_callback and total_size > 0:
-                progress_callback(count * block_size, total_size)
-
-        urllib.request.urlretrieve(self.MODEL_URL, tar_path, reporthook=_reporthook)
-        with tarfile.open(tar_path, "r:bz2") as tar:
-            tar.extractall(self.target_dir)
-        if os.path.exists(tar_path):
-            os.remove(tar_path)
+        mgr = get_default_model_manager()
+        resolved = mgr.ensure_parakeet(progress_callback=progress_callback)
+        self.model_path = resolved
         return self.model_path
+
+    def unload(self) -> None:
+        """Libera el reconocedor sherpa-onnx en memoria para liberar RAM/VRAM."""
+        with self._lock:
+            self.recognizer = None
+            self.ready = False
+            self.loading = False
+            self.unloaded_idle = True
+
+        gc.collect()
 
     def load(self, callback=None) -> None:
         """Carga el reconocedor sherpa-onnx en un hilo."""
@@ -1599,6 +1633,7 @@ class SherpaParakeetEngine(TranscriptionBackend):
 
         def _worker():
             self.loading = True
+            self.unloaded_idle = False
             try:
                 if not self.is_model_available():
 
@@ -1657,6 +1692,7 @@ class SherpaParakeetEngine(TranscriptionBackend):
         partial_callback=None,
     ) -> dict:
         """Transcribe audio usando Parakeet TDT INT8."""
+        self.last_activity = time.time()
         if not self.ready or self.recognizer is None:
             if self.is_model_available():
                 import sherpa_onnx

@@ -1257,6 +1257,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, Record
             except Exception:
                 pass
             if not isinstance(self.transcription_service.local_engine, LocalWhisperEngine):
+                self.transcription_service.unload_engines()
                 self.transcription_service.local_engine = LocalWhisperEngine(
                     self.model_var.get(), self.config.get("whisper_language", "auto")
                 )
@@ -1270,6 +1271,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, Record
             except Exception:
                 pass
             if not isinstance(self.transcription_service.local_engine, SherpaParakeetEngine):
+                self.transcription_service.unload_engines()
                 self.transcription_service.local_engine = SherpaParakeetEngine()
                 self.transcription_service.local_engine.load(callback=self._on_model_loaded)
             ready = getattr(self.transcription_service.local_engine, "ready", False)
@@ -1285,6 +1287,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, Record
                 self.cmb_model.configure(state="disabled")
             except Exception:
                 pass
+            self.transcription_service.unload_engines()
             if self.config.get("colab_url"):
                 self._cfg_lbl(self.lmodel, "Cloud: Colab GPU", C["cloud"])
                 if hasattr(self, "lconn"):
@@ -1298,6 +1301,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, Record
         """Cambia el modelo de whisper local."""
         self.config["local_model"] = name
         save_config(self.config)
+        self.transcription_service.unload_engines()
         self.transcription_service.local_engine = LocalWhisperEngine(name, self.config.get("whisper_language", "auto"))
         self._update_cfg_summary()
         self.transcription_service.local_engine.load(callback=self._on_model_loaded)
@@ -3434,6 +3438,14 @@ CONSEJOS:
                     self._apptxt(f"\nCargando modelo {eng_name} (la primera vez puede tardar)...\n")
                     self.q.put(("enable", None))
                     return
+                if not getattr(self.transcription_service.local_engine, "error", None):
+                    # El modelo estaba en reposo (idle unload): reactivarlo automaticamente
+                    self._pending_trans = (timestamps, auto_adapt)
+                    self.lprog.configure(text=f"Reactivando {eng_name}... se iniciará solo", text_color=C["warn"])
+                    self._apptxt(f"\nReactivando modelo {eng_name} desde reposo...\n")
+                    self.transcription_service.local_engine.load(callback=self._on_model_loaded)
+                    self.q.put(("enable", None))
+                    return
                 err = self.transcription_service.local_engine.error or "causa desconocida"
                 self._msg(
                     "error",
@@ -4655,6 +4667,18 @@ CONSEJOS:
                     log_info(f"Evento no reconocido en UI poll: {mt}")
         except queue.Empty:
             pass
+
+        now = time.time()
+        if now - getattr(self, "_last_idle_check", 0.0) >= 30.0:
+            self._last_idle_check = now
+            if hasattr(self, "transcription_service") and self.transcription_service:
+                try:
+                    if not getattr(self, "recording", False):
+                        if self.transcription_service.check_idle_unload():
+                            self._cfg_lbl(self.lmodel, "En reposo (RAM libre)", C["muted"])
+                except Exception:
+                    pass
+
         self.after(100, self._poll)
 
     def _fill_gutter(self):

@@ -110,6 +110,24 @@ AudioClass is a desktop application for audio transcription and analysis, built 
 
 **Decision**: RMS-based VAD in `AudioPipeline.process(vad=True)`. 25ms frames, 15th percentile threshold. Deterministic with fixed numpy seed.
 
+## ADR-011: Unified ModelManager & Idle VRAM/RAM Lifecycle Management
+
+**Status**: Accepted
+
+**Context**: Model file verification, path resolution, and downloads were scattered between `audioclass_core.py`, `build.py`, and shell scripts without resume support (HTTP Range) or SHA-256 integrity validation. Additionally, loaded inference engines remained resident in memory indefinitely even when idle or when switching modes.
+
+**Decision**:
+1. Implement `ModelManager` (`services/model_manager.py`) with:
+   - Resumable file downloads with HTTP `Range` headers.
+   - SHA-256 integrity verification with atomic rename.
+   - Unified path resolution across frozen bundles, development workspace, and user cache.
+   - Storage usage tracking and temporary artifact cleanup.
+2. Implement memory lifecycle management:
+   - `unload()` methods on `LocalWhisperEngine` and `SherpaParakeetEngine`.
+   - Dynamic idle unloading (`check_idle_unload(timeout=300)`) in `TranscriptionService`.
+   - Immediate release of previous engine when switching modes in GUI.
+   - Seamless, transparent reactivation from standby on subsequent transcription calls.
+
 ## Project Structure
 
 ```
@@ -120,7 +138,8 @@ AudioClass/
 ├── config_manager.py          # Configuration
 ├── transcription_engines.py   # TranscriptionBackend ABC + implementations
 ├── services/                  # Extracted services
-│   ├── transcription_service.py
+│   ├── model_manager.py       # Unified model manager & downloader
+│   ├── transcription_service.py # Engine lifecycle & orchestration
 │   ├── mic_service.py
 │   ├── recording_service.py
 │   └── update_service.py
@@ -130,10 +149,12 @@ AudioClass/
 ├── update_dialog_ui.py        # Re-exports UpdateDialogMixin
 ├── theme.py                   # Theming
 ├── export_utils.py            # DOCX/PDF export
-├── test_*.py                  # Test suite (21 CI tests)
+├── test_*.py                  # Test suite
 ├── run_ci_suite.py            # CI runner
 ├── .github/workflows/ci.yml   # CI pipeline
 ├── models/                    # Whisper models (gitignored)
+├── models_ct2/                # CTranslate2 models
+├── models_parakeet/           # Sherpa ONNX models
 ├── pyproject.toml             # Dependencies
 └── ARCHITECTURE.md            # This document
 ```
