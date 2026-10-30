@@ -62,9 +62,10 @@ class _FastAPI:
     def __init__(self, *a, **k):
         self.handlers = {}
         self.middleware_fn = None
+        self.middlewares = []
 
-    def add_middleware(self, *a, **k):
-        pass
+    def add_middleware(self, mw_cls, **kwargs):
+        self.middlewares.append((mw_cls, kwargs))
 
     def middleware(self, mtype):
         def deco(fn):
@@ -250,6 +251,17 @@ async def _check_headers():
 
 
 run(_check_headers())
+
+# ── 7. Validación de CORS conforme a W3C ──────────────────────────────────────
+cors_cfg = [k for m, k in getattr(mod.app, "middlewares", []) if "allow_origins" in k]
+check("CORS middleware registrado", len(cors_cfg) > 0, "No se registró middleware de CORS")
+if cors_cfg:
+    c = cors_cfg[0]
+    check(
+        "CORS no combina wildcard con credentials",
+        not ("*" in c.get("allow_origins", []) and c.get("allow_credentials") is True),
+        "CORS allow_origins=['*'] con allow_credentials=True viola W3C",
+    )
 
 # ── Limpieza ──────────────────────────────────────────────────────────────────
 outside.unlink(missing_ok=True)

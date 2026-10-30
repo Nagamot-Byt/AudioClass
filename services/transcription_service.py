@@ -6,6 +6,8 @@ Esto separa la orquestacion de motores de la interfaz y aisla el codigo que
 antes provocaba bugs como el cierre de lambda (B023) por estar pegado a la UI.
 """
 
+from typing import Any
+
 from audioclass_core import (
     AudioPipeline,
     GeminiAdaptationEngine,
@@ -23,9 +25,9 @@ class TranscriptionService:
         # Referencia al dict de config de App (no copia) para ver cambios en vivo.
         self.config = config if config is not None else {}
         self.on_model_loaded = on_model_loaded
-        self.local_engine = None
-        self.pipeline = None
-        self.adapt_engine = None
+        self.local_engine: Any = None
+        self.pipeline: Any = None
+        self.adapt_engine: Any = None
 
     # ── Construccion ──────────────────────────────────────────────────────
     def build(self, config: dict | None = None):

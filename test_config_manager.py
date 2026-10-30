@@ -90,9 +90,17 @@ class TestEncryptDecrypt:
         assert _decrypt_secret(None) == ""
 
     def test_prefix(self):
-        """El cifrado debe usar prefijo 'b64:' o 'dpapi:'."""
+        """El cifrado debe usar prefijo 'enc:', 'dpapi:' o 'b64:'."""
         encrypted = _encrypt_secret("test_value")
-        assert encrypted.startswith("b64:") or encrypted.startswith("dpapi:")
+        assert encrypted.startswith(("enc:", "dpapi:", "b64:"))
+
+    def test_legacy_b64_decrypt(self):
+        """Valores legados con prefijo b64: se descifran correctamente."""
+        import base64
+
+        raw = "legacy_secret_api_key_999"
+        b64_val = "b64:" + base64.b64encode(raw.encode("utf-8")).decode("ascii")
+        assert _decrypt_secret(b64_val) == raw
 
     def test_legacy_plaintext_passthrough(self):
         """Valores en texto plano sin prefijo se devuelven tal cual."""
@@ -165,7 +173,7 @@ class TestLoadSaveConfig:
 
         # En disco debe estar cifrado, no en texto plano
         assert raw["gemini_api_key"] != "super_secret"
-        assert raw["gemini_api_key"].startswith("b64:") or raw["gemini_api_key"].startswith("dpapi:")
+        assert raw["gemini_api_key"].startswith(("enc:", "dpapi:", "b64:"))
 
     def test_backward_compat_with_legacy_config(self, tmp_path):
         """Configurations antiguas sin campos nuevos se actualizan con defaults."""

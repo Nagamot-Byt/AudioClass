@@ -531,6 +531,7 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, Record
             self._stop_done = False  # idempotencia de _stoprec (doble clic)
             self._proc_active = False  # _procsave en curso (race con _close)
             self.buffer = []
+            self.buffer_lock = threading.Lock()
             self.vizbuf = np.zeros(VISUAL_SAMPLES, dtype=np.float32)
             self.last_path = None
             self.last_text = ""
@@ -565,9 +566,9 @@ class App(ToastMixin, UpdateDialogMixin, ConfigDialogMixin, MicTestMixin, Record
 
             self.transcription_service = TranscriptionService(self.config, on_model_loaded=self._on_model_loaded)
             self.transcription_service.build()
-            self.mic_service = self
-            self.recording_service = self
-            self.update_service = self
+            self.mic_service = MicService(self)
+            self.recording_service = RecordingService(self)
+            self.update_service = UpdateService(self)
             try:
                 from locales.i18n import load_language_from_config, t
 
@@ -2014,9 +2015,9 @@ CONSEJOS:
             if sys.platform == "win32":
                 os.startfile(OUTPUT_DIR)
             elif sys.platform == "darwin":
-                subprocess.call(["open", OUTPUT_DIR])
+                subprocess.Popen(["open", OUTPUT_DIR])
             else:
-                subprocess.call(["xdg-open", OUTPUT_DIR])
+                subprocess.Popen(["xdg-open", OUTPUT_DIR])
         except Exception as e:
             self._msg("error", "Error", f"No se pudo abrir la carpeta:\n{e}")
 
@@ -2722,7 +2723,8 @@ CONSEJOS:
         self.recording = True
         self.stop_ev.clear()
         self._stop_done = False
-        self.buffer = []
+        with self.buffer_lock:
+            self.buffer = []
         self._audio_overflows = 0
         self.vu_clips = 0
         self.vu_low = 0
@@ -2844,7 +2846,9 @@ CONSEJOS:
             self._flusher_thread = None
         # Con streaming, el buffer en memoria puede estar vacio aunque haya
         # audio (ya volcado a disco): la senal de captura es el archivo .raw.
-        if self._rec_bytes == 0 and not self.buffer:
+        with self.buffer_lock:
+            empty_buf = not self.buffer
+        if self._rec_bytes == 0 and empty_buf:
             self.lstatus.configure(text="No se capturo audio", text_color=C["warn"])
             try:
                 self._rec_fp.close()
@@ -2900,7 +2904,8 @@ CONSEJOS:
                 flat = indata.flatten()
                 if needs_resample and len(flat) > 0:
                     flat = mt.resample_audio(flat, rec_sr, SAMPLE_RATE)
-                self.buffer.append(flat)
+                with self.buffer_lock:
+                    self.buffer.append(flat)
 
         try:
             with sd.InputStream(
@@ -2939,19 +2944,25 @@ CONSEJOS:
         try:
             while self.recording:
                 time.sleep(1.0)
-                n = len(self.buffer)
-                if n > KEEP:
-                    cut = n - KEEP
-                    arr = np.concatenate(self.buffer[:cut]).flatten()
+                arr = None
+                with self.buffer_lock:
+                    n = len(self.buffer)
+                    if n > KEEP:
+                        cut = n - KEEP
+                        arr = np.concatenate(self.buffer[:cut]).flatten()
+                        del self.buffer[:cut]
+                if arr is not None:
                     self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                     self._rec_bytes += len(arr) * 4
-                    del self.buffer[:cut]
             # Vaciado final al detener
-            if self.buffer:
-                arr = np.concatenate(self.buffer).flatten()
+            arr = None
+            with self.buffer_lock:
+                if self.buffer:
+                    arr = np.concatenate(self.buffer).flatten()
+                    self.buffer = []
+            if arr is not None:
                 self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                 self._rec_bytes += len(arr) * 4
-                self.buffer = []
         except Exception:
             log_exc("rec_flusher")
         finally:
@@ -2978,13 +2989,12 @@ CONSEJOS:
     def _updviz(self):
         """Actualiza la visualizacion de la onda de audio."""
         if self.recording and MPL:
-            if self.buffer:
-                # Solo se usan las ultimas muestras; concatenar todo el buffer
-                # cada fotograma seria O(n) en clases largas.
-                need = int(np.ceil(VISUAL_SAMPLES / CHUNK_SIZE)) + 2
-                # Los bloques del callback son 2-D (CHUNK_SIZE, 1): aplanar a 1-D
-                # o v[-n:] = recent lanza broadcast error en los primeros frames.
-                recent = np.concatenate(self.buffer[-need:]).ravel()
+            recent = None
+            with self.buffer_lock:
+                if self.buffer:
+                    need = int(np.ceil(VISUAL_SAMPLES / CHUNK_SIZE)) + 2
+                    recent = np.concatenate(self.buffer[-need:]).ravel()
+            if recent is not None:
                 n = len(recent)
                 if n >= VISUAL_SAMPLES:
                     self.vizbuf = recent[-VISUAL_SAMPLES:]
@@ -3006,9 +3016,12 @@ CONSEJOS:
             return
         try:
             rms, peak = 0.0, 0.0
-            if self.buffer:
-                need = 6  # ultimas ~0.6 s
-                recent = np.concatenate(self.buffer[-need:])
+            recent = None
+            with self.buffer_lock:
+                if self.buffer:
+                    need = 6  # ultimas ~0.6 s
+                    recent = np.concatenate(self.buffer[-need:])
+            if recent is not None and len(recent) > 0:
                 x = recent.astype(np.float64)
                 rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0.0
                 peak = float(np.max(np.abs(x))) if len(x) else 0.0
@@ -3164,8 +3177,10 @@ CONSEJOS:
             if my_raw and os.path.exists(my_raw):
                 with open(my_raw, "rb") as f:
                     raw = np.frombuffer(f.read(), dtype=np.float32).astype(np.float32).flatten()
-            if len(raw) == 0 and self.buffer:
-                raw = np.concatenate(self.buffer).flatten()
+            if len(raw) == 0:
+                with self.buffer_lock:
+                    if self.buffer:
+                        raw = np.concatenate(self.buffer).flatten()
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             dur = len(raw) / SAMPLE_RATE
@@ -4288,342 +4303,356 @@ CONSEJOS:
         except Exception:
             pass
 
+    def _init_event_dispatcher(self):
+        """Inicializa la tabla de despacho de eventos UI para desacoplar el event loop."""
+        self._event_handlers = {
+            "status": self._handle_status,
+            "log": self._handle_log,
+            "enable": self._handle_enable,
+            "enable_rec": self._handle_enable_rec,
+            "model_ready": self._handle_model_ready,
+            "model_downloading": self._handle_model_downloading,
+            "rec_error": self._handle_rec_error,
+            "model_err": self._handle_model_err,
+            "trans_err": self._handle_trans_err,
+            "adapt_test": self._handle_adapt_test,
+            "gdoc_connect": self._handle_gdoc_connect,
+            "gdoc_done": self._handle_gdoc_done,
+            "trans_done": self._handle_trans_done,
+            "adapt_done": self._handle_adapt_done,
+            "mic_lvl": self._handle_mic_lvl,
+            "mic_result": self._handle_mic_result,
+            "mic_idle": self._handle_mic_idle,
+            "progress": self._handle_progress,
+            "partial": self._handle_partial,
+            "mic_probe": self._handle_mic_probe,
+            "mic_live": self._handle_mic_live,
+            "mic_opt_log": self._handle_mic_opt_log,
+            "mic_opt_lvl": self._handle_mic_opt_lvl,
+            "mic_opt_state": self._handle_mic_opt_state,
+            "mic_opt_done": self._handle_mic_opt_done,
+            "update_available": self._handle_update_available,
+            "update_progress": self._handle_update_progress,
+            "update_error": self._handle_update_error,
+            "update_installed": self._handle_update_installed,
+            "addhist": self._handle_addhist,
+        }
+
+    def _handle_status(self, d):
+        self.lstatus.configure(text=d)
+        col = (
+            C["ok"]
+            if "Listo" in d
+            else C["err"]
+            if "Error" in d
+            else C["cloud"]
+            if "Cloud" in d
+            else C["gemini"]
+            if "Adapt" in d
+            else C["warn"]
+            if "Proces" in d
+            else C["muted"]
+        )
+        self.lstatus.configure(text_color=col)
+
+    def _handle_log(self, d):
+        self._apptxt(d)
+
+    def _handle_enable(self, d):
+        self._transcribing = False
+        self._trans_msg = ""
+        self._trans_frac = 0.0
+        self._last_partial_len = 0
+        self._clear_live()
+        self.btr.configure(state="normal")
+        self.bts.configure(state="normal")
+        self.bpdf.configure(state="normal")
+        self.bdocx.configure(state="normal")
+        self.bdocs.configure(state="normal" if _gdocs_importable() else "disabled")
+        self.bcancel.configure(state="disabled")
+        self._enable_adapt_buttons()
+
+    def _handle_enable_rec(self, d):
+        self.btr.configure(state="normal")
+        self.bts.configure(state="normal")
+        self._set_step(2)
+        self._show_toast("Grabación lista")
+
+    def _handle_model_ready(self, d):
+        ready_txt = "Parakeet TDT listo" if "parakeet" in str(d).lower() else f"Whisper {d} listo"
+        self._cfg_lbl(self.lmodel, ready_txt, C["ok"])
+        if getattr(self, "_pending_trans", None):
+            ts, aa = self._pending_trans
+            self._pending_trans = None
+            self._pending_after = self.after(150, lambda ts=ts, aa=aa: self._starttrans(ts, aa))
+
+    def _handle_model_downloading(self, d):
+        self._cfg_lbl(self.lmodel, f"Descargando: {d}", C["warn"])
+        if hasattr(self, "lprog"):
+            self.lprog.configure(text=f"Descargando modelo: {d}", text_color=C["warn"])
+
+    def _handle_rec_error(self, d):
+        self.recording = False
+        self.stop_ev.set()
+        self._stop_done = False
+        try:
+            self.bstop.pack_forget()
+            self.brec.pack(side="left", padx=(18, 12), pady=16, before=self.btr)
+            self.lstatus.configure(text=f"Error en microfono: {str(d)[:30]}", text_color=C["err"])
+            self.ltime.configure(text="")
+            self._show_toast(f"Error de captura: {str(d)[:40]}", kind="err")
+        except Exception:
+            pass
+
+    def _handle_model_err(self, d):
+        self._cfg_lbl(self.lmodel, f"Error: {d[:30]}", C["err"])
+        self._pending_trans = None
+
+    def _handle_trans_err(self, d):
+        self._clear_live()
+        _req = getattr(self, "_last_trans_req", (False, False))
+        self._show_toast("Error de transcripción", kind="err", retry=lambda _req=_req: self._starttrans(*_req))
+
+    def _handle_adapt_test(self, d):
+        prov, (ok, msg) = d
+        try:
+            is_g = prov == "gemini"
+            lbl_attr = "gemini_test_lbl" if is_g else "openai_test_lbl"
+            btn_attr = "btn_test_gemini" if is_g else "btn_test_openai"
+            if hasattr(self, lbl_attr) and getattr(self, lbl_attr).winfo_exists():
+                getattr(self, lbl_attr).configure(
+                    text=("[OK] " if ok else "[X] ") + msg, text_color=C["ok"] if ok else C["err"]
+                )
+            if hasattr(self, btn_attr) and getattr(self, btn_attr).winfo_exists():
+                getattr(self, btn_attr).configure(state="normal", text="Probar Conexión")
+        except Exception:
+            pass
+
+    def _handle_gdoc_connect(self, d):
+        ok, msg = d
+        try:
+            if hasattr(self, "gdoc_lbl") and self.gdoc_lbl.winfo_exists():
+                self.gdoc_lbl.configure(text=("[OK] " if ok else "[X] ") + msg, text_color=C["ok"] if ok else C["err"])
+            if hasattr(self, "btn_gdoc_connect") and self.btn_gdoc_connect.winfo_exists():
+                self.btn_gdoc_connect.configure(state="normal", text="Conectar con Google")
+        except Exception:
+            pass
+
+    def _handle_gdoc_done(self, d):
+        ok, url = d
+        try:
+            if hasattr(self, "bdocs") and self.bdocs.winfo_exists():
+                if _gdocs_importable():
+                    self.bdocs.configure(state="normal", text="Google Docs")
+                else:
+                    self.bdocs.configure(state="disabled", text="Google Docs (no disponible)")
+        except Exception:
+            pass
+        if ok:
+            self._set_step(4)
+            self._show_toast("Exportado a Google Docs")
+            self.q.put(("log", f"\nDocumento creado en Google Docs:\n{url}\n"))
+            self.q.put(("status", "Exportado a Google Docs"))
+            import webbrowser
+
+            try:
+                webbrowser.open(url)
+                self._msg("info", "Google Docs", f"Documento creado. Se abrio en tu navegador:\n\n{url}")
+            except Exception:
+                self._msg("info", "Google Docs", f"Documento creado:\n\n{url}")
+        else:
+            self.q.put(("status", "Error al exportar a Google Docs"))
+            self._msg("error", "Google Docs", url)
+
+    def _handle_trans_done(self, d):
+        self._settxt(d)
+        self._set_step(3)
+        self._clear_live()
+        self._show_toast("Transcripción completada", kind="ok")
+        if hasattr(self, "lbadge"):
+            try:
+                self.lbadge.pack(side="right", padx=(0, 14))
+            except Exception:
+                pass
+
+    def _handle_adapt_done(self, d):
+        text, title, icon = d
+        self._set_adapt_text(text, title, icon)
+        self._set_step(4)
+        self._show_toast("Análisis listo")
+
+    def _handle_mic_lvl(self, d):
+        r = d
+        try:
+            if getattr(self, "mic_test_top", None) is not None and self.mic_test_top.winfo_exists():
+                if CTK:
+                    self.mic_lvl_bar.set(min(1.0, r * 10))
+                    self.mic_lvl_bar.configure(
+                        progress_color=C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
+                    )
+                else:
+                    self.mic_lvl_bar["value"] = min(100, r * 1000)
+                db = 20 * np.log10(max(r, 1e-6))
+                self.mic_lvl_lbl.configure(text=f"{db:+.0f} dB")
+        except Exception:
+            pass
+
+    def _handle_mic_result(self, d):
+        txt = d
+        try:
+            if getattr(self, "mic_test_top", None) is not None and self.mic_test_top.winfo_exists():
+                ok = txt.startswith("[OK]")
+                self.mic_state.configure(text="Prueba completada", text_color=C["ok"] if ok else C["warn"])
+                self.mic_result.configure(text=txt, text_color=C["ok"] if ok else C["warn"])
+        except Exception:
+            pass
+
+    def _handle_mic_idle(self, d):
+        try:
+            if hasattr(self, "btn_mic_test") and self.btn_mic_test.winfo_exists():
+                self.btn_mic_test.configure(state="normal", text="Comenzar prueba (8 s)")
+        except Exception:
+            pass
+
+    def _handle_progress(self, d):
+        p, l = d
+        self._trans_msg = l
+        self._trans_frac = p
+        if CTK:
+            self.pbar.set(p)
+        else:
+            self.pbar["value"] = p * 100
+        self.lprog.configure(text=l)
+
+    def _handle_partial(self, d):
+        if not d or not getattr(self, "_transcribing", False):
+            return
+        prev = getattr(self, "_last_partial_len", 0)
+        if len(d) - prev >= 200:
+            self._stream_live(d)
+            self._last_partial_len = len(d)
+
+    def _handle_mic_probe(self, d):
+        self._mic_probe_done(d)
+
+    def _handle_mic_live(self, d):
+        r = d
+        try:
+            if getattr(self, "mic_warn_top", None) is not None and self.mic_warn_top.winfo_exists():
+                col = C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
+                if CTK:
+                    self.mic_warn_bar.set(min(1.0, r * 10))
+                    self.mic_warn_bar.configure(progress_color=col)
+                else:
+                    self.mic_warn_bar["value"] = min(100, r * 1000)
+                db = 20 * np.log10(max(r, 1e-6))
+                self.mic_warn_lbl.configure(text=f"{db:+.0f} dB", text_color=col)
+                self._update_mic_warn_best(r)
+        except Exception:
+            pass
+
+    def _handle_mic_opt_log(self, d):
+        try:
+            if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
+                if hasattr(self, "mic_opt_txt"):
+                    self.mic_opt_txt.configure(state="normal")
+                    self.mic_opt_txt.insert("end", d)
+                    self.mic_opt_txt.see("end")
+                    self.mic_opt_txt.configure(state="disabled")
+        except Exception:
+            pass
+
+    def _handle_mic_opt_lvl(self, d):
+        r = d
+        try:
+            if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
+                if CTK:
+                    self.mic_opt_lvl_bar.set(min(1.0, r * 10))
+                    self.mic_opt_lvl_bar.configure(
+                        progress_color=C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
+                    )
+                else:
+                    self.mic_opt_lvl_bar["value"] = min(100, r * 1000)
+                db = 20 * np.log10(max(r, 1e-6))
+                self.mic_opt_lvl_lbl.configure(text=f"{db:+.0f} dB")
+        except Exception:
+            pass
+
+    def _handle_mic_opt_state(self, d):
+        try:
+            if getattr(self, "mic_opt_state_lbl", None) is not None and self.mic_opt_state_lbl.winfo_exists():
+                self.mic_opt_state_lbl.configure(text=d, text_color=C["err"] if d else C["warn"])
+        except Exception:
+            pass
+
+    def _handle_mic_opt_done(self, d):
+        self._mic_opt_busy = False
+        try:
+            if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
+                for b in ("btn_mic_opt_diag", "btn_mic_opt_apply"):
+                    w = getattr(self, b, None)
+                    if w is not None:
+                        try:
+                            if w.winfo_exists():
+                                w.configure(state="normal")
+                        except Exception:
+                            pass
+                if hasattr(self, "mic_opt_state_lbl") and self.mic_opt_state_lbl.winfo_exists():
+                    col = C["ok"] if d == "OK" else C["err"]
+                    self.mic_opt_state_lbl.configure(text=f"Veredicto: {d}", text_color=col)
+        except Exception:
+            pass
+
+    def _handle_update_available(self, d):
+        latest, url, notes = d
+        self._show_update_dialog(latest, url, notes)
+
+    def _handle_update_progress(self, d):
+        if hasattr(self, "_update_progress_lbl"):
+            try:
+                self._update_progress_lbl.configure(text=d)
+            except Exception:
+                pass
+
+    def _handle_update_error(self, d):
+        if hasattr(self, "_update_dialog") and self._update_dialog is not None:
+            try:
+                self._update_btn_download.configure(state="normal", text="Reintentar")
+                self._update_btn_skip.configure(state="normal")
+                self._update_progress_lbl.configure(text=f"Error: {d}", text_color=C["err"])
+            except Exception:
+                pass
+        self._msg("error", "Error de actualización", d)
+
+    def _handle_update_installed(self, d):
+        if hasattr(self, "_update_dialog") and self._update_dialog is not None:
+            try:
+                self._update_progress_bar.pack_forget()
+                self._update_progress_lbl.configure(text="¡Instalación completada! Reiniciando...", text_color=C["ok"])
+                self._update_btn_download.configure(state="disabled", text="Reiniciando...")
+            except Exception:
+                pass
+        self.after(2000, lambda: self._restart_app())
+
+    def _handle_addhist(self, d):
+        self._addhist(d)
+
     def _poll(self):
-        """Metodo interno: poll."""
+        """Procesa mensajes de la cola de eventos UI mediante tabla de despacho."""
+        if not hasattr(self, "_event_handlers"):
+            self._init_event_dispatcher()
+
         try:
             while True:
                 mt, d = self.q.get_nowait()
-
-                if mt == "status":
-                    self.lstatus.configure(text=d)
-                    col = (
-                        C["ok"]
-                        if "Listo" in d
-                        else C["err"]
-                        if "Error" in d
-                        else C["cloud"]
-                        if "Cloud" in d
-                        else C["gemini"]
-                        if "Adapt" in d
-                        else C["warn"]
-                        if "Proces" in d
-                        else C["muted"]
-                    )
-                    self.lstatus.configure(text_color=col)
-
-                elif mt == "log":
-                    self._apptxt(d)
-
-                elif mt == "enable":
-                    self._transcribing = False
-                    self._trans_msg = ""
-                    self._trans_frac = 0.0
-                    self._last_partial_len = 0
-                    self._clear_live()
-                    self.btr.configure(state="normal")
-                    self.bts.configure(state="normal")
-                    self.bpdf.configure(state="normal")
-                    self.bdocx.configure(state="normal")
-                    self.bdocs.configure(state="normal" if _gdocs_importable() else "disabled")
-                    self.bcancel.configure(state="disabled")
-                    self._enable_adapt_buttons()
-
-                elif mt == "enable_rec":
-                    self.btr.configure(state="normal")
-                    self.bts.configure(state="normal")
-                    self._set_step(2)
-                    self._show_toast("Grabación lista")
-
-                elif mt == "model_ready":
-                    ready_txt = "Parakeet TDT listo" if "parakeet" in str(d).lower() else f"Whisper {d} listo"
-                    self._cfg_lbl(self.lmodel, ready_txt, C["ok"])
-                    # Transcripcion pendiente: se inicia sola al terminar la carga.
-                    # Se guarda el id del after para poder cancelarlo si el
-                    # usuario pulsa Cancelar en la ventana de 150 ms.
-                    if getattr(self, "_pending_trans", None):
-                        ts, aa = self._pending_trans
-                        self._pending_trans = None
-                        self._pending_after = self.after(150, lambda ts=ts, aa=aa: self._starttrans(ts, aa))
-
-                elif mt == "model_downloading":
-                    self._cfg_lbl(self.lmodel, f"Descargando: {d}", C["warn"])
-                    if hasattr(self, "lprog"):
-                        self.lprog.configure(text=f"Descargando modelo: {d}", text_color=C["warn"])
-
-                elif mt == "rec_error":
-                    self.recording = False
-                    self.stop_ev.set()
-                    self._stop_done = False
+                handler = self._event_handlers.get(mt)
+                if handler is not None:
                     try:
-                        self.bstop.pack_forget()
-                        self.brec.pack(side="left", padx=(18, 12), pady=16, before=self.btr)
-                        self.lstatus.configure(text=f"Error en microfono: {str(d)[:30]}", text_color=C["err"])
-                        self.ltime.configure(text="")
-                        self._show_toast(f"Error de captura: {str(d)[:40]}", kind="err")
+                        handler(d)
                     except Exception:
-                        pass
-
-                elif mt == "model_err":
-                    self._cfg_lbl(self.lmodel, f"Error: {d[:30]}", C["err"])
-                    self._pending_trans = None
-
-                elif mt == "trans_err":
-                    self._clear_live()
-                    _req = getattr(self, "_last_trans_req", (False, False))
-                    self._show_toast(
-                        "Error de transcripción", kind="err", retry=lambda _req=_req: self._starttrans(*_req)
-                    )
-
-                elif mt == "adapt_test":
-                    prov, (ok, msg) = d
-                    try:
-                        is_g = prov == "gemini"
-                        lbl_attr = "gemini_test_lbl" if is_g else "openai_test_lbl"
-                        btn_attr = "btn_test_gemini" if is_g else "btn_test_openai"
-                        if hasattr(self, lbl_attr) and getattr(self, lbl_attr).winfo_exists():
-                            getattr(self, lbl_attr).configure(
-                                text=("[OK] " if ok else "[X] ") + msg, text_color=C["ok"] if ok else C["err"]
-                            )
-                        if hasattr(self, btn_attr) and getattr(self, btn_attr).winfo_exists():
-                            getattr(self, btn_attr).configure(state="normal", text="Probar Conexión")
-                    except Exception:
-                        pass
-
-                elif mt == "gdoc_connect":
-                    ok, msg = d
-                    try:
-                        if hasattr(self, "gdoc_lbl") and self.gdoc_lbl.winfo_exists():
-                            self.gdoc_lbl.configure(
-                                text=("[OK] " if ok else "[X] ") + msg, text_color=C["ok"] if ok else C["err"]
-                            )
-                        if hasattr(self, "btn_gdoc_connect") and self.btn_gdoc_connect.winfo_exists():
-                            self.btn_gdoc_connect.configure(state="normal", text="Conectar con Google")
-                    except Exception:
-                        pass
-
-                elif mt == "gdoc_done":
-                    ok, url = d
-                    try:
-                        if hasattr(self, "bdocs") and self.bdocs.winfo_exists():
-                            if _gdocs_importable():
-                                self.bdocs.configure(state="normal", text="Google Docs")
-                            else:
-                                self.bdocs.configure(state="disabled", text="Google Docs (no disponible)")
-                    except Exception:
-                        pass
-                    if ok:
-                        self._set_step(4)
-                        self._show_toast("Exportado a Google Docs")
-                        self.q.put(("log", f"\nDocumento creado en Google Docs:\n{url}\n"))
-                        self.q.put(("status", "Exportado a Google Docs"))
-                        import webbrowser
-
-                        try:
-                            webbrowser.open(url)
-                            self._msg("info", "Google Docs", f"Documento creado. Se abrio en tu navegador:\n\n{url}")
-                        except Exception:
-                            self._msg("info", "Google Docs", f"Documento creado:\n\n{url}")
-                    else:
-                        self.q.put(("status", "Error al exportar a Google Docs"))
-                        self._msg("error", "Google Docs", url)
-
-                elif mt == "trans_done":
-                    self._settxt(d)
-                    self._set_step(3)
-                    self._clear_live()
-                    self._show_toast("Transcripción completada", kind="ok")
-                    if hasattr(self, "lbadge"):
-                        try:
-                            self.lbadge.pack(side="right", padx=(0, 14))
-                        except Exception:
-                            pass
-
-                elif mt == "adapt_done":
-                    text, title, icon = d
-                    self._set_adapt_text(text, title, icon)
-                    self._set_step(4)
-                    self._show_toast("Análisis listo")
-
-                elif mt == "mic_lvl":
-                    # Medidor de nivel en vivo de la prueba de microfono
-                    r = d
-                    try:
-                        if getattr(self, "mic_test_top", None) is not None and self.mic_test_top.winfo_exists():
-                            if CTK:
-                                self.mic_lvl_bar.set(min(1.0, r * 10))
-                                self.mic_lvl_bar.configure(
-                                    progress_color=C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
-                                )
-                            else:
-                                self.mic_lvl_bar["value"] = min(100, r * 1000)
-                            db = 20 * np.log10(max(r, 1e-6))
-                            self.mic_lvl_lbl.configure(text=f"{db:+.0f} dB")
-                    except Exception:
-                        pass
-
-                elif mt == "mic_result":
-                    txt = d
-                    try:
-                        if getattr(self, "mic_test_top", None) is not None and self.mic_test_top.winfo_exists():
-                            ok = txt.startswith("[OK]")
-                            self.mic_state.configure(text="Prueba completada", text_color=C["ok"] if ok else C["warn"])
-                            self.mic_result.configure(text=txt, text_color=C["ok"] if ok else C["warn"])
-                    except Exception:
-                        pass
-
-                elif mt == "mic_idle":
-                    try:
-                        if hasattr(self, "btn_mic_test") and self.btn_mic_test.winfo_exists():
-                            self.btn_mic_test.configure(state="normal", text="Comenzar prueba (8 s)")
-                    except Exception:
-                        pass
-
-                elif mt == "progress":
-                    p, l = d
-                    self._trans_msg = l
-                    self._trans_frac = p
-                    if CTK:
-                        self.pbar.set(p)
-                    else:
-                        self.pbar["value"] = p * 100
-                    self.lprog.configure(text=l)
-
-                elif mt == "partial":
-                    # Streaming (mejora #3): texto parcial acumulado en vivo.
-                    # Throttle: solo redibuja si el texto crecio >= 200 chars
-                    # para no recargar el widget en cada chunk menor.
-                    if not d or not getattr(self, "_transcribing", False):
-                        pass
-                    else:
-                        prev = getattr(self, "_last_partial_len", 0)
-                        if len(d) - prev >= 200:
-                            self._stream_live(d)
-                            self._last_partial_len = len(d)
-
-                elif mt == "mic_probe":
-                    # Resultado del pre-check de microfono (_startrec): si el
-                    # nivel es muy debil, _mic_probe_done abre el dialogo de
-                    # advertencia con medidor en vivo.
-                    self._mic_probe_done(d)
-
-                elif mt == "mic_live":
-                    # Medidor en vivo del dialogo "microfono muy bajo": el
-                    # usuario ve cuanta senal llega al acercarse al micro, y el
-                    # 'Mejor p90' le dice si YA alcanzo la meta.
-                    r = d
-                    try:
-                        if getattr(self, "mic_warn_top", None) is not None and self.mic_warn_top.winfo_exists():
-                            col = C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
-                            if CTK:
-                                self.mic_warn_bar.set(min(1.0, r * 10))
-                                self.mic_warn_bar.configure(progress_color=col)
-                            else:
-                                self.mic_warn_bar["value"] = min(100, r * 1000)
-                            db = 20 * np.log10(max(r, 1e-6))
-                            self.mic_warn_lbl.configure(text=f"{db:+.0f} dB", text_color=col)
-                            self._update_mic_warn_best(r)
-                    except Exception:
-                        pass
-
-                elif mt == "mic_opt_log":
-                    # Optimizador de microfono: linea de progreso en su dialogo
-                    try:
-                        if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
-                            if hasattr(self, "mic_opt_txt"):
-                                self.mic_opt_txt.configure(state="normal")
-                                self.mic_opt_txt.insert("end", d)
-                                self.mic_opt_txt.see("end")
-                                self.mic_opt_txt.configure(state="disabled")
-                    except Exception:
-                        pass
-
-                elif mt == "mic_opt_lvl":
-                    # Nivel en vivo de la prueba del optimizador
-                    r = d
-                    try:
-                        if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
-                            if CTK:
-                                self.mic_opt_lvl_bar.set(min(1.0, r * 10))
-                                self.mic_opt_lvl_bar.configure(
-                                    progress_color=C["ok"] if r > 0.02 else (C["warn"] if r > 0.005 else C["muted"])
-                                )
-                            else:
-                                self.mic_opt_lvl_bar["value"] = min(100, r * 1000)
-                            db = 20 * np.log10(max(r, 1e-6))
-                            self.mic_opt_lvl_lbl.configure(text=f"{db:+.0f} dB")
-                    except Exception:
-                        pass
-
-                elif mt == "mic_opt_state":
-                    # Aviso "HABLA AHORA" durante la prueba del optimizador
-                    try:
-                        if (
-                            getattr(self, "mic_opt_state_lbl", None) is not None
-                            and self.mic_opt_state_lbl.winfo_exists()
-                        ):
-                            self.mic_opt_state_lbl.configure(text=d, text_color=C["err"] if d else C["warn"])
-                    except Exception:
-                        pass
-
-                elif mt == "mic_opt_done":
-                    # Fin del diagnostico/optimizacion: re-habilitar botones y veredicto
-                    self._mic_opt_busy = False
-                    try:
-                        if getattr(self, "mic_opt_top", None) is not None and self.mic_opt_top.winfo_exists():
-                            for b in ("btn_mic_opt_diag", "btn_mic_opt_apply"):
-                                w = getattr(self, b, None)
-                                if w is not None:
-                                    try:
-                                        if w.winfo_exists():
-                                            w.configure(state="normal")
-                                    except Exception:
-                                        pass
-                            if hasattr(self, "mic_opt_state_lbl") and self.mic_opt_state_lbl.winfo_exists():
-                                col = C["ok"] if d == "OK" else C["err"]
-                                self.mic_opt_state_lbl.configure(text=f"Veredicto: {d}", text_color=col)
-                    except Exception:
-                        pass
-
-                elif mt == "update_available":
-                    latest, url, notes = d
-                    self._show_update_dialog(latest, url, notes)
-
-                elif mt == "update_progress":
-                    # Actualizar barra de progreso del diálogo de actualización
-                    if hasattr(self, "_update_progress_lbl"):
-                        try:
-                            self._update_progress_lbl.configure(text=d)
-                        except Exception:
-                            pass
-
-                elif mt == "update_error":
-                    # Error durante la actualización
-                    if hasattr(self, "_update_dialog") and self._update_dialog is not None:
-                        try:
-                            self._update_btn_download.configure(state="normal", text="Reintentar")
-                            self._update_btn_skip.configure(state="normal")
-                            self._update_progress_lbl.configure(text=f"Error: {d}", text_color=C["err"])
-                        except Exception:
-                            pass
-                    self._msg("error", "Error de actualización", d)
-
-                elif mt == "update_installed":
-                    # Actualización instalada exitosamente
-                    if hasattr(self, "_update_dialog") and self._update_dialog is not None:
-                        try:
-                            self._update_progress_bar.pack_forget()
-                            self._update_progress_lbl.configure(
-                                text="¡Instalación completada! Reiniciando...", text_color=C["ok"]
-                            )
-                            self._update_btn_download.configure(state="disabled", text="Reiniciando...")
-                        except Exception:
-                            pass
-                    # Reiniciar después de un breve delay
-                    self.after(2000, lambda: self._restart_app())
-
-                elif mt == "addhist":
-                    self._addhist(d)
-
+                        log_exc(f"event_handler_{mt}")
+                else:
+                    log_info(f"Evento no reconocido en UI poll: {mt}")
         except queue.Empty:
             pass
         self.after(100, self._poll)

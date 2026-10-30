@@ -159,9 +159,11 @@ def main():
         v = v.astype(np.float32) / 32768.0
 
     # Voz real x3 -> ~63s -> 3 chunks de 30s (camino paralelo real)
-    raw3 = np.tile(v, 3)
+    # prueba_voz_es.wav mide ~138s; recortamos a 21s para que tile(3) mida 63s exactos (3 chunks)
+    v21 = v[: int(21 * sr)]
+    raw3 = np.tile(v21, 3)
     # Voz real x1 -> ~21s -> 1 chunk (camino secuencial, para ráfagas de cancelación)
-    raw1 = v
+    raw1 = v21
 
     tmp = tempfile.gettempdir()
     p3 = os.path.join(tmp, "ac_stress_3ch.wav")
@@ -217,8 +219,8 @@ def main():
     # gruesas sostenidas (>~150 MB/corrida = el peso de un modelo tiny).
     if rss_series[0][0] is not None:
         print("[MEM] Chequeo: objetos Whisper acotados + plateau de RSS")
-        # 2 corridas extra para tener 3 deltas finales
-        for j in range(2):
+        # 1 corrida extra para tener 3 deltas finales tras el warmup inicial
+        for j in range(1):
             try:
                 _full_run(eng, p3, f"MEM{j + 1}")
             except Exception as e:

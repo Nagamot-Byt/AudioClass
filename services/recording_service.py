@@ -113,7 +113,10 @@ class RecordingMixin:
         self.recording = True
         self.stop_ev.clear()
         self._stop_done = False
-        self.buffer = []
+        if not hasattr(self, "buffer_lock"):
+            self.buffer_lock = threading.Lock()
+        with self.buffer_lock:
+            self.buffer = []
         self._audio_overflows = 0
         self.vu_clips = 0
         self.vu_low = 0
@@ -232,7 +235,11 @@ class RecordingMixin:
             self._flusher_thread = None
 
         # Verificar si hubo audio
-        if self._rec_bytes == 0 and not self.buffer:
+        if not hasattr(self, "buffer_lock"):
+            self.buffer_lock = threading.Lock()
+        with self.buffer_lock:
+            empty_buf = not self.buffer
+        if self._rec_bytes == 0 and empty_buf:
             self.lstatus.configure(text="No se capturo audio")
             try:
                 self._rec_fp.close()
@@ -258,6 +265,8 @@ class RecordingMixin:
         Si el microfono es debil (config mic_gain > 1), aplica boost
         de ganancia automaticamente para mejorar la senal.
         """
+        if not hasattr(self, "buffer_lock"):
+            self.buffer_lock = threading.Lock()
         # Ganancia configurable (1.0 = sin boost, 2.0-5.0 para mics debiles)
         gain = 1.0
         try:
@@ -274,7 +283,8 @@ class RecordingMixin:
                 # Aplicar ganancia si es mayor que 1.0
                 if gain > 1.0:
                     data = np.clip(data * gain, -1.0, 1.0).astype(np.float32)
-                self.buffer.append(data)
+                with self.buffer_lock:
+                    self.buffer.append(data)
 
         try:
             with sd.InputStream(
@@ -298,25 +308,54 @@ class RecordingMixin:
         Al detener, vuelta el resto y cierra.
         """
         KEEP = int(np.ceil(VISUAL_SAMPLES / CHUNK_SIZE)) + 4  # ~2s + margen
+        if not hasattr(self, "buffer_lock"):
+            self.buffer_lock = threading.Lock()
         try:
             while self.recording:
                 time.sleep(1.0)
-                n = len(self.buffer)
-                if n > KEEP:
-                    cut = n - KEEP
-                    arr = np.concatenate(self.buffer[:cut]).flatten()
+                arr = None
+                with self.buffer_lock:
+                    n = len(self.buffer)
+                    if n > KEEP:
+                        cut = n - KEEP
+                        arr = np.concatenate(self.buffer[:cut]).flatten()
+                        del self.buffer[:cut]
+                if arr is not None:
                     self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                     self._rec_bytes += len(arr) * 4
-                    del self.buffer[:cut]
             # Vaciado final al detener
-            if self.buffer:
-                arr = np.concatenate(self.buffer).flatten()
+            arr = None
+            with self.buffer_lock:
+                if self.buffer:
+                    arr = np.concatenate(self.buffer).flatten()
+                    self.buffer = []
+            if arr is not None:
                 self._rec_fp.write(np.ascontiguousarray(arr, dtype=np.float32).tobytes())
                 self._rec_bytes += len(arr) * 4
-                self.buffer = []
         except Exception:
             pass
 
 
-# Alias de servicio (nombre canónico de la extracción).
-RecordingService = RecordingMixin
+# ── Clase de Servicio desacoplada (ADR-001) ──────────────────────────────────
+class RecordingService:
+    """Servicio de grabación y captura de audio."""
+
+    def __init__(self, host=None):
+        self._host = host
+
+    def __getattr__(self, name):
+        if self._host is not None:
+            return getattr(self._host, name)
+        raise AttributeError(f"'RecordingService' object has no attribute '{name}'")
+
+    def begin_recording(self):
+        return RecordingMixin.begin_recording(self._host if self._host is not None else self)
+
+    def stoprec(self):
+        return RecordingMixin.stoprec(self._host if self._host is not None else self)
+
+    def recloop(self):
+        return RecordingMixin.recloop(self._host if self._host is not None else self)
+
+    def rec_flusher(self):
+        return RecordingMixin.rec_flusher(self._host if self._host is not None else self)

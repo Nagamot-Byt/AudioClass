@@ -636,5 +636,37 @@ class MicTestMixin:
             self.q.put(("mic_opt_done", "ERROR"))
 
 
-# Alias de servicio (nombre canónico de la extracción).
-MicService = MicTestMixin
+# ── Clase de Servicio desacoplada (ADR-001) ──────────────────────────────────
+class MicService:
+    """Servicio de control y optimización de micrófono."""
+
+    def __init__(self, host=None):
+        self._host = host
+
+    def __getattr__(self, name):
+        if self._host is not None:
+            return getattr(self._host, name)
+        raise AttributeError(f"'MicService' object has no attribute '{name}'")
+
+    def open_mic_test(self):
+        return MicTestMixin.open_mic_test(self._host if self._host is not None else self)
+
+    def open_mic_optimizer(self):
+        return MicTestMixin.open_mic_optimizer(self._host if self._host is not None else self)
+
+    def _mic_test_start_inner(self):
+        return MicTestMixin._mic_test_start_inner(self._host if self._host is not None else self)
+
+    def _mic_test_worker_inner(self):
+        return MicTestMixin._mic_test_worker_inner(self._host if self._host is not None else self)
+
+    def _compute_mic_metrics(self, raw, proc):
+        return MicTestMixin._compute_mic_metrics(self._host if self._host is not None else self, raw, proc)
+
+    def _mic_opt_start_inner(self, do_apply):
+        return MicTestMixin._mic_opt_start_inner(self._host if self._host is not None else self, do_apply)
+
+    def _mic_opt_worker_inner(self, do_apply, mic_name=""):
+        return MicTestMixin._mic_opt_worker_inner(
+            self._host if self._host is not None else self, do_apply, mic_name=mic_name
+        )

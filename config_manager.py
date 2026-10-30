@@ -181,12 +181,45 @@ def _migrate_config(cfg: dict) -> dict:
     return cfg
 
 
-# ── Cifrado de secretos (DPAPI en Windows) ────────────────────────────────
+# ── Cifrado de secretos (DPAPI en Windows, AES-256-GCM multiplataforma) ──
 _SECRET_FIELDS = ("gemini_api_key", "openai_api_key", "colab_key")
 
 
+def _get_crypto_key() -> bytes | None:
+    """Deriva una clave simétrica de 256 bits para AES-GCM a partir de un identificador
+    de máquina y usuario, garantizando que el archivo de configuración cifrado
+    no sea trivialmente legible fuera del entorno del usuario actual."""
+    try:
+        import getpass
+        import hashlib
+
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+        parts = [getpass.getuser(), os.path.expanduser("~")]
+        # Identificadores de máquina en Linux/macOS
+        for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+            if os.path.exists(p):
+                try:
+                    with open(p, "rb") as f:
+                        parts.append(f.read().strip().decode("ascii", errors="ignore"))
+                        break
+                except Exception:
+                    pass
+        seed = ":".join(parts).encode("utf-8")
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"AudioClass-v91-SecretKey-Salt",
+            info=b"audioclass-secret-storage",
+        )
+        return hkdf.derive(seed)
+    except Exception:
+        return None
+
+
 def _encrypt_secret(secret: str) -> str:
-    """Cifra un secreto. Devuelve string con prefijo 'dpapi:' o 'b64:'."""
+    """Cifra un secreto. Devuelve string con prefijo 'dpapi:', 'enc:' o 'b64:'."""
     if not secret:
         return ""
     s = str(secret)
@@ -229,15 +262,45 @@ def _encrypt_secret(secret: str) -> str:
                 pass
         except Exception:
             pass
+
+    # Cifrado seguro multiplataforma con AES-256-GCM
+    key = _get_crypto_key()
+    if key is not None:
+        try:
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+            aesgcm = AESGCM(key)
+            nonce = os.urandom(12)
+            ct = aesgcm.encrypt(nonce, s.encode("utf-8"), None)
+            return "enc:" + base64.b64encode(nonce + ct).decode("ascii")
+        except Exception:
+            pass
+
+    # Fallback legado
     return "b64:" + base64.b64encode(s.encode("utf-8")).decode("ascii")
 
 
 def _decrypt_secret(value: str) -> str:
-    """Descifra un secreto cifrado con _encrypt_secret. Valores legados en
-    texto plano se devuelven tal cual (y luego se re-guardan cifrados)."""
+    """Descifra un secreto cifrado con _encrypt_secret. Soporta 'enc:' (AES-GCM),
+    'dpapi:' (Windows) y 'b64:' (legado). Valores legados en texto plano se
+    devuelven tal cual."""
     if not value:
         return ""
     v = str(value)
+    if v.startswith("enc:"):
+        key = _get_crypto_key()
+        if key is not None:
+            try:
+                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+                raw = base64.b64decode(v[4:])
+                nonce = raw[:12]
+                ct = raw[12:]
+                aesgcm = AESGCM(key)
+                return aesgcm.decrypt(nonce, ct, None).decode("utf-8")
+            except Exception:
+                return ""
+        return ""
     if v.startswith("b64:"):
         try:
             return base64.b64decode(v[4:]).decode("utf-8")

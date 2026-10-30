@@ -313,5 +313,25 @@ class UpdateDialogMixin:
         self._update_btn_skip = btn_skip
 
 
-# Alias de servicio (nombre canónico de la extracción).
-UpdateService = UpdateDialogMixin
+# ── Clase de Servicio desacoplada (ADR-001) ──────────────────────────────────
+class UpdateService:
+    """Servicio de verificación e instalación de actualizaciones."""
+
+    def __init__(self, host=None):
+        self._host = host
+
+    def __getattr__(self, name):
+        if self._host is not None:
+            return getattr(self._host, name)
+        raise AttributeError(f"'UpdateService' object has no attribute '{name}'")
+
+    def check_for_updates_async(self):
+        return UpdateDialogMixin._check_for_updates_async(self._host if self._host is not None else self)
+
+    def show_update_dialog(self, latest_version, download_url, release_notes=""):
+        return UpdateDialogMixin._show_update_dialog(
+            self._host if self._host is not None else self,
+            latest_version,
+            download_url,
+            release_notes,
+        )

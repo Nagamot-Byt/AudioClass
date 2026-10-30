@@ -81,7 +81,7 @@ AudioClass is a desktop application for audio transcription and analysis, built 
 **Decisions**:
 - Default bind `127.0.0.1` (configurable via `AUDIOCLASS_HOST` env)
 - Warning banner if `0.0.0.0` explicitly set
-- API keys encrypted with DPAPI (Windows) / keyring (Linux)
+- API keys encrypted with DPAPI (Windows) / AES-256-GCM machine-derived key (Linux/macOS) with legacy b64 compatibility
 - Consent flow for recording and AI adaptation
 - `validate_export_path` restricts exports to safe directories
 
