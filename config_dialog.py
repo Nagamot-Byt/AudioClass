@@ -416,22 +416,35 @@ class ConfigDialogMixin:
         # ── Sección: Prueba rápida de micrófono ──
         f0 = self._frame(body, fg_color=C["card"])
         f0.pack(fill="x", padx=20, pady=10)
-        self._lbl(f0, "Prueba rapida de microfono", font=(self.FH, 13, "bold")).pack(anchor="w", padx=15, pady=(12, 4))
+        self._lbl(f0, "Prueba y Troubleshooting de Micrófono", font=(self.FH, 13, "bold")).pack(
+            anchor="w", padx=15, pady=(12, 4)
+        )
         self._lbl(
             f0,
-            "Graba 8 segundos y comprueba que tu microfono capta bien tu voz.",
+            "Graba una prueba rápida o ejecuta el solucionador para optimizar volumen y desmutear.",
             font=(self.FB, 10),
             text_color=C["muted"],
         ).pack(anchor="w", padx=15, pady=(0, 8))
+        btn_mic_box = self._frame(f0, fg_color="transparent")
+        btn_mic_box.pack(anchor="w", padx=15, pady=(0, 12))
         self._btn(
-            f0,
+            btn_mic_box,
             "Abrir prueba de microfono",
             self._test_mic,
-            width=240,
+            width=210,
             height=36,
             fg_color=C["err"],
             hover_color=C["err"],
-        ).pack(anchor="w", padx=15, pady=(0, 12))
+        ).pack(side="left", padx=(0, 10))
+        self._btn(
+            btn_mic_box,
+            "Troubleshooting y Optimización",
+            self._open_mic_opt,
+            width=230,
+            height=36,
+            fg_color=C["accent"],
+            hover_color=C["accent_hover"],
+        ).pack(side="left")
 
         # ── Sección: Estado de Conexiones ──
         f3 = self._frame(body, fg_color=C["card"])

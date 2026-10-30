@@ -21,11 +21,12 @@ Uso:
 
 import json
 from pathlib import Path
+from typing import Any
 
 # ── Estado global ────────────────────────────────────────────────────────────
 _current_language = "es"  # Idioma por defecto
-_translations = {}  # Cache de traducciones cargadas
-_fallback = {}  # Traducciones en inglés (fallback)
+_translations: dict[str, Any] = {}  # Cache de traducciones cargadas
+_fallback: dict[str, Any] = {}  # Traducciones en inglés (fallback)
 
 LOCALES_DIR = Path(__file__).parent
 AVAILABLE_LANGUAGES = {

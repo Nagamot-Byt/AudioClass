@@ -291,6 +291,8 @@ class AudioPipeline:
         Returns:
             Array numpy float64 con el audio procesado.
         """
+        if len(audio) == 0:
+            return np.zeros(0, dtype=np.float64)
         audio = audio.astype(np.float64)
         steps = 9 if not self.fast_mode else 5
         step = 0
@@ -862,9 +864,10 @@ class LocalWhisperEngine(TranscriptionBackend):
         if len(data.shape) > 1:
             data = np.mean(data, axis=1)
         if sr != SAMPLE_RATE:
-            # .astype(np.float32): signal.resample devuelve float64 y Whisper
-            # (torch.from_numpy) lo acepta pero a coste doble en clases largas.
-            data = signal.resample(data, int(len(data) * SAMPLE_RATE / sr)).astype(np.float32)
+            # Remuestreo polifasico eficiente en memoria (evita FFT gigante en clases largas)
+            from mic_troubleshooter import resample_audio
+
+            data = resample_audio(data, sr, SAMPLE_RATE)
 
         # ── Pre-validacion de silencio digital (mejora #2) ──────────────────
         # Si el WAV es silencio digital (microfono muerto/desenchufado: >50% de
@@ -1689,7 +1692,9 @@ class SherpaParakeetEngine(TranscriptionBackend):
         if len(data.shape) > 1:
             data = data.mean(axis=1)
         if sr != 16000:
-            data = signal.resample(data, int(len(data) * 16000 / sr)).astype(np.float32)
+            from mic_troubleshooter import resample_audio
+
+            data = resample_audio(data, sr, 16000)
 
         if check_silence:
             _stats = audio_silence_stats(data)

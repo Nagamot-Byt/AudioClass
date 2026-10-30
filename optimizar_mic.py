@@ -25,7 +25,6 @@ from ctypes import (
     CFUNCTYPE,
     POINTER,
     Structure,
-    WinDLL,
     byref,
     c_bool,
     c_float,
@@ -39,10 +38,15 @@ from ctypes import (
     cast,
 )
 
+try:
+    from ctypes import WinDLL
+except ImportError:
+    WinDLL = None  # type: ignore
+
 import numpy as np
 import sounddevice as sd
 
-if sys.platform != "win32":
+if __name__ == "__main__" and sys.platform != "win32":
     print("Este optimizador solo aplica en Windows.")
     sys.exit(1)
 try:
@@ -84,9 +88,10 @@ CLSCTX_INPROC_SERVER = 0x1
 ECapture, EMultimedia = 1, 1
 DEVICE_STATE_ACTIVE = 0x1
 
-_ole32 = WinDLL("ole32")
-_ole32.CoCreateInstance.restype = HRESULT
-_ole32.CoCreateInstance.argtypes = [POINTER(GUID), c_void_p, c_ulong, POINTER(GUID), POINTER(c_void_p)]
+_ole32 = WinDLL("ole32") if (WinDLL and sys.platform == "win32") else None
+if _ole32 is not None:
+    _ole32.CoCreateInstance.restype = HRESULT
+    _ole32.CoCreateInstance.argtypes = [POINTER(GUID), c_void_p, c_ulong, POINTER(GUID), POINTER(c_void_p)]
 
 
 def _vcall(this, idx, restype, argtypes):

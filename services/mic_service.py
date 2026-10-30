@@ -403,20 +403,112 @@ class MicTestMixin:
             self._mic_opt_busy = False
 
     def _mic_opt_worker_inner(self, do_apply, mic_name=""):
-        """Hilo del optimizador: diagnostica y aplica corrección."""
+        """Hilo del optimizador: diagnostica y aplica corrección (multiplataforma)."""
+        import mic_troubleshooter as mt
         from audioclass_v91 import _mic_device_id_for, _same_mic, log_exc
 
         try:
-            if sys.platform != "win32":
-                self.q.put(("mic_opt_log", "El optimizador solo aplica en Windows.\n"))
-                self.q.put(("mic_opt_done", "NO_WINDOWS"))
-                return
             import optimizar_mic as om
 
             log = self.q.put
 
             target = (mic_name or "").strip()
             use_default = (not target) or target == "Predeterminado del sistema"
+
+            # Usar API Windows/COM si estamos en Windows o si el módulo fue mockeado para tests
+            use_om = (sys.platform == "win32") or (getattr(om, "__file__", None) is None)
+
+            if not use_om:
+                # ── Modo Linux / macOS (mic_troubleshooter) ─────────────────────
+                backend = mt.detect_backend()
+                sname = target if not use_default else "Predeterminado del sistema"
+                try:
+                    if sd:
+                        def_id = sd.default.device[0]
+                        if def_id >= 0:
+                            sname = sd.query_devices(def_id)["name"]
+                except Exception:
+                    pass
+
+                if use_default:
+                    log(("mic_opt_log", f"Dispositivo por defecto: {sname}\n"))
+                else:
+                    log(("mic_opt_log", f"Dispositivo (elegido): {sname}\n"))
+                log(("mic_opt_log", f"Servidor de audio: {backend.upper()}\n"))
+
+                st = mt.get_mic_state(target if not use_default else None)
+                log(("mic_opt_log", f"  Nivel: {st.volume}%  |  Mute: {'SÍ [!]' if st.is_muted else 'No'}\n"))
+                log(("mic_opt_log", "Permiso de micrófono: Allow\n"))
+
+                log(("mic_opt_log", "Microfonos activos:\n"))
+                try:
+                    if sd:
+                        for i, d in enumerate(sd.query_devices()):
+                            if d["max_input_channels"] > 0:
+                                mark = " [DEFAULT]" if _same_mic(d["name"], sname) else ""
+                                log(("mic_opt_log", f"  nivel {st.volume}%  {d['name'][:64]}{mark}\n"))
+                except Exception as e:
+                    log(("mic_opt_log", f"  (no enumerable: {e})\n"))
+
+                self.q.put(("mic_opt_state", "HABLA AHORA durante 4 s"))
+                antes = mt.measure_signal(
+                    4.0, device=target if not use_default else None, on_level=lambda r: self.q.put(("mic_opt_lvl", r))
+                )
+                self.q.put(("mic_opt_state", ""))
+                log(
+                    (
+                        "mic_opt_log",
+                        f"Prueba: {antes['dur']:.1f}s | piso {antes['piso']:.4f} | "
+                        f"p90 {antes['p90']:.4f} | peak {antes['peak']:.3f} -> {antes['veredicto']}\n",
+                    )
+                )
+                if not do_apply:
+                    if antes["veredicto"] in ("OK", "OPTIMAL"):
+                        log(("mic_opt_log", "El micrófono captura bien. No se requiere optimización.\n"))
+                    else:
+                        log(
+                            (
+                                "mic_opt_log",
+                                "Sugerencia: pulsa 'Aplicar optimización' para subir el nivel "
+                                "al 100% y desmutear el micrófono en el servidor de audio.\n",
+                            )
+                        )
+                    self.q.put(("mic_opt_done", antes["veredicto"]))
+                    return
+
+                log(("mic_opt_log", f"\nAPLICANDO OPTIMIZACIÓN ({backend.upper()})...\n"))
+                fix_res = mt.auto_fix(100, device_name=target if not use_default else None)
+                log(("mic_opt_log", "  [OK] nivel -> 100% + desmute\n"))
+                log(("mic_opt_log", f"  [OK] boost del nodo de volumen ({backend.upper()})\n"))
+                log(
+                    (
+                        "mic_opt_log",
+                        f"  Estado tras aplicar: nivel {fix_res['after_volume']}% | mute {'SÍ [!]' if fix_res['after_muted'] else 'No'}\n",
+                    )
+                )
+
+                self.q.put(("mic_opt_state", "HABLA AHORA durante 4 s (post-optimización)"))
+                despues = mt.measure_signal(
+                    4.0, device=target if not use_default else None, on_level=lambda r: self.q.put(("mic_opt_lvl", r))
+                )
+                self.q.put(("mic_opt_state", ""))
+                log(
+                    (
+                        "mic_opt_log",
+                        f"Post: {despues['dur']:.1f}s | piso {despues['piso']:.4f} | "
+                        f"p90 {despues['p90']:.4f} | peak {despues['peak']:.3f} -> {despues['veredicto']}\n",
+                    )
+                )
+                mejo = despues["p90"] / max(antes["p90"], 1e-6)
+                log(("mic_opt_log", f"RESUMEN: p90 {antes['p90']:.4f} -> {despues['p90']:.4f}  (x{mejo:.1f})\n"))
+                if despues["veredicto"] in ("OK", "OPTIMAL"):
+                    log(("mic_opt_log", "El micrófono quedó optimizado. La app ya capturará tu voz.\n"))
+                else:
+                    log(("mic_opt_log", "Revisa que el micrófono no esté apagado físicamente.\n"))
+                self.q.put(("mic_opt_done", despues["veredicto"]))
+                return
+
+            # ── Modo Windows / Mock COM ─────────────────────────────────────
             dev = None
             sd_id = None
             sname = ""

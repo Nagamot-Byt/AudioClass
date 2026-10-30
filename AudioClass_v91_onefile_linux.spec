@@ -97,6 +97,7 @@ a = Analysis(
         'config_manager',
         'config_dialog',
         'mic_optimizer_ui',
+        'mic_troubleshooter',
         'ai_providers',
         'update_checker',
         'theme',

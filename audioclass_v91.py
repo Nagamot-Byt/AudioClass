@@ -2047,11 +2047,19 @@ CONSEJOS:
 
     def _mic_opt_start(self, do_apply):
         """Wrapper: delega a MicService."""
-        self.mic_service._mic_opt_start_inner(do_apply)
+        target = getattr(self, "mic_service", self)
+        if hasattr(target, "_mic_opt_start_inner"):
+            target._mic_opt_start_inner(do_apply)
+        else:
+            MicTestMixin._mic_opt_start_inner(self, do_apply)
 
     def _mic_opt_worker(self, do_apply, mic_name=""):
         """Wrapper: delega a MicService."""
-        self.mic_service._mic_opt_worker_inner(do_apply, mic_name)
+        target = getattr(self, "mic_service", self)
+        if hasattr(target, "_mic_opt_worker_inner"):
+            target._mic_opt_worker_inner(do_apply, mic_name)
+        else:
+            MicTestMixin._mic_opt_worker_inner(self, do_apply, mic_name)
 
     def _open_config(self):
         """Abre el diálogo de configuración (delega a ConfigDialogMixin)."""
@@ -2289,18 +2297,34 @@ CONSEJOS:
         si el auto-detect no encuentra nada mejor, se reporta ese nivel
         silencioso (no None) y asi se dispara la advertencia."""
         try:
-            win = int(0.1 * SAMPLE_RATE)
-            buf = []
             configured_dev = _mic_device_id_for(getattr(self, "config", None) or {})
+            probe_sr = SAMPLE_RATE
+            needs_resample = False
+            import mic_troubleshooter as mt
+
+            if sd is not None:
+                try:
+                    sd.check_input_settings(device=configured_dev, samplerate=SAMPLE_RATE, channels=CHANNELS)
+                except Exception:
+                    compat = mt.check_device_compatibility(configured_dev, target_sr=SAMPLE_RATE)
+                    if compat.get("needs_resampling") and compat.get("native_sr"):
+                        probe_sr = compat["native_sr"]
+                        needs_resample = True
+
+            win = int(0.1 * probe_sr)
+            buf = []
 
             def cb(indata, frames, ti, status):
                 """Metodo interno: cb."""
-                buf.append(indata.copy().flatten())
+                flat = indata.copy().flatten()
+                if needs_resample and len(flat) > 0:
+                    flat = mt.resample_audio(flat, probe_sr, SAMPLE_RATE)
+                buf.append(flat)
 
             # Intentar con el mic configurado primero
             try:
                 with sd.InputStream(
-                    samplerate=SAMPLE_RATE,
+                    samplerate=probe_sr,
                     channels=CHANNELS,
                     dtype=DTYPE,
                     blocksize=win,
@@ -2314,9 +2338,10 @@ CONSEJOS:
             # Medir el nivel del intento inicial (aunque sea silencio) para no
             # perderlo al entrar a auto-detectar.
             first_p90 = None
-            if buf:
+            pipe = getattr(getattr(self, "transcription_service", None), "pipeline", getattr(self, "pipeline", None))
+            if buf and pipe:
                 raw0 = np.concatenate(buf).flatten()
-                fr0 = self.transcription_service.pipeline._frame_rms(raw0.astype(np.float64), win, win // 2)
+                fr0 = pipe._frame_rms(raw0.astype(np.float64), win, win // 2)
                 first_p90 = float(np.percentile(fr0, 90)) if len(fr0) else 0.0
 
             # Si el mic configurado da silencio, auto-detectar el mejor microfono.
@@ -2350,9 +2375,9 @@ CONSEJOS:
             # si el auto-detect no encontro nada, conservar el nivel silencioso
             # inicial (no None) para que se abra la advertencia en vez de grabar
             # en silencio. Solo es None si no hubo NINGUN audio en absoluto.
-            if buf:
+            if buf and pipe:
                 raw = np.concatenate(buf).flatten()
-                fr = self.transcription_service.pipeline._frame_rms(raw.astype(np.float64), win, win // 2)
+                fr = pipe._frame_rms(raw.astype(np.float64), win, win // 2)
                 p90 = float(np.percentile(fr, 90)) if len(fr) else 0.0
             elif first_p90 is not None:
                 p90 = first_p90
@@ -2843,6 +2868,24 @@ CONSEJOS:
         # buffer visual se reconstruye en el hilo principal (_updviz) y un
         # flusher (daemon) lo va volcando a disco en paralelo.
         """Loop principal de captura de audio en tiempo real."""
+        dev_id = _mic_device_id_for(getattr(self, "config", None) or {})
+        rec_sr = SAMPLE_RATE
+        needs_resample = False
+        import mic_troubleshooter as mt
+
+        if sd is not None:
+            try:
+                sd.check_input_settings(device=dev_id, samplerate=SAMPLE_RATE, channels=CHANNELS)
+            except Exception:
+                compat = mt.check_device_compatibility(dev_id, target_sr=SAMPLE_RATE)
+                if compat.get("needs_resampling") and compat.get("native_sr"):
+                    rec_sr = compat["native_sr"]
+                    needs_resample = True
+                else:
+                    dev_id = None
+                    rec_sr = SAMPLE_RATE
+
+        rec_bs = int(rec_sr * CHUNK_DUR)
 
         def cb(indata, frames, ti, status):
             """Metodo interno: cb."""
@@ -2854,19 +2897,36 @@ CONSEJOS:
                 # PortAudio que se reutiliza en el siguiente bloque y corrompe
                 # el audio; los bloques 2-D (CHUNK_SIZE,1) rompian v[-n:]=recent
                 # en _updviz (broadcast error).
-                self.buffer.append(indata.flatten())
+                flat = indata.flatten()
+                if needs_resample and len(flat) > 0:
+                    flat = mt.resample_audio(flat, rec_sr, SAMPLE_RATE)
+                self.buffer.append(flat)
 
         try:
             with sd.InputStream(
-                samplerate=SAMPLE_RATE,
+                samplerate=rec_sr,
                 channels=CHANNELS,
                 dtype=DTYPE,
-                blocksize=CHUNK_SIZE,
+                blocksize=rec_bs,
                 callback=cb,
-                device=_mic_device_id_for(getattr(self, "config", None) or {}),
+                device=dev_id,
             ):
                 self.stop_ev.wait()
         except Exception as e:
+            if dev_id is not None:
+                try:
+                    with sd.InputStream(
+                        samplerate=SAMPLE_RATE,
+                        channels=CHANNELS,
+                        dtype=DTYPE,
+                        blocksize=CHUNK_SIZE,
+                        callback=cb,
+                        device=None,
+                    ):
+                        self.stop_ev.wait()
+                        return
+                except Exception:
+                    pass
             log_exc("recloop")
             self.q.put(("rec_error", str(e)))
             self.recording = False

@@ -126,6 +126,7 @@ a = Analysis(
         # Modulos nuevos (refactor v9.2+)
         'config_dialog',
         'mic_optimizer_ui',
+        'mic_troubleshooter',
         'ai_providers',
         'update_checker',
         'sherpa_onnx',
