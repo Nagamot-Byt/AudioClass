@@ -18,7 +18,7 @@ sherpa-onnx>=1.10.0
 soundfile>=0.12.0
 
 # Exportacion
-fpdf2==2.8.7
+fpdf2==2.8.8
 matplotlib==3.11.1
 
 # API / Red
